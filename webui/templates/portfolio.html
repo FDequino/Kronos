@@ -1,0 +1,306 @@
+{% extends "base.html" %}
+
+{% block title %}Cartera · Kronos{% endblock %}
+{% block page_title %}Mi Cartera{% endblock %}
+{% block page_subtitle %}Acciones, CEDEARs, bonos, obligaciones negociables, plazos fijos y USD{% endblock %}
+
+{% block content %}
+{% from "_skeleton.html" import skeleton_chart, skeleton_rows %}
+<div id="status-banner" class="status"></div>
+
+<section class="view" id="view-resumen">
+    <div class="subtabs" data-subtabs="resumen">
+        <button class="subtab-btn active" type="button" data-subtab-target="dashboard">Dashboard</button>
+        <button class="subtab-btn" type="button" data-subtab-target="tabla">Tabla</button>
+    </div>
+
+    <div class="subtab-panel active" data-subtab-panel="dashboard">
+        <p class="resumen-narrativo" id="resumen-narrativo"><span class="skeleton skeleton-text wide"></span></p>
+
+        <div class="stat-strip">
+            <div class="stat" id="stat-valor-total-card">
+                <div class="stat-label">Valor total</div>
+                <div class="stat-value num" id="stat-valor-total"><span class="skeleton skeleton-value"></span></div>
+                <div class="stat-sub hint" id="stat-valor-sub"></div>
+                <div class="stat-detail" id="stat-valor-detail" hidden></div>
+            </div>
+            <div class="stat" id="stat-pnl-total-card">
+                <div class="stat-label">P&amp;L</div>
+                <div class="stat-value num" id="stat-pnl-total"><span class="skeleton skeleton-value"></span></div>
+                <div class="stat-detail" id="stat-pnl-detail" hidden></div>
+            </div>
+            <div class="stat" id="stat-posiciones-card">
+                <div class="stat-label">Posiciones</div>
+                <div class="stat-value num" id="stat-posiciones"><span class="skeleton skeleton-value"></span></div>
+                <div class="stat-detail" id="stat-posiciones-detail" hidden></div>
+            </div>
+            <div class="stat" id="stat-usd-card">
+                <div class="stat-label">Cotizaci&oacute;n USD</div>
+                <div class="stat-value num" id="stat-usd-rate"><span class="skeleton skeleton-value"></span></div>
+                <div class="stat-sub hint" id="stat-usd-sub"></div>
+                <div class="stat-detail" id="stat-usd-detail" hidden></div>
+            </div>
+        </div>
+
+        <div class="dashboard-grid-3">
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Asignaci&oacute;n por tipo</h2>
+                        <p class="panel-subtitle">C&oacute;mo se reparte el valor de tu cartera entre clases de activos.</p>
+                    </div>
+                </div>
+                <div class="panel-body" id="allocation-chart-container">{{ skeleton_chart(240) }}</div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Riesgo de cartera</h2>
+                        <p class="panel-subtitle">Score ponderado por valor, de 0 (bajo) a 100 (alto).</p>
+                    </div>
+                </div>
+                <div class="panel-body" id="portfolio-risk-container">{{ skeleton_chart(240) }}</div>
+            </div>
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Distribuci&oacute;n de riesgo</h2>
+                        <p class="panel-subtitle">Cu&aacute;ntas posiciones hay en cada banda de riesgo.</p>
+                    </div>
+                </div>
+                <div class="panel-body" id="risk-distribution-container">{{ skeleton_chart(240) }}</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>P&amp;L por instrumento</h2>
+                    <p class="panel-subtitle">Ganancia o p&eacute;rdida acumulada de cada posici&oacute;n.</p>
+                </div>
+                <div class="segmented-toggle" id="pnl-field-toggle">
+                    <button class="segmented-toggle-option active" data-value="pnl" type="button">$</button>
+                    <button class="segmented-toggle-option" data-value="pnl_pct" type="button">%</button>
+                </div>
+            </div>
+            <div class="panel-body" id="pnl-bar-chart-container">{{ skeleton_chart(280) }}</div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Evoluci&oacute;n de la cartera</h2>
+                    <p class="panel-subtitle">Valor real reconstruido d&iacute;a a d&iacute;a vs. lo que hubiera valido siguiendo las predicciones de Kronos.</p>
+                </div>
+                <button type="button" class="btn btn-secondary" id="portfolio-backtest-btn">Generar historial de Kronos</button>
+            </div>
+            <div class="panel-body">
+                <p class="hint" id="portfolio-backtest-status"></p>
+                <div id="portfolio-history-legend"></div>
+                <div id="portfolio-history-container">{{ skeleton_chart(320) }}</div>
+                <p class="hint" id="portfolio-history-missing" style="margin-top: 10px;"></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="tabla">
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Tenencias</h2>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                    <span class="hint" id="holdings-currency-note"></span>
+                    <button id="refresh-quotes-btn" class="btn btn-secondary">Actualizar cotizaciones</button>
+                </div>
+            </div>
+            <div class="view-toolbar">
+                <div id="holdings-search-bar"></div>
+            </div>
+            <div class="loading" id="holdings-loading" style="padding: 14px 20px;">
+                <div class="spinner"></div><span>Actualizando cotizaciones&hellip;</span>
+            </div>
+            <div class="panel-body flush" id="holdings-groups">
+                <table>
+                    <tbody>{{ skeleton_rows(9, 6) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="view" id="view-senales">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Se&ntilde;ales</h2>
+            <button id="run-all-signals-btn" class="btn btn-secondary">Actualizar todas</button>
+        </div>
+        <div class="panel-body">
+            <p class="hint" style="margin-bottom: 16px;">
+                Heur&iacute;stica sobre el pron&oacute;stico de Kronos, no es asesoramiento financiero.
+            </p>
+            <div id="signals-funds-note" style="margin-bottom: 16px;"></div>
+            <div class="forecast-grid" id="signals-grid">{{ skeleton_chart(160) }}{{ skeleton_chart(160) }}{{ skeleton_chart(160) }}</div>
+        </div>
+    </div>
+</section>
+
+<section class="view" id="view-instrumentos">
+    <div class="panel">
+        <div class="panel-header"><h2>Instrumentos</h2></div>
+        <div class="view-toolbar">
+            <div id="instruments-search-bar"></div>
+            <div class="view-toolbar-actions">
+                <button id="new-instrument-btn" class="btn btn-primary" type="button">+ Nuevo instrumento</button>
+            </div>
+        </div>
+        <div class="panel-body flush">
+            <table>
+                <thead>
+                    <tr><th>S&iacute;mbolo</th><th>Nombre</th><th>Tipo</th><th>Mercado</th><th>Moneda</th><th>Fuente</th><th></th></tr>
+                </thead>
+                <tbody id="instruments-tbody">{{ skeleton_rows(7, 4) }}</tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+<section class="view" id="view-transacciones">
+    <div class="subtabs" data-subtabs="transacciones">
+        <button class="subtab-btn active" type="button" data-subtab-target="historial">Historial</button>
+        <button class="subtab-btn" type="button" data-subtab-target="rentas">Dividendos y Rentas</button>
+    </div>
+
+    <div class="subtab-panel active" data-subtab-panel="historial">
+        <div class="panel">
+            <div class="panel-header">
+                <h2>Historial</h2>
+                <div class="date-range-filter">
+                    <input type="date" id="tx-filter-from" aria-label="Desde">
+                    <span>&mdash;</span>
+                    <input type="date" id="tx-filter-to" aria-label="Hasta">
+                </div>
+            </div>
+            <div class="view-toolbar">
+                <div id="transactions-search-bar"></div>
+                <div class="view-toolbar-actions">
+                    <button id="new-transaction-btn" class="btn btn-primary" type="button">+ Nueva transacci&oacute;n</button>
+                </div>
+            </div>
+            <div class="panel-body flush">
+                <table>
+                    <thead>
+                        <tr><th>Fecha</th><th>Instrumento</th><th>Tipo</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Comisi&oacute;n</th><th></th></tr>
+                    </thead>
+                    <tbody id="transactions-tbody">{{ skeleton_rows(7, 4) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="rentas">
+        <div class="panel">
+            <div class="panel-header"><h2>Dividendos y Rentas</h2></div>
+            <div class="view-toolbar">
+                <div id="rentas-search-bar"></div>
+            </div>
+            <div class="panel-body flush">
+                <table>
+                    <thead>
+                        <tr><th>Fecha</th><th>S&iacute;mbolo</th><th>Tipo</th><th class="num">Bruto</th><th class="num">Gastos</th><th class="num">Neto</th><th>Moneda</th></tr>
+                    </thead>
+                    <tbody id="rentas-dividendos-tbody">{{ skeleton_rows(7, 3) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="view" id="view-plazos-fijos">
+    <div class="subtabs" data-subtabs="plazos-fijos">
+        <button class="subtab-btn active" type="button" data-subtab-target="pf">Plazos Fijos</button>
+        <button class="subtab-btn" type="button" data-subtab-target="cauciones">Cauciones</button>
+    </div>
+
+    <div class="subtab-panel active" data-subtab-panel="pf">
+        <div class="panel">
+            <div class="panel-header"><h2>Plazos Fijos</h2></div>
+            <div class="view-toolbar">
+                <div id="pf-search-bar"></div>
+                <div class="view-toolbar-actions">
+                    <button id="new-pf-btn" class="btn btn-primary" type="button">+ Nuevo plazo fijo</button>
+                </div>
+            </div>
+            <div class="panel-body flush">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Banco</th><th>Tipo</th><th class="num">Monto</th><th class="num">TNA</th>
+                            <th class="num">D&iacute;as</th><th class="num">Devengado</th><th class="num">Valor Actual</th><th>Estado</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="pf-tbody">{{ skeleton_rows(9, 3) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="cauciones">
+        <div class="panel">
+            <div class="panel-header"><h2>Cauciones</h2></div>
+            <p class="hint" style="padding: 16px 20px 0;">Pr&eacute;stamo colateralizado de muy corto plazo v&iacute;a el broker &mdash; no es un activo que Kronos pueda pronosticar, se incluye para ver el panorama general.</p>
+            <div class="view-toolbar">
+                <div id="cauciones-search-bar"></div>
+                <div class="view-toolbar-actions">
+                    <button id="new-caucion-btn" class="btn btn-primary" type="button">+ Nueva cauci&oacute;n</button>
+                </div>
+            </div>
+            <div class="panel-body flush">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="num">Monto</th><th class="num">Tasa</th><th class="num">D&iacute;as</th>
+                            <th class="num">Devengado</th><th class="num">Valor Actual</th><th>Vencimiento</th><th>Estado</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="cauciones-tbody">{{ skeleton_rows(8, 2) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+<section class="view" id="view-explorador">
+    <div class="panel">
+        <div class="panel-header">
+            <h2>Explorador BYMA</h2>
+            <span class="hint" id="explorer-count"></span>
+        </div>
+        <div class="view-toolbar">
+            <div id="explorer-search-bar"></div>
+        </div>
+        <div class="panel-body flush">
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="symbol">S&iacute;mbolo</th>
+                            <th class="sortable" data-sort="type">Tipo</th>
+                            <th class="num sortable" data-sort="price">Precio</th>
+                            <th class="num sortable" data-sort="pct_change">Var. %</th>
+                        </tr>
+                    </thead>
+                    <tbody id="explorer-results-tbody">{{ skeleton_rows(4, 6) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="view" id="view-detalle">
+    <div id="instrument-detail-root"></div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+<script type="module" src="{{ url_for('static', filename='js/portfolio/main.js') }}"></script>
+{% endblock %}

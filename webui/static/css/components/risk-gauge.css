@@ -1,0 +1,106 @@
+.risk-gauge-chart {
+    display: flex;
+    justify-content: center;
+}
+
+.risk-gauge-value {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.risk-gauge-value .tag {
+    font-size: 0.7rem;
+}
+
+.risk-gauge-explanation {
+    margin-top: 8px;
+}
+
+.risk-contributors {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+
+.risk-contributors-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    margin-bottom: 10px;
+}
+
+.risk-contributor-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: var(--step--1);
+}
+
+.risk-contributor-row .num {
+    margin-left: auto;
+    color: var(--text-secondary);
+}
+
+.risk-distribution {
+    padding-top: 8px;
+}
+
+.risk-distribution-bar {
+    display: flex;
+    height: 28px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--bg-content);
+    gap: 2px;
+}
+
+.risk-distribution-segment {
+    height: 100%;
+    transition: width 200ms ease;
+}
+
+.risk-distribution-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-top: 20px;
+}
+
+.risk-distribution-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 4px;
+    border-top: 1px solid var(--border);
+    font-size: var(--step--1);
+}
+
+.risk-distribution-item:first-child {
+    border-top: none;
+}
+
+.risk-distribution-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.risk-distribution-label {
+    color: var(--text-secondary);
+}
+
+.risk-distribution-count {
+    margin-left: auto;
+    font-weight: 600;
+}
+
+.risk-distribution-pct {
+    color: var(--text-tertiary);
+    min-width: 3.2em;
+    text-align: right;
+}

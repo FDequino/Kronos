@@ -1,0 +1,11 @@
+{% macro skeleton_chart(height=240) %}
+<div class="skeleton skeleton-block" style="height: {{ height }}px;"></div>
+{% endmacro %}
+
+{% macro skeleton_rows(cols, rows=4) %}
+{% for _ in range(rows) %}
+<tr class="skeleton-row">
+    {% for _ in range(cols) %}<td><span class="skeleton skeleton-text"></span></td>{% endfor %}
+</tr>
+{% endfor %}
+{% endmacro %}

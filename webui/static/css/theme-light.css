@@ -1,0 +1,28 @@
+/* Paleta clara propia, no es el tema oscuro invertido. */
+:root[data-theme="light"] {
+    --bg-sidebar: #ffffff;
+    --bg-content: #f3f4f6;
+    --bg-elevated: #ffffff;
+    --bg-elevated-hover: #eef0f3;
+    --border: #e3e5ea;
+    --border-strong: #c7cbd4;
+
+    --text-primary: #14161a;
+    --text-secondary: #585f6b;
+    --text-tertiary: #6b7280;
+
+    --accent: #3b6fe0;
+    --accent-dim: rgba(59, 111, 224, 0.1);
+    --accent-strong: #2851b8;
+
+    --positive: #1f9d57;
+    --positive-dim: rgba(31, 157, 87, 0.12);
+    --negative: #d63939;
+    --negative-dim: rgba(214, 57, 57, 0.12);
+    --warning: #b5790a;
+    --warning-dim: rgba(181, 121, 10, 0.12);
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+}

@@ -1,0 +1,28 @@
+.detail-tabs {
+    display: flex;
+    gap: 20px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 20px;
+}
+
+.detail-tab-btn {
+    padding: 10px 2px;
+    margin-bottom: -1px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: var(--step--1);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.detail-tab-btn:hover {
+    color: var(--text-primary);
+}
+
+.detail-tab-btn.active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent);
+}

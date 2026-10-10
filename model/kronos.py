@@ -386,7 +386,7 @@ def sample_from_logits(logits, temperature=1.0, top_k=None, top_p=None, sample_l
     return x
 
 
-def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context, pred_len, clip=5, T=1.0, top_k=0, top_p=0.99, sample_count=5, verbose=False):
+def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context, pred_len, clip=5, T=1.0, top_k=0, top_p=0.99, sample_count=5, verbose=False, return_samples=False):
     with torch.no_grad():
         x = torch.clip(x, -clip, clip)
 
@@ -464,9 +464,10 @@ def auto_regressive_inference(tokenizer, model, x, x_stamp, y_stamp, max_context
         z = tokenizer.decode(input_tokens, half=True)
         z = z.reshape(-1, sample_count, z.size(1), z.size(2))
         preds = z.cpu().numpy()
-        preds = np.mean(preds, axis=1)
+        if return_samples:
+            return preds
 
-        return preds
+        return np.mean(preds, axis=1)
 
 
 def calc_time_stamps(x_timestamp):
@@ -505,19 +506,19 @@ class KronosPredictor:
         self.tokenizer = self.tokenizer.to(self.device)
         self.model = self.model.to(self.device)
 
-    def generate(self, x, x_stamp, y_stamp, pred_len, T, top_k, top_p, sample_count, verbose):
+    def generate(self, x, x_stamp, y_stamp, pred_len, T, top_k, top_p, sample_count, verbose, return_samples=False):
 
         x_tensor = torch.from_numpy(np.array(x).astype(np.float32)).to(self.device)
         x_stamp_tensor = torch.from_numpy(np.array(x_stamp).astype(np.float32)).to(self.device)
         y_stamp_tensor = torch.from_numpy(np.array(y_stamp).astype(np.float32)).to(self.device)
 
         preds = auto_regressive_inference(self.tokenizer, self.model, x_tensor, x_stamp_tensor, y_stamp_tensor, self.max_context, pred_len,
-                                          self.clip, T, top_k, top_p, sample_count, verbose)
-        preds = preds[:, -pred_len:, :]
-        return preds
+                                          self.clip, T, top_k, top_p, sample_count, verbose, return_samples=return_samples)
+        if return_samples:
+            return preds[:, :, -pred_len:, :]
+        return preds[:, -pred_len:, :]
 
-    def predict(self, df, x_timestamp, y_timestamp, pred_len, T=1.0, top_k=0, top_p=0.9, sample_count=1, verbose=True):
-
+    def _prepare_inputs(self, df, x_timestamp, y_timestamp):
         if not isinstance(df, pd.DataFrame):
             raise ValueError("Input must be a pandas DataFrame.")
 
@@ -546,9 +547,10 @@ class KronosPredictor:
         x = (x - x_mean) / (x_std + 1e-5)
         x = np.clip(x, -self.clip, self.clip)
 
-        x = x[np.newaxis, :]
-        x_stamp = x_stamp[np.newaxis, :]
-        y_stamp = y_stamp[np.newaxis, :]
+        return x[np.newaxis, :], x_stamp[np.newaxis, :], y_stamp[np.newaxis, :], x_mean, x_std
+
+    def predict(self, df, x_timestamp, y_timestamp, pred_len, T=1.0, top_k=0, top_p=0.9, sample_count=1, verbose=True):
+        x, x_stamp, y_stamp, x_mean, x_std = self._prepare_inputs(df, x_timestamp, y_timestamp)
 
         preds = self.generate(x, x_stamp, y_stamp, pred_len, T, top_k, top_p, sample_count, verbose)
 
@@ -557,6 +559,22 @@ class KronosPredictor:
 
         pred_df = pd.DataFrame(preds, columns=self.price_cols + [self.vol_col, self.amt_vol], index=y_timestamp)
         return pred_df
+
+    def predict_samples(self, df, x_timestamp, y_timestamp, pred_len, T=1.0, top_k=0, top_p=0.9, sample_count=1, verbose=True):
+        """Like predict(), but also returns each unaveraged sample trajectory.
+
+        The spread between samples is Kronos's own uncertainty signal (it already pays for
+        sample_count forward passes) — predict() discards it by averaging internally.
+        """
+        x, x_stamp, y_stamp, x_mean, x_std = self._prepare_inputs(df, x_timestamp, y_timestamp)
+
+        samples = self.generate(x, x_stamp, y_stamp, pred_len, T, top_k, top_p, sample_count, verbose, return_samples=True)
+        samples = samples[0] * (x_std + 1e-5) + x_mean  # drop batch dim -> (sample_count, pred_len, channels)
+
+        columns = self.price_cols + [self.vol_col, self.amt_vol]
+        sample_dfs = [pd.DataFrame(s, columns=columns, index=y_timestamp) for s in samples]
+        mean_df = pd.DataFrame(samples.mean(axis=0), columns=columns, index=y_timestamp)
+        return mean_df, sample_dfs
 
 
     def predict_batch(self, df_list, x_timestamp_list, y_timestamp_list, pred_len, T=1.0, top_k=0, top_p=0.9, sample_count=1, verbose=True):

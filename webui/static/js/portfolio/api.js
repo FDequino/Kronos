@@ -1,0 +1,43 @@
+const BASE = '/api/portfolio';
+
+export const api = {
+    instruments: () => axios.get(`${BASE}/instruments`),
+    addInstrument: (payload) => axios.post(`${BASE}/instruments`, payload),
+    updateInstrument: (id, payload) => axios.put(`${BASE}/instruments/${id}`, payload),
+    deleteInstrument: (id) => axios.delete(`${BASE}/instruments/${id}`),
+    transactions: () => axios.get(`${BASE}/transactions`),
+    addTransaction: (payload) => axios.post(`${BASE}/transactions`, payload),
+    updateTransaction: (id, payload) => axios.put(`${BASE}/transactions/${id}`, payload),
+    deleteTransaction: (id) => axios.delete(`${BASE}/transactions/${id}`),
+    plazosFijos: () => axios.get(`${BASE}/plazos-fijos`),
+    addPlazoFijo: (payload) => axios.post(`${BASE}/plazos-fijos`, payload),
+    updatePlazoFijo: (id, payload) => axios.put(`${BASE}/plazos-fijos/${id}`, payload),
+    deletePlazoFijo: (id) => axios.delete(`${BASE}/plazos-fijos/${id}`),
+    holdings: () => axios.get(`${BASE}/holdings`),
+    refreshQuotes: () => axios.post(`${BASE}/refresh-quotes`),
+    setManualQuote: (instrumentId, price) => axios.put(`${BASE}/instruments/${instrumentId}/quote`, { price }),
+    cauciones: () => axios.get(`${BASE}/cauciones`),
+    addCaucion: (payload) => axios.post(`${BASE}/cauciones`, payload),
+    updateCaucion: (id, payload) => axios.put(`${BASE}/cauciones/${id}`, payload),
+    deleteCaucion: (id) => axios.delete(`${BASE}/cauciones/${id}`),
+    rentasDividendos: () => axios.get(`${BASE}/rentas-dividendos`),
+    settings: () => axios.get(`${BASE}/settings`),
+    portfolioRisk: () => axios.get(`${BASE}/portfolio-risk`),
+    instrumentAccuracy: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/accuracy`),
+    portfolioHistory: () => axios.get(`${BASE}/history`),
+    portfolioHistoryReconstructed: () => axios.get(`${BASE}/history/reconstructed`),
+    bnaRateCurrent: () => axios.get(`${BASE}/bna-rate-current`),
+
+    createForecast: (instrumentId, sampleCount) =>
+        axios.post(`${BASE}/forecasts`, { instrument_id: instrumentId, sample_count: sampleCount }),
+    forecast: (forecastId) => axios.get(`${BASE}/forecasts/${forecastId}`),
+    latestForecast: (params) => axios.get(`${BASE}/forecasts/latest`, { params }),
+    runAllForecasts: (force) => axios.post(`${BASE}/forecasts/run-all`, { force }),
+    backtestInstrument: (instrumentId) => axios.post(`${BASE}/instruments/${instrumentId}/backtest`),
+    backtestPortfolio: () => axios.post(`${BASE}/portfolio-backtest`),
+    signalConfig: () => axios.get(`${BASE}/signal-config`),
+    updateSignalConfig: (payload) => axios.put(`${BASE}/signal-config`, payload),
+    explorerSearch: (q, type, limit = 2000) => axios.get(`${BASE}/explorer/search`, { params: { q, type, limit } }),
+    explorerForecast: (symbol, type, sampleCount) =>
+        axios.post(`${BASE}/explorer/forecast`, { symbol, type, sample_count: sampleCount }),
+};

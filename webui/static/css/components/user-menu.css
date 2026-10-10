@@ -1,0 +1,92 @@
+.user-menu {
+    position: relative;
+}
+
+.user-menu-panel {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    min-width: 260px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    z-index: 20;
+    animation: dropdown-in 140ms ease-out;
+}
+
+.user-menu-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 4px;
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+}
+
+.user-menu-currency {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.user-menu-chevron-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: transparent;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background-color 120ms ease, transform 150ms ease;
+}
+
+.user-menu-chevron-btn svg {
+    transition: transform 150ms ease;
+}
+
+.user-menu-chevron-btn.open svg {
+    transform: rotate(180deg);
+}
+
+.user-menu-chevron-btn:hover {
+    background: var(--bg-elevated-hover);
+}
+
+.user-menu-chevron-btn svg {
+    width: 13px;
+    height: 13px;
+}
+
+.bna-variant-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 4px;
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+    animation: fade-in-up 140ms ease-out;
+}
+
+.bna-variant-panel label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+    padding: 4px;
+    cursor: pointer;
+}
+
+.bna-variant-panel label:hover {
+    color: var(--text-primary);
+}
+
+.sidebar-foot-meta {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+}

@@ -1,0 +1,7 @@
+#allocation-chart-container .apexcharts-datalabel-value {
+    fill: var(--text-primary) !important;
+}
+
+#allocation-chart-container .apexcharts-datalabel-label {
+    fill: var(--text-secondary) !important;
+}

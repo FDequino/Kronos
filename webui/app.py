@@ -15,47 +15,27 @@ warnings.filterwarnings('ignore')
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 try:
-    from model import Kronos, KronosTokenizer, KronosPredictor
-    MODEL_AVAILABLE = True
+    from examples.fetch_data import fetch_binance, fetch_yfinance
+    LIVE_FETCH_AVAILABLE = True
 except ImportError:
-    MODEL_AVAILABLE = False
+    LIVE_FETCH_AVAILABLE = False
+
+from portfolio.routes import bp as portfolio_bp
+from nav import NAV_ITEMS
+from model import runtime as model_runtime
+
+MODEL_AVAILABLE = model_runtime.MODEL_AVAILABLE
+if not MODEL_AVAILABLE:
     print("Warning: Kronos model cannot be imported, will use simulated data for demonstration")
 
 app = Flask(__name__)
 CORS(app)
+app.register_blueprint(portfolio_bp)
 
-# Global variables to store models
-tokenizer = None
-model = None
-predictor = None
 
-# Available model configurations
-AVAILABLE_MODELS = {
-    'kronos-mini': {
-        'name': 'Kronos-mini',
-        'model_id': 'NeoQuasar/Kronos-mini',
-        'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-2k',
-        'context_length': 2048,
-        'params': '4.1M',
-        'description': 'Lightweight model, suitable for fast prediction'
-    },
-    'kronos-small': {
-        'name': 'Kronos-small',
-        'model_id': 'NeoQuasar/Kronos-small',
-        'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
-        'context_length': 512,
-        'params': '24.7M',
-        'description': 'Small model, balanced performance and speed'
-    },
-    'kronos-base': {
-        'name': 'Kronos-base',
-        'model_id': 'NeoQuasar/Kronos-base',
-        'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
-        'context_length': 512,
-        'params': '102.3M',
-        'description': 'Base model, provides better prediction quality'
-    }
-}
+@app.context_processor
+def inject_nav():
+    return {'nav_items': NAV_ITEMS}
 
 def load_data_files():
     """Scan data directory and return available data files"""
@@ -332,6 +312,12 @@ def index():
     """Home page"""
     return render_template('index.html')
 
+@app.route('/portfolio')
+def portfolio_page():
+    """Portfolio management page"""
+    return render_template('portfolio.html')
+
+
 @app.route('/api/data-files')
 def get_data_files():
     """Get available data file list"""
@@ -401,6 +387,53 @@ def load_data():
     except Exception as e:
         return jsonify({'error': f'Failed to load data: {str(e)}'}), 500
 
+@app.route('/api/fetch-live-data', methods=['POST'])
+def fetch_live_data():
+    """Fetch fresh K-line data from a live online source and save it as a local CSV"""
+    if not LIVE_FETCH_AVAILABLE:
+        return jsonify({'error': 'Live fetch dependencies not installed (requests/yfinance)'}), 500
+
+    try:
+        data = request.get_json()
+        source = data.get('source')
+
+        data_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'data')
+        os.makedirs(data_dir, exist_ok=True)
+
+        if source == 'binance':
+            symbol = (data.get('symbol') or '').strip().upper()
+            interval = data.get('interval', '1h')
+            limit = int(data.get('limit', 1000))
+            if not symbol:
+                return jsonify({'error': 'symbol is required for binance'}), 400
+            df = fetch_binance(symbol, interval, limit)
+            filename = f"{symbol}_{interval}.csv"
+        elif source == 'yfinance':
+            ticker = (data.get('ticker') or '').strip()
+            period = data.get('period', '2y')
+            interval = data.get('interval', '1d')
+            if not ticker:
+                return jsonify({'error': 'ticker is required for yfinance'}), 400
+            df = fetch_yfinance(ticker, period, interval)
+            safe_ticker = ticker.replace('.', '_').replace('-', '_')
+            filename = f"{safe_ticker}_{interval}.csv"
+        else:
+            return jsonify({'error': 'source must be "binance" or "yfinance"'}), 400
+
+        file_path = os.path.join(data_dir, filename)
+        df.to_csv(file_path, index=False)
+
+        return jsonify({
+            'success': True,
+            'file_path': file_path,
+            'file_name': filename,
+            'rows': len(df),
+            'message': f'Fetched {len(df)} rows and saved as {filename}'
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to fetch live data: {str(e)}'}), 500
+
 @app.route('/api/predict', methods=['POST'])
 def predict():
     """Perform prediction"""
@@ -427,6 +460,7 @@ def predict():
             return jsonify({'error': f'Insufficient data length, need at least {lookback} rows'}), 400
         
         # Perform prediction
+        predictor = model_runtime.get_predictor()
         if MODEL_AVAILABLE and predictor is not None:
             try:
                 # Use real Kronos model
@@ -626,28 +660,12 @@ def predict():
 @app.route('/api/load-model', methods=['POST'])
 def load_model():
     """Load Kronos model"""
-    global tokenizer, model, predictor
-    
+    data = request.get_json()
+    model_key = data.get('model_key', 'kronos-small')
+    device = data.get('device', 'cpu')
+
     try:
-        if not MODEL_AVAILABLE:
-            return jsonify({'error': 'Kronos model library not available'}), 400
-        
-        data = request.get_json()
-        model_key = data.get('model_key', 'kronos-small')
-        device = data.get('device', 'cpu')
-        
-        if model_key not in AVAILABLE_MODELS:
-            return jsonify({'error': f'Unsupported model: {model_key}'}), 400
-        
-        model_config = AVAILABLE_MODELS[model_key]
-        
-        # Load tokenizer and model
-        tokenizer = KronosTokenizer.from_pretrained(model_config['tokenizer_id'])
-        model = Kronos.from_pretrained(model_config['model_id'])
-        
-        # Create predictor
-        predictor = KronosPredictor(model, tokenizer, device=device, max_context=model_config['context_length'])
-        
+        model_config = model_runtime.load_model(model_key, device)
         return jsonify({
             'success': True,
             'message': f'Model loaded successfully: {model_config["name"]} ({model_config["params"]}) on {device}',
@@ -658,7 +676,8 @@ def load_model():
                 'description': model_config['description']
             }
         })
-        
+    except (RuntimeError, ValueError) as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': f'Model loading failed: {str(e)}'}), 500
 
@@ -666,36 +685,14 @@ def load_model():
 def get_available_models():
     """Get available model list"""
     return jsonify({
-        'models': AVAILABLE_MODELS,
+        'models': model_runtime.AVAILABLE_MODELS,
         'model_available': MODEL_AVAILABLE
     })
 
 @app.route('/api/model-status')
 def get_model_status():
     """Get model status"""
-    if MODEL_AVAILABLE:
-        if predictor is not None:
-            return jsonify({
-                'available': True,
-                'loaded': True,
-                'message': 'Kronos model loaded and available',
-                'current_model': {
-                    'name': predictor.model.__class__.__name__,
-                    'device': str(next(predictor.model.parameters()).device)
-                }
-            })
-        else:
-            return jsonify({
-                'available': True,
-                'loaded': False,
-                'message': 'Kronos model available but not loaded'
-            })
-    else:
-        return jsonify({
-            'available': False,
-            'loaded': False,
-            'message': 'Kronos model library not available, please install related dependencies'
-        })
+    return jsonify(model_runtime.status())
 
 if __name__ == '__main__':
     print("Starting Kronos Web UI...")
@@ -705,4 +702,4 @@ if __name__ == '__main__':
     else:
         print("Tip: Will use simulated data for demonstration")
     
-    app.run(debug=True, host='0.0.0.0', port=7070)
+    app.run(debug=True, host='0.0.0.0', port=7070, threaded=True)

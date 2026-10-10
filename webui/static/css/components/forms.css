@@ -1,0 +1,65 @@
+.field-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: flex-end;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 160px;
+}
+
+.field label {
+    font-size: var(--step--1);
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.field .hint {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+input, select, textarea {
+    font-family: inherit;
+    font-size: var(--step--1);
+    color: var(--text-primary);
+    background: var(--bg-content);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 8px 10px;
+}
+
+input[type="number"], input.num-input {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+}
+
+input[type="range"] {
+    padding: 0;
+    accent-color: var(--accent);
+    background: transparent;
+    border: none;
+}
+
+input:hover, select:hover {
+    border-color: var(--text-tertiary);
+}
+
+input:focus, select:focus, textarea:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+input:disabled, select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+input::placeholder {
+    color: var(--text-tertiary);
+}

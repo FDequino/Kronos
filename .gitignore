@@ -1,3 +1,6 @@
+# Portfolio data (local, personal)
+portfolio/*.db
+
 # Python
 __pycache__/
 *.py[cod]

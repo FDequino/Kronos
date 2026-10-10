@@ -1,0 +1,129 @@
+.panel {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    margin-bottom: 24px;
+}
+
+.panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+}
+
+.panel-header h2 {
+    font-size: var(--step-1);
+    font-weight: 600;
+}
+
+.panel-header-text {
+    min-width: 0;
+}
+
+.panel-subtitle {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: var(--text-tertiary);
+    margin-top: 2px;
+}
+
+.panel-body {
+    padding: 20px;
+}
+
+.panel-body.flush {
+    padding: 0;
+    overflow-x: auto;
+}
+
+.stat-strip {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+@media (max-width: 860px) {
+    .stat-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+.stat-strip .stat {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 18px 20px;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.stat-strip .stat:hover {
+    background: var(--bg-elevated-hover);
+    border-color: var(--border-strong);
+}
+
+.stat-sub {
+    margin-top: 6px;
+    font-size: 0.75rem;
+}
+
+.stat-sub-delta.positive { color: var(--positive); }
+.stat-sub-delta.negative { color: var(--negative); }
+
+.stat-detail {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+    text-align: left;
+    cursor: default;
+    animation: fade-in-up 180ms ease-out;
+}
+
+.stat-detail-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 3px 0;
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+}
+
+.stat-detail-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    margin-top: 8px;
+}
+
+.stat-detail-label:first-child {
+    margin-top: 0;
+}
+
+.stat .stat-label {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 8px;
+}
+
+.stat .stat-value {
+    font-size: var(--step-3);
+    font-weight: 600;
+    overflow-wrap: break-word;
+}
+
+.stat .stat-value.positive { color: var(--positive); }
+.stat .stat-value.negative { color: var(--negative); }
+
+@media (max-width: 860px) {
+    .stat .stat-value {
+        font-size: var(--step-1);
+    }
+}

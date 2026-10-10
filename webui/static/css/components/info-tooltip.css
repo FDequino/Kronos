@@ -1,0 +1,61 @@
+.info-tooltip {
+    position: relative;
+    display: inline-flex;
+    margin-left: 6px;
+}
+
+.info-tooltip-trigger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    transition: color 120ms ease;
+}
+
+.info-tooltip-trigger:hover {
+    color: var(--text-primary);
+}
+
+.info-tooltip-trigger svg {
+    width: 14px;
+    height: 14px;
+}
+
+.info-tooltip-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 0;
+    z-index: 20;
+    min-width: 260px;
+    max-width: min(320px, calc(100vw - 32px));
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+}
+
+.info-tooltip:hover .info-tooltip-panel,
+.info-tooltip:focus-within .info-tooltip-panel {
+    display: block;
+    animation: dropdown-in 140ms ease-out;
+}
+
+.info-tooltip-formula {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    color: var(--text-primary);
+    white-space: pre-line;
+}

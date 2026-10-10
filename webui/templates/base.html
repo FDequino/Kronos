@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Kronos{% endblock %}</title>
+    <script>
+        (function () {
+            var saved = localStorage.getItem('kronos-theme');
+            if (saved) document.documentElement.dataset.theme = saved;
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-light.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/layout.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/sidebar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/panel.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/forms.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/buttons.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/status.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/table.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/loading.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/slider.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/forecast-card.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/user-menu.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/allocation-chart.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/risk-gauge.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/instrument-detail.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/detail-tabs.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/chart-overlay.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/info-tooltip.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/alerts.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/switch.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/segmented-toggle.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/header-bar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/subtabs.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/modal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/search-bar.css') }}">
+    {% block extra_styles %}{% endblock %}
+</head>
+<body>
+    {% from "_icons.html" import icon %}
+    <div class="app-shell">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-top">
+                <button id="sidebar-collapse-toggle" class="sidebar-collapse-btn" type="button" aria-label="Colapsar men&uacute;">
+                    {{ icon('menu') }}
+                </button>
+            </div>
+            <nav class="sidebar-nav">
+                {% for item in nav_items %}
+                <a class="nav-item" data-nav-id="{{ item.id }}" href="{{ item.href }}" title="{{ item.label }}">
+                    {{ icon(item.icon) }}
+                    <span>{{ item.label }}</span>
+                </a>
+                {% endfor %}
+            </nav>
+            <div class="sidebar-foot">
+                <div class="sidebar-actions">
+                    <div class="header-notifications">
+                        <button id="notifications-trigger" class="icon-button" type="button" aria-label="Notificaciones">
+                            {{ icon('bell') }}
+                            <span class="notifications-badge" id="notifications-badge" hidden></span>
+                        </button>
+                        <div id="notifications-panel" class="notifications-panel" hidden>
+                            <div class="notifications-panel-title">Notificaciones</div>
+                            <div id="notifications-list"></div>
+                        </div>
+                    </div>
+                    <div class="user-menu">
+                        <button id="user-menu-trigger" class="icon-button" type="button" aria-label="Preferencias">
+                            {{ icon('user') }}
+                        </button>
+                        <div id="user-menu-panel" class="user-menu-panel" hidden>
+                            <div class="user-menu-row">
+                                <span>Moneda</span>
+                                <div class="user-menu-currency">
+                                    <div class="segmented-toggle" id="currency-toggle">
+                                        <button class="segmented-toggle-option" data-value="ARS" type="button">ARS</button>
+                                        <button class="segmented-toggle-option" data-value="USD" type="button">USD</button>
+                                    </div>
+                                    <button id="bna-variant-chevron" class="user-menu-chevron-btn" type="button" aria-label="Elegir cotizacion BNA">{{ icon('chevron') }}</button>
+                                </div>
+                            </div>
+                            <div id="bna-variant-panel" class="bna-variant-panel" hidden>
+                                <label><input type="radio" name="bna-variant" value="divisa_venta">Divisa venta</label>
+                                <label><input type="radio" name="bna-variant" value="divisa_compra">Divisa compra</label>
+                                <label><input type="radio" name="bna-variant" value="billete_venta">Billete venta</label>
+                                <label><input type="radio" name="bna-variant" value="billete_compra">Billete compra</label>
+                            </div>
+                            <div class="user-menu-row">
+                                <span>Modo oscuro</span>
+                                <label class="switch">
+                                    <input type="checkbox" id="theme-toggle-switch">
+                                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-foot-meta">Local &middot; sin autenticaci&oacute;n</div>
+            </div>
+        </aside>
+        <div class="main">
+            <div class="page-heading">
+                <h1>{% block page_title %}{% endblock %}</h1>
+                <p>{% block page_subtitle %}{% endblock %}</p>
+            </div>
+            <div class="page-body">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    <div id="modal-root" hidden></div>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script type="module" src="{{ url_for('static', filename='js/shared/nav.js') }}"></script>
+    <script type="module">
+        import { initThemeToggle } from "{{ url_for('static', filename='js/shared/theme.js') }}";
+        import { initUserMenu } from "{{ url_for('static', filename='js/shared/user-menu.js') }}";
+        import { initNotifications } from "{{ url_for('static', filename='js/shared/notifications.js') }}";
+        import { initSidebarCollapse } from "{{ url_for('static', filename='js/shared/sidebar-collapse.js') }}";
+        document.addEventListener('DOMContentLoaded', () => {
+            initThemeToggle('theme-toggle-switch');
+            initUserMenu();
+            initNotifications();
+            initSidebarCollapse('sidebar', 'sidebar-collapse-toggle');
+        });
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

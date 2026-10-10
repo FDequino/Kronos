@@ -1,0 +1,37 @@
+.subtabs {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 18px;
+}
+
+.subtab-btn {
+    padding: 8px 16px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--text-secondary);
+    font-family: inherit;
+    font-size: var(--step--1);
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.subtab-btn:hover {
+    background: var(--bg-elevated-hover);
+    color: var(--text-primary);
+}
+
+.subtab-btn.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.subtab-panel {
+    display: none;
+}
+
+.subtab-panel.active {
+    display: block;
+    animation: fade-in-up 200ms ease-out;
+}

@@ -1,0 +1,27 @@
+{% macro icon(name) %}
+{% if name == 'overview' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.5V9M10 14.5V5M16 14.5V11"/></svg>
+{% elif name == 'layers' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 3.5 3 7.5l7 4 7-4-7-4Z"/><path d="M3 12.5l7 4 7-4"/></svg>
+{% elif name == 'swap' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h11M15 7l-3-3M4 7l3 3M16 13H5M4 13l3 3M16 13l-3 3"/></svg>
+{% elif name == 'vault' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 6.5V10l2.5 1.5"/></svg>
+{% elif name == 'signal' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.5 3.5 11H9l-1 6.5L16 9h-5.5l1-6.5Z"/></svg>
+{% elif name == 'search' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m16 16-3.5-3.5"/></svg>
+{% elif name == 'chevron' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 8 4 4 4-4"/></svg>
+{% elif name == 'back' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15 7 10l5-5"/></svg>
+{% elif name == 'info' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7"/><path d="M10 9v4M10 6.5v.01"/></svg>
+{% elif name == 'user' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="7.2" r="3.2"/><path d="M4 16.3c0-3 2.7-5.3 6-5.3s6 2.3 6 5.3"/></svg>
+{% elif name == 'bell' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8.2a4 4 0 0 1 8 0v3.1l1.4 2.7H4.6L6 11.3Z"/><path d="M8.3 16.3a1.8 1.8 0 0 0 3.4 0"/></svg>
+{% elif name == 'menu' %}
+<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6h13M3.5 10h13M3.5 14h13"/></svg>
+{% endif %}
+{% endmacro %}

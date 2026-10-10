@@ -1,0 +1,35 @@
+.status {
+    padding: 11px 16px;
+    border-radius: var(--radius-sm);
+    font-size: var(--step--1);
+    border: 1px solid transparent;
+    display: none;
+}
+
+.status.show {
+    display: block;
+}
+
+.status.success {
+    background: var(--positive-dim);
+    color: var(--positive);
+    border-color: rgba(48, 193, 119, 0.3);
+}
+
+.status.error {
+    background: var(--negative-dim);
+    color: var(--negative);
+    border-color: rgba(239, 91, 91, 0.3);
+}
+
+.status.info {
+    background: var(--accent-dim);
+    color: var(--accent-strong);
+    border-color: rgba(76, 125, 255, 0.3);
+}
+
+.status.warning {
+    background: var(--warning-dim);
+    color: var(--warning);
+    border-color: rgba(224, 166, 60, 0.3);
+}
