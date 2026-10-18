@@ -38,6 +38,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/header-bar.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/subtabs.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/modal.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/command-palette.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/search-bar.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/resumen-v2.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/ajustes.css') }}">
@@ -61,6 +62,11 @@
                 </button>
             </div>
             <nav class="sidebar-nav">
+                <button type="button" class="nav-item nav-item-action command-palette-trigger" id="command-palette-trigger" title="Buscar instrumento">
+                    {{ icon('search') }}
+                    <span class="nav-item-label">Buscar</span>
+                    <span class="command-palette-trigger-hint" id="command-palette-trigger-hint">Ctrl K</span>
+                </button>
                 {% for item in nav_items %}
                 <a class="nav-item" data-nav-id="{{ item.id }}" href="{{ item.href }}" title="{{ item.label }}">
                     {{ icon(item.icon) }}
@@ -147,6 +153,7 @@
         </div>
     </div>
     <div id="modal-root" hidden></div>
+    <div id="command-palette-root" hidden></div>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script type="module" src="{{ url_for('static', filename='js/shared/nav.js') }}"></script>
     <script type="module">
@@ -154,11 +161,13 @@
         import { initUserMenu } from "{{ url_for('static', filename='js/shared/user-menu.js') }}";
         import { initNotifications } from "{{ url_for('static', filename='js/shared/notifications.js') }}";
         import { initSidebarCollapse } from "{{ url_for('static', filename='js/shared/sidebar-collapse.js') }}";
+        import { initCommandPalette } from "{{ url_for('static', filename='js/shared/command-palette.js') }}";
         document.addEventListener('DOMContentLoaded', () => {
             initThemeToggle('theme-toggle-switch');
             initUserMenu();
             initNotifications();
             initSidebarCollapse('sidebar', 'sidebar-collapse-toggle');
+            initCommandPalette();
         });
     </script>
     {% block extra_scripts %}{% endblock %}

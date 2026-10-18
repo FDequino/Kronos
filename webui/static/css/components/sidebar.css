@@ -26,7 +26,8 @@
 
 .sidebar.collapsed .nav-item-label,
 .sidebar.collapsed .sidebar-foot-meta,
-.sidebar.collapsed .sidebar-brand-name {
+.sidebar.collapsed .sidebar-brand-name,
+.sidebar.collapsed .command-palette-trigger-hint {
     display: none;
 }
 
@@ -185,6 +186,21 @@
 .nav-item-action .notifications-badge {
     position: static;
     margin-left: auto;
+}
+
+/* Pastilla "Ctrl K"/"⌘K" (ver conversación, Fase 4) -- mismo criterio que el
+   badge de notificaciones: empujada al final de la fila con margin-left:auto,
+   nunca en su propia columna fija (esta fila se usa para varios triggers con
+   contenido de ancho distinto). */
+.command-palette-trigger-hint {
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    white-space: nowrap;
 }
 
 .sidebar.collapsed .nav-item-action .notifications-badge {

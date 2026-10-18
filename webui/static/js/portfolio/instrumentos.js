@@ -69,7 +69,7 @@ let holdings = [];
 let explorerRows = [];
 let mergedRows = [];
 let activeBucket = 'todos';
-let searchState = { query: '', chips: [], activeFilters: new Set(), groupKey: null };
+let searchState = { query: '', activeFilters: new Set(), groupKey: null };
 let displayCurrency = 'ARS';
 let loaded = false;
 // "Mostrar más" (ver conversación, Fase 3): el universo BYMA buscable ronda

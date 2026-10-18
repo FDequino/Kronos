@@ -12,10 +12,10 @@ import { openModal } from '../shared/modal.js';
 
 let currentPlazos = [];
 let currentCauciones = [];
-let pfSearchState = { query: '', chips: [], activeFilters: new Set(), groupKey: null };
+let pfSearchState = { query: '', activeFilters: new Set(), groupKey: null };
 // Default "Vigentes" -- ver initPlazosFijosView, que inicializa el search-bar
 // con este mismo filtro activo (confirmar con createSearchBar({initialState}).
-let caucionSearchState = { query: '', chips: [], activeFilters: new Set(['activa']), groupKey: null };
+let caucionSearchState = { query: '', activeFilters: new Set(['activa']), groupKey: null };
 const pfSorter = createSorter();
 const caucionSorter = createSorter();
 const pfCollapsedGroups = new Set();

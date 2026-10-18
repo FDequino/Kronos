@@ -42,7 +42,7 @@ const SEARCH_CONFIG = {
 let rows = [];
 // Default: ocultar descartadas/expiradas -- son historial, no lo primero que
 // hay que ver al entrar (mismo criterio que "Vigentes" en Plazos Fijos).
-let searchState = { query: '', chips: [], activeFilters: new Set(['activas']), groupKey: null };
+let searchState = { query: '', activeFilters: new Set(['activas']), groupKey: null };
 const collapsedGroups = new Set();
 let signalConfig = null;
 

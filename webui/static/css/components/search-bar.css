@@ -6,9 +6,14 @@
 .search-bar {
     position: relative;
     width: 100%;
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
 }
 
 .search-bar-input-wrap {
+    flex: 1;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
@@ -16,6 +21,25 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius);
     background: var(--bg-content);
+    /* overflow:hidden (en vez de el default visible) hace que el navegador
+       use 0 como minimo automatico de este contenedor en vez del ancho de
+       su contenido -- sin esto, un chip largo empujaba todo el shell de la
+       pagina mas ancho que el viewport en mobile (bug real). */
+    overflow: hidden;
+}
+
+/* Botón "Filtros" separado del input (ver conversación, Fase 4) -- antes el
+   caret vivía DENTRO de search-bar-input-wrap, pegado al campo de texto, lo
+   que lo hacía fácil de confundir con parte del propio input (un dropdown
+   "nativo" en vez de un control de filtros aparte). */
+.search-bar-filters-btn {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.search-bar-filters-btn svg {
+    width: 12px;
+    height: 12px;
 }
 
 .search-bar-icon {
@@ -33,6 +57,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    min-width: 0;
 }
 
 .search-bar-pills:empty {
@@ -48,7 +73,27 @@
     background: var(--accent-dim);
     color: var(--text-primary);
     font-size: 0.75rem;
+    max-width: 100%;
+}
+
+.search-bar-pill-label {
     white-space: nowrap;
+}
+
+/* Un chip de texto largo (ej. "Activas (ocultar descartadas/expiradas)" en
+   Propuestas) forzaba el ancho de toda la barra de busqueda mas alla del
+   viewport en mobile -- se trunca con ellipsis en vez de desbordar la
+   pagina (bug reportado en la auditoria). El boton de quitar queda siempre
+   visible porque el que se achica/trunca es solo el span del texto, no
+   todo el chip. */
+@media (max-width: 480px) {
+    .search-bar-pill-label {
+        display: inline-block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 50vw;
+        vertical-align: bottom;
+    }
 }
 
 .search-bar-pill-remove {
@@ -85,13 +130,13 @@
     box-shadow: none;
 }
 
-.search-bar-caret {
+.search-bar-clear {
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 22px;
-    height: 22px;
+    width: 20px;
+    height: 20px;
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
@@ -99,14 +144,18 @@
     cursor: pointer;
 }
 
-.search-bar-caret:hover {
+.search-bar-clear[hidden] {
+    display: none;
+}
+
+.search-bar-clear:hover {
     background: var(--bg-elevated-hover);
     color: var(--text-primary);
 }
 
-.search-bar-caret svg {
-    width: 14px;
-    height: 14px;
+.search-bar-clear svg {
+    width: 12px;
+    height: 12px;
 }
 
 .search-bar-panel[hidden] {
@@ -117,8 +166,10 @@
     position: absolute;
     top: calc(100% + 6px);
     left: 0;
+    width: 100%;
     z-index: 15;
-    min-width: 220px;
+    max-height: min(65vh, 480px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -128,12 +179,115 @@
     border-radius: var(--radius);
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     animation: dropdown-in 140ms ease-out;
+    box-sizing: border-box;
+}
+
+/* Odoo tiene el panel de filtros en 3 columnas (Filtros/Agrupar por/
+   Favoritos) en vez de secciones apiladas -- el panel SIEMPRE tiene el
+   mismo ancho que la barra de búsqueda (bug real: antes tenía un
+   min-width:520px fijo que lo hacía más ancho que la barra en paneles
+   angostos) -- auto-fit reparte las columnas según el espacio real
+   disponible, nunca según el viewport. */
+.search-bar-panel-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 4px 16px;
+    max-height: min(70vh, 420px);
+}
+
+.search-bar-panel-grid .search-bar-section + .search-bar-section {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+}
+
+@media (max-width: 860px) {
+    .search-bar-panel-grid .search-bar-section + .search-bar-section {
+        margin-top: 6px;
+        padding-top: 6px;
+        border-top: 1px solid var(--border);
+    }
 }
 
 .search-bar-section + .search-bar-section {
     margin-top: 6px;
     padding-top: 6px;
     border-top: 1px solid var(--border);
+}
+
+.search-bar-block-sep {
+    margin: 4px 0;
+    border-top: 1px solid var(--border);
+}
+
+.search-bar-block-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    padding: 4px 6px 2px;
+}
+
+/* --- Favoritos ------------------------------------------------------------ */
+
+.search-bar-fav-save {
+    width: 100%;
+    text-align: left;
+    padding: 6px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: var(--step--1);
+    cursor: pointer;
+    margin-bottom: 4px;
+}
+
+.search-bar-fav-save:hover {
+    background: var(--bg-elevated-hover);
+    color: var(--text-primary);
+}
+
+.search-bar-fav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.search-bar-fav-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding: 5px 6px;
+    border-radius: var(--radius-sm);
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.search-bar-fav-item:hover {
+    background: var(--bg-elevated-hover);
+    color: var(--text-primary);
+}
+
+.search-bar-fav-remove {
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    line-height: 1;
+}
+
+.search-bar-fav-remove:hover {
+    color: var(--negative);
+}
+
+.search-bar-fav-empty {
+    font-size: var(--step--1);
+    color: var(--text-tertiary);
+    padding: 5px 6px;
 }
 
 .search-bar-section-title {
@@ -177,6 +331,10 @@
     flex-shrink: 0;
 }
 
+.view-toolbar-grow {
+    flex: 1;
+}
+
 @media (max-width: 860px) {
     .view-toolbar {
         flex-direction: column;
@@ -189,6 +347,8 @@
 
     .search-bar-slot {
         min-width: 0;
+        width: 100%;
+        overflow: hidden;
     }
 }
 
@@ -197,4 +357,25 @@
     font-weight: 600;
     color: var(--text-secondary);
     font-size: var(--step--1);
+}
+
+.group-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-size: 0.7rem;
+}
+
+.table-group-count {
+    color: var(--text-tertiary);
+    font-weight: 400;
+}
+
+.table-group-cell {
+    font-weight: 600;
 }

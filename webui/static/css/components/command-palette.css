@@ -1,0 +1,130 @@
+/* Paleta de comandos (Ctrl/Cmd+K, ver conversación, Fase 4) -- overlay propio
+   en vez de reusar #modal-root: ese está pensado para formularios (<form>,
+   onSubmit, botón de guardar) y esto es una lista de resultados navegable
+   por teclado, sin nada que "enviar". Mismo lenguaje visual que modal.css
+   (backdrop + caja centrada arriba) para que se sienta parte del mismo
+   sistema igual. */
+#command-palette-root {
+    position: fixed;
+    inset: 0;
+    z-index: 110;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding: 12vh 20px 20px;
+}
+
+#command-palette-root[hidden] {
+    display: none;
+}
+
+.command-palette-backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.55);
+    animation: modal-backdrop-in 160ms ease-out;
+}
+
+.command-palette-box {
+    position: relative;
+    width: 100%;
+    max-width: 560px;
+    max-height: 70vh;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.4);
+    animation: modal-box-in 180ms cubic-bezier(.2, .8, .2, 1);
+    overflow: hidden;
+}
+
+.command-palette-input {
+    width: 100%;
+    padding: 16px 20px;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-primary);
+    font-size: var(--step-1);
+}
+
+.command-palette-input:focus {
+    outline: none;
+    box-shadow: none;
+}
+
+.command-palette-results {
+    overflow-y: auto;
+    padding: 6px;
+}
+
+.command-palette-empty {
+    padding: 14px 10px;
+    color: var(--text-tertiary);
+    font-size: var(--step--1);
+}
+
+.command-palette-result {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 10px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.command-palette-result.active,
+.command-palette-result:hover {
+    background: var(--bg-elevated-hover);
+}
+
+.command-palette-result-symbol {
+    font-weight: 600;
+    min-width: 72px;
+}
+
+.command-palette-result-type {
+    color: var(--text-tertiary);
+    font-size: var(--step--1);
+    flex: 1;
+}
+
+.command-palette-result-price {
+    font-size: var(--step--1);
+}
+
+.command-palette-result-pct {
+    min-width: 64px;
+    text-align: right;
+    font-size: var(--step--1);
+}
+
+.command-palette-hint {
+    padding: 8px 20px;
+    border-top: 1px solid var(--border);
+    color: var(--text-tertiary);
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
+
+@media (max-width: 860px) {
+    #command-palette-root {
+        padding: 0;
+        align-items: stretch;
+    }
+
+    .command-palette-box {
+        max-width: none;
+        max-height: none;
+        height: 100%;
+        border-radius: 0;
+    }
+}

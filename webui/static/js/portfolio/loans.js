@@ -16,7 +16,7 @@ import { openModal, closeModal } from '../shared/modal.js';
 const PLAN_LABEL = { bullet: 'Bullet', frances: 'Francés', aleman: 'Alemán', libre: 'Libre' };
 
 let currentLoans = [];
-let loansSearchState = { query: '', chips: [], activeFilters: new Set(['vigente']), groupKey: null };
+let loansSearchState = { query: '', activeFilters: new Set(['vigente']), groupKey: null };
 const loansSorter = createSorter();
 const loansCollapsedGroups = new Set();
 
