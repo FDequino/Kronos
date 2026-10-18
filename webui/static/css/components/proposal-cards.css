@@ -1,0 +1,79 @@
+/* Propuestas como tarjetas apiladas (ver conversación, Fase 3) -- antes una
+   fila de tabla por propuesta, con "Texto"/"Evidencia" como columnas de texto
+   libre que competían por ancho con el resto (Activo/Origen/Estado) y
+   obligaban a scroll horizontal en pantallas angostas. Cada propuesta es una
+   oración + una línea de evidencia, nunca varias líneas -- entra entera en
+   una tarjeta de ancho completo, sin necesidad de ocultar nada detrás de un
+   "expandir" (ver muestra real de datos, Fase 3). No hay columnas que
+   ocultar/mostrar acá (toda tarjeta siempre muestra lo mismo), así que esta
+   vista ya no tiene un botón "Columnas". */
+.proposal-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 14px 20px;
+}
+
+.proposal-group-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 2px;
+    font-weight: 600;
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+}
+
+.proposal-card {
+    background: var(--bg-content);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Mismo lenguaje visual que tbody tr.proposal-row-new tenía como fila de
+   tabla (fondo tenue + borde izquierdo de acento) -- ver conversación. */
+.proposal-card-new {
+    background: var(--accent-dim);
+    border-left: 2px solid var(--accent);
+}
+
+.proposal-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.proposal-card-head-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.proposal-card-origen {
+    color: var(--text-tertiary);
+    font-size: var(--step--1);
+}
+
+.proposal-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}
+
+.proposal-card-text {
+    font-size: var(--step--1);
+}
+
+.proposal-card-evidence {
+    font-size: 0.75rem;
+}

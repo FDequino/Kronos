@@ -24,6 +24,17 @@ export function fmtMoney(n, currency = 'ARS', decimals = 2, { signed = false } =
     return `${sign}${prefix}${fmt(Math.abs(n), decimals)}`;
 }
 
+// Cantidad de un instrumento (ver conversación, Fase 3): antes `fmt(n, 4)`
+// a secas mostraba "14,0000" para una tenencia entera -- acciones/CEDEARs
+// casi siempre tienen cantidad entera, bonos/cripto pueden tener fracciones.
+// Sin decimales si es entero, hasta 4 si no (recortando ceros de más al
+// final: 1,5 se muestra "1,5", no "1,5000").
+export function fmtQty(n) {
+    if (n === null || n === undefined || Number.isNaN(n)) return '—';
+    const decimals = Number.isInteger(n) ? 0 : 4;
+    return Number(n).toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+}
+
 // "Hoy" en fecha LOCAL del navegador (YYYY-MM-DD) -- a proposito NO usa
 // `new Date().toISOString()` ni `input.valueAsDate = new Date()`: ambos
 // extraen el dia/mes/año en UTC, no en la zona horaria local, asi que

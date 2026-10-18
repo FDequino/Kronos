@@ -35,7 +35,10 @@
                     </div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="holdings-search-bar"></div>
+                    <div id="holdings-search-bar" class="view-toolbar-grow"></div>
+                    <div class="view-toolbar-actions">
+                        <div id="holdings-columns-slot"></div>
+                    </div>
                 </div>
             </div>
             <div class="loading loading-panel" id="holdings-loading">
@@ -121,7 +124,7 @@
                     <div id="proposals-search-bar"></div>
                 </div>
             </div>
-            <div class="panel-body">
+            <div class="panel-body flush">
                 <div id="proposals-table-container">{{ skeleton_chart(240) }}</div>
             </div>
         </div>
@@ -274,8 +277,9 @@
                     <div class="mini-stat-grid row" id="tx-summary"></div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="transactions-search-bar"></div>
+                    <div id="transactions-search-bar" class="view-toolbar-grow"></div>
                     <div class="view-toolbar-actions">
+                        <div id="tx-columns-slot"></div>
                         <button id="new-transaction-btn" class="btn btn-secondary" type="button">+ Nueva transacci&oacute;n</button>
                     </div>
                 </div>
@@ -296,7 +300,10 @@
                     <div class="mini-stat-grid row" id="rentas-kpi-container"></div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="rentas-search-bar"></div>
+                    <div id="rentas-search-bar" class="view-toolbar-grow"></div>
+                    <div class="view-toolbar-actions">
+                        <div id="rentas-columns-slot"></div>
+                    </div>
                 </div>
             </div>
             <div class="panel-body flush" id="rentas-table-container">
@@ -322,8 +329,9 @@
                     <div class="mini-stat-grid row" id="pf-summary"></div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="pf-search-bar"></div>
+                    <div id="pf-search-bar" class="view-toolbar-grow"></div>
                     <div class="view-toolbar-actions">
+                        <div id="pf-columns-slot"></div>
                         <button id="new-pf-btn" class="btn btn-secondary" type="button">+ Nuevo plazo fijo</button>
                     </div>
                 </div>
@@ -349,8 +357,9 @@
                     <div class="mini-stat-grid row" id="cauciones-summary"></div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="cauciones-search-bar"></div>
+                    <div id="cauciones-search-bar" class="view-toolbar-grow"></div>
                     <div class="view-toolbar-actions">
+                        <div id="cauciones-columns-slot"></div>
                         <button id="new-caucion-btn" class="btn btn-secondary" type="button">+ Nueva cauci&oacute;n</button>
                     </div>
                 </div>
@@ -382,8 +391,9 @@
                     <div class="mini-stat-grid row" id="loans-summary"></div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="loans-search-bar"></div>
+                    <div id="loans-search-bar" class="view-toolbar-grow"></div>
                     <div class="view-toolbar-actions">
+                        <div id="loans-columns-slot"></div>
                         <button id="new-loan-btn" class="btn btn-secondary" type="button">+ Nuevo préstamo</button>
                     </div>
                 </div>

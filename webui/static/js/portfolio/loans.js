@@ -8,7 +8,7 @@ import { fmt, fmtMoney, fmtDate, todayLocalISO } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
 import { api } from './api.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
-import { columnToggleHtml, wireColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag } from '../shared/table-chrome.js';
+import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag } from '../shared/table-chrome.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { createColumnManager } from '../shared/column-manager.js';
 import { openModal, closeModal } from '../shared/modal.js';
@@ -284,6 +284,8 @@ function renderTable() {
     if (!currentLoans.length) {
         container.innerHTML = `<table><tbody><tr><td colspan="${colspan}" class="table-empty">
             Todavía no cargáste ningún préstamo a terceros.</td></tr></tbody></table>`;
+        const slot = $('loans-columns-slot');
+        if (slot) slot.innerHTML = '';
         return;
     }
     const sorted = loansSorter.key ? loansSorter.apply(currentLoans, sortValue) : currentLoans;
@@ -291,8 +293,7 @@ function renderTable() {
     const bodyRows = tableBodyRowsHtml(result, columns, (r) => rowHtml(r, columns), { collapsedGroups: loansCollapsedGroups, colspan });
 
     container.innerHTML = `
-        <div class="table-toolbar">${columnToggleHtml(loansColumns)}</div>
-        <div class="table-scroll">
+        <div class="table-scroll table-scroll-sticky-actions">
             <table>
                 <thead><tr>${columns.map((c) => headerCellHtml(c)).join('')}<th></th></tr></thead>
                 <tbody>${bodyRows}</tbody>
@@ -300,7 +301,7 @@ function renderTable() {
         </div>
     `;
     const rerender = () => renderTable();
-    wireColumnToggle(container, loansColumns, rerender);
+    mountColumnToggle($('loans-columns-slot'), loansColumns, rerender);
     wireColumnDrag(container.querySelector('thead tr'), loansColumns, rerender);
     wireSortableHeaders(container, loansSorter, rerender);
     wireGroupToggles(container, loansCollapsedGroups, rerender);

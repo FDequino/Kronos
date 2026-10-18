@@ -7,10 +7,7 @@ import { showStatus } from '../shared/status.js';
 import { todayLocalISO, fmt } from '../shared/format.js';
 import { api } from './api.js';
 import { openTransactionModal, instrumentBySymbol, detailLinkHtml } from './transactions.js';
-import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
-import { columnToggleHtml, wireColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag } from '../shared/table-chrome.js';
-import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
-import { createColumnManager } from '../shared/column-manager.js';
+import { createSearchBar, applySearchState, wireGroupToggles } from '../shared/search-bar.js';
 import { glossaryTerm } from '../shared/glossary.js';
 import { infoTooltipHtml } from '../shared/info-tooltip.js';
 
@@ -20,15 +17,6 @@ const ORIGEN_LABEL = { sl_tp: 'Stop-loss/Take-profit', evento: 'Evento', rebalan
 const ORIGEN_GLOSSARY_KEY = { sl_tp: 'origen_sl_tp', evento: 'origen_evento', rebalanceo: 'origen_rebalanceo', senal: 'origen_senal' };
 const ESTADO_LABEL = { nueva: 'Nueva', vista: 'Vista', aceptada: 'Aceptada', descartada: 'Descartada', expirada: 'Expirada' };
 const ESTADO_TAG = { nueva: 'tag-negative', vista: 'tag-neutral', aceptada: 'tag-positive', descartada: 'tag-neutral', expirada: 'tag-neutral' };
-
-const PROPOSALS_COLUMNS = [
-    { key: 'symbol', label: 'Activo', numeric: false },
-    { key: 'origen', label: 'Origen', numeric: false, sortable: false, term: 'propuesta_origen' },
-    { key: 'texto', label: 'Texto', numeric: false, sortable: false },
-    { key: 'evidencia', label: 'Evidencia', numeric: false, sortable: false },
-    { key: 'estado', label: 'Estado', numeric: false },
-];
-const columns = createColumnManager('kronos-propuestas-columns', PROPOSALS_COLUMNS);
 
 // IMPORTANTE: los filtros activos se combinan con AND entre sí (ver
 // search-bar.js::applySearchState -- `activeDefs.every(...)`), nunca OR, ni
@@ -55,7 +43,6 @@ let rows = [];
 // Default: ocultar descartadas/expiradas -- son historial, no lo primero que
 // hay que ver al entrar (mismo criterio que "Vigentes" en Plazos Fijos).
 let searchState = { query: '', chips: [], activeFilters: new Set(['activas']), groupKey: null };
-const sorter = createSorter();
 const collapsedGroups = new Set();
 let signalConfig = null;
 
@@ -131,68 +118,74 @@ async function discard(id) {
     await loadProposals();
 }
 
-function rowHtml(p, visibleColumns) {
-    const cells = visibleColumns.map((c) => {
-        switch (c.key) {
-            case 'symbol': {
-                // Rebalanceo no apunta a un ticker real (p.symbol es una
-                // etiqueta de clase, ej. "Bonos") -- no hay detalle de
-                // instrumento al que linkear ahí.
-                const activo = p.origen === 'rebalanceo' ? p.symbol : detailLinkHtml(instrumentBySymbol.get(p.symbol), p.symbol);
-                // tag-signal-buy/sell (acento), nunca tag-positive/tag-negative
-                // -- es una señal sugerida, no P&L real (ver DESIGN_SYSTEM.md).
-                return `<td><span class="row-inline-tag">${activo}${p.tipo_sugerido ? ` <span class="tag ${p.tipo_sugerido === 'compra' ? 'tag-signal-buy' : 'tag-signal-sell'}">${p.tipo_sugerido === 'compra' ? 'Comprar' : 'Vender'}</span>` : ''}</span></td>`;
-            }
-            case 'origen': return `<td>${glossaryTerm(ORIGEN_GLOSSARY_KEY[p.origen], ORIGEN_LABEL[p.origen] || p.origen)}</td>`;
-            case 'texto': return `<td>${p.texto}</td>`;
-            case 'evidencia': return `<td class="hint">${p.evidencia}</td>`;
-            // "Nueva" se transmite con el tinte de la fila entera (ver <tr> abajo),
-            // no con un tag que compite por ancho con los botones -- antes
-            // Aceptar+Descartar se apilaban en dos líneas aunque sobrara espacio
-            // horizontal, solo porque el tag de "Nueva" ocupaba lugar al lado.
-            // El resto de los estados (vista/aceptada/descartada/expirada) no
-            // tienen ese problema (a lo sumo un solo botón junto al tag).
-            case 'estado': return p.estado === 'nueva' ? `<td>
-                <div style="display:flex; gap:8px; flex-wrap:nowrap; white-space:nowrap;">
-                    ${isActionable(p) ? `<button type="button" class="btn btn-primary proposal-accept-btn" data-id="${p.id}">Aceptar</button>` : ''}
-                    <button type="button" class="btn btn-secondary proposal-discard-btn" data-id="${p.id}">Descartar</button>
+// "Nueva" se transmite con el tinte de toda la tarjeta (ver .proposal-card-new
+// en proposal-cards.css), no con un tag que compite por espacio con los
+// botones -- antes Aceptar+Descartar se apilaban en dos líneas aunque sobrara
+// espacio horizontal, solo porque el tag de "Nueva" ocupaba lugar al lado. El
+// resto de los estados (vista/aceptada/descartada/expirada) no tiene ese
+// problema (a lo sumo un solo botón junto al tag).
+function actionsHtml(p) {
+    if (p.estado === 'nueva') {
+        return `
+            ${isActionable(p) ? `<button type="button" class="btn btn-primary proposal-accept-btn" data-id="${p.id}">Aceptar</button>` : ''}
+            <button type="button" class="btn btn-secondary proposal-discard-btn" data-id="${p.id}">Descartar</button>
+        `;
+    }
+    return `
+        <span class="tag ${ESTADO_TAG[p.estado]}">${ESTADO_LABEL[p.estado] || p.estado}</span>
+        ${p.estado === 'vista' ? `<button type="button" class="btn btn-secondary proposal-discard-btn" data-id="${p.id}">Descartar</button>` : ''}
+    `;
+}
+
+function proposalCardHtml(p) {
+    // Rebalanceo no apunta a un ticker real (p.symbol es una etiqueta de
+    // clase, ej. "Bonos") -- no hay detalle de instrumento al que linkear ahí.
+    const activo = p.origen === 'rebalanceo' ? p.symbol : detailLinkHtml(instrumentBySymbol.get(p.symbol), p.symbol);
+    // tag-signal-buy/sell (acento), nunca tag-positive/tag-negative -- es una
+    // señal sugerida, no P&L real (ver DESIGN_SYSTEM.md).
+    const tipoTag = p.tipo_sugerido
+        ? ` <span class="tag ${p.tipo_sugerido === 'compra' ? 'tag-signal-buy' : 'tag-signal-sell'}">${p.tipo_sugerido === 'compra' ? 'Comprar' : 'Vender'}</span>`
+        : '';
+    return `
+        <div class="proposal-card${p.estado === 'nueva' ? ' proposal-card-new' : ''}" data-id="${p.id}">
+            <div class="proposal-card-head">
+                <div class="proposal-card-head-left">
+                    <span class="row-inline-tag">${activo}${tipoTag}</span>
+                    <span class="proposal-card-origen">${glossaryTerm(ORIGEN_GLOSSARY_KEY[p.origen], ORIGEN_LABEL[p.origen] || p.origen)}</span>
                 </div>
-            </td>` : `<td>
-                <div style="display:flex; align-items:center; gap:8px; flex-wrap:nowrap; white-space:nowrap;">
-                    <span class="tag ${ESTADO_TAG[p.estado]}">${ESTADO_LABEL[p.estado] || p.estado}</span>
-                    ${p.estado === 'vista' ? `<button type="button" class="btn btn-secondary proposal-discard-btn" data-id="${p.id}">Descartar</button>` : ''}
+                <div class="proposal-card-actions">${actionsHtml(p)}</div>
+            </div>
+            <p class="proposal-card-text">${p.texto}</p>
+            <p class="proposal-card-evidence hint">${p.evidencia}</p>
+        </div>
+    `;
+}
+
+function proposalCardsHtml(result) {
+    if (result.grouped) {
+        if (!result.groups.length) return '<p class="table-empty">Sin resultados para este filtro.</p>';
+        return result.groups.map((g) => {
+            const collapsed = collapsedGroups.has(g.label);
+            const header = `
+                <div class="proposal-group-header" data-group-row="${g.label}">
+                    <button type="button" class="group-toggle" data-group="${g.label}">${collapsed ? '▸' : '▾'}</button>
+                    ${g.label} <span class="table-group-count">(${g.items.length})</span>
                 </div>
-            </td>`;
-            default: return '<td></td>';
-        }
-    });
-    return `<tr${p.estado === 'nueva' ? ' class="proposal-row-new"' : ''}>${cells.join('')}</tr>`;
+            `;
+            return header + (collapsed ? '' : g.items.map(proposalCardHtml).join(''));
+        }).join('');
+    }
+    return result.items.length ? result.items.map(proposalCardHtml).join('') : '<p class="table-empty">Sin resultados para este filtro.</p>';
 }
 
 function renderTable() {
     const container = $('proposals-table-container');
     if (!container) return;
-    const visibleColumns = columns.visibleColumns();
-    const sorted = sorter.key ? sorter.apply(rows, (p, key) => p[key]) : rows;
-    const result = applySearchState(sorted, searchState, SEARCH_CONFIG);
-    const bodyRows = tableBodyRowsHtml(result, visibleColumns, (p) => rowHtml(p, visibleColumns), { collapsedGroups });
-
-    container.innerHTML = `
-        <div class="table-toolbar">${columnToggleHtml(columns)}</div>
-        <div class="table-scroll">
-            <table>
-                <thead><tr>${visibleColumns.map((c) => headerCellHtml(c)).join('')}</tr></thead>
-                <tbody>${bodyRows}</tbody>
-            </table>
-        </div>
-    `;
+    const result = applySearchState(rows, searchState, SEARCH_CONFIG);
+    container.innerHTML = `<div class="proposal-cards">${proposalCardsHtml(result)}</div>`;
 
     const rerender = () => renderTable();
-    wireColumnToggle(container, columns, rerender);
-    wireColumnDrag(container.querySelector('thead tr'), columns, rerender);
-    wireSortableHeaders(container, sorter, rerender);
     wireGroupToggles(container, collapsedGroups, rerender);
-    updateSortIndicators(container, sorter);
 
     container.querySelectorAll('.proposal-accept-btn').forEach((btn) => {
         btn.addEventListener('click', () => accept(Number(btn.dataset.id)));
