@@ -10,112 +10,34 @@
 
 <section class="view" id="view-resumen">
     <div class="subtabs" data-subtabs="resumen">
-        <button class="subtab-btn active" type="button" data-subtab-target="dashboard">Dashboard</button>
+        <button class="subtab-btn active" type="button" data-subtab-target="patrimonio">Patrimonio</button>
         <button class="subtab-btn" type="button" data-subtab-target="tabla">Tabla</button>
+        <button class="subtab-btn" type="button" data-subtab-target="proyeccion">Proyección</button>
     </div>
 
-    <div class="subtab-panel active" data-subtab-panel="dashboard">
-        <p class="resumen-narrativo" id="resumen-narrativo"><span class="skeleton skeleton-text wide"></span></p>
+    <div class="subtab-panel active" data-subtab-panel="patrimonio">
+        <div id="patrimonio-panel">{{ skeleton_chart(320) }}</div>
+    </div>
 
-        <div class="stat-strip">
-            <div class="stat" id="stat-valor-total-card">
-                <div class="stat-label">Valor total</div>
-                <div class="stat-value num" id="stat-valor-total"><span class="skeleton skeleton-value"></span></div>
-                <div class="stat-sub hint" id="stat-valor-sub"></div>
-                <div class="stat-detail" id="stat-valor-detail" hidden></div>
-            </div>
-            <div class="stat" id="stat-pnl-total-card">
-                <div class="stat-label">P&amp;L</div>
-                <div class="stat-value num" id="stat-pnl-total"><span class="skeleton skeleton-value"></span></div>
-                <div class="stat-detail" id="stat-pnl-detail" hidden></div>
-            </div>
-            <div class="stat" id="stat-posiciones-card">
-                <div class="stat-label">Posiciones</div>
-                <div class="stat-value num" id="stat-posiciones"><span class="skeleton skeleton-value"></span></div>
-                <div class="stat-detail" id="stat-posiciones-detail" hidden></div>
-            </div>
-            <div class="stat" id="stat-usd-card">
-                <div class="stat-label">Cotizaci&oacute;n USD</div>
-                <div class="stat-value num" id="stat-usd-rate"><span class="skeleton skeleton-value"></span></div>
-                <div class="stat-sub hint" id="stat-usd-sub"></div>
-                <div class="stat-detail" id="stat-usd-detail" hidden></div>
-            </div>
-        </div>
-
-        <div class="dashboard-grid-3">
-            <div class="panel">
-                <div class="panel-header">
-                    <div class="panel-header-text">
-                        <h2>Asignaci&oacute;n por tipo</h2>
-                        <p class="panel-subtitle">C&oacute;mo se reparte el valor de tu cartera entre clases de activos.</p>
-                    </div>
-                </div>
-                <div class="panel-body" id="allocation-chart-container">{{ skeleton_chart(240) }}</div>
-            </div>
-            <div class="panel">
-                <div class="panel-header">
-                    <div class="panel-header-text">
-                        <h2>Riesgo de cartera</h2>
-                        <p class="panel-subtitle">Score ponderado por valor, de 0 (bajo) a 100 (alto).</p>
-                    </div>
-                </div>
-                <div class="panel-body" id="portfolio-risk-container">{{ skeleton_chart(240) }}</div>
-            </div>
-            <div class="panel">
-                <div class="panel-header">
-                    <div class="panel-header-text">
-                        <h2>Distribuci&oacute;n de riesgo</h2>
-                        <p class="panel-subtitle">Cu&aacute;ntas posiciones hay en cada banda de riesgo.</p>
-                    </div>
-                </div>
-                <div class="panel-body" id="risk-distribution-container">{{ skeleton_chart(240) }}</div>
-            </div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-header">
-                <div class="panel-header-text">
-                    <h2>P&amp;L por instrumento</h2>
-                    <p class="panel-subtitle">Ganancia o p&eacute;rdida acumulada de cada posici&oacute;n.</p>
-                </div>
-                <div class="segmented-toggle" id="pnl-field-toggle">
-                    <button class="segmented-toggle-option active" data-value="pnl" type="button">$</button>
-                    <button class="segmented-toggle-option" data-value="pnl_pct" type="button">%</button>
-                </div>
-            </div>
-            <div class="panel-body" id="pnl-bar-chart-container">{{ skeleton_chart(280) }}</div>
-        </div>
-
-        <div class="panel">
-            <div class="panel-header">
-                <div class="panel-header-text">
-                    <h2>Evoluci&oacute;n de la cartera</h2>
-                    <p class="panel-subtitle">Valor real reconstruido d&iacute;a a d&iacute;a vs. lo que hubiera valido siguiendo las predicciones de Kronos.</p>
-                </div>
-                <button type="button" class="btn btn-secondary" id="portfolio-backtest-btn">Generar historial de Kronos</button>
-            </div>
-            <div class="panel-body">
-                <p class="hint" id="portfolio-backtest-status"></p>
-                <div id="portfolio-history-legend"></div>
-                <div id="portfolio-history-container">{{ skeleton_chart(320) }}</div>
-                <p class="hint" id="portfolio-history-missing" style="margin-top: 10px;"></p>
-            </div>
-        </div>
+    <div class="subtab-panel" data-subtab-panel="proyeccion">
+        <div id="proyeccion-panel">{{ skeleton_chart(240) }}</div>
     </div>
 
     <div class="subtab-panel" data-subtab-panel="tabla">
         <div class="panel">
-            <div class="panel-header">
-                <h2>Tenencias</h2>
-                <div style="display: flex; align-items: center; gap: 12px;">
-                    <span class="hint" id="holdings-currency-note"></span>
-                    <button id="refresh-quotes-btn" class="btn btn-secondary">Actualizar cotizaciones</button>
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <h2>Tenencias</h2>
+                    <div class="panel-header-actions">
+                        <span class="hint" id="holdings-currency-note"></span>
+                        <button id="refresh-quotes-btn" class="btn btn-secondary" title="Las cotizaciones ya se actualizan solas en horario de mercado -- este botón fuerza una actualización manual ahora.">Actualizar ahora</button>
+                    </div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="holdings-search-bar"></div>
                 </div>
             </div>
-            <div class="view-toolbar">
-                <div id="holdings-search-bar"></div>
-            </div>
-            <div class="loading" id="holdings-loading" style="padding: 14px 20px;">
+            <div class="loading loading-panel" id="holdings-loading">
                 <div class="spinner"></div><span>Actualizando cotizaciones&hellip;</span>
             </div>
             <div class="panel-body flush" id="holdings-groups">
@@ -127,38 +49,209 @@
     </div>
 </section>
 
-<section class="view" id="view-senales">
-    <div class="panel">
-        <div class="panel-header">
-            <h2>Se&ntilde;ales</h2>
-            <button id="run-all-signals-btn" class="btn btn-secondary">Actualizar todas</button>
+<section class="view" id="view-decisiones">
+    <!-- Layout PLANO (ver conversacion, pase de UX/UI) -- se eliminó la
+         "muñeca rusa" de subtabs anidadas (una barra de pestañas dentro de
+         otra). Las 5 pestañas son todas hermanas, mismo nivel, sin anidar.
+         Señales (tabla técnica/fundamental de TODAS las tenencias) y Alertas
+         SL/TP (listado global) se retiraron de Decisiones -- ese mismo dato
+         (RSI, fundamentales, alertas) ya vive en el detalle de cada
+         instrumento y en el catálogo unificado de Instrumentos. -->
+    <div class="subtabs" data-subtabs="decisiones">
+        <button class="subtab-btn active" type="button" data-subtab-target="oportunidades">Oportunidades</button>
+        <button class="subtab-btn" type="button" data-subtab-target="motor">Motor</button>
+        <button class="subtab-btn" type="button" data-subtab-target="propuestas">Propuestas</button>
+        <button class="subtab-btn" type="button" data-subtab-target="paper-trading">Paper Trading</button>
+        <button class="subtab-btn" type="button" data-subtab-target="rendimiento">Backtest</button>
+    </div>
+
+    <!-- Arquitectura Dual CORE/SATELITE (ver conversacion): Motor Core
+         institucional (Motor Cuantitativo Kronos cross-sectional, ranking +
+         filtro de regimen SPY>EMA50) y Motor Satelite de corto plazo (1-3
+         ruedas, reglas tecnicas, sin consultar al modelo) -- ver
+         portfolio/signals.py, portfolio/short_term_engine.py,
+         portfolio/live_signals.py. Tarjetas de compra/venta, no tabla (ver
+         core-satellite.js) -- el backtest global vive en "Rendimiento
+         Histórico". -->
+    <div class="subtab-panel active" data-subtab-panel="oportunidades">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Oportunidades del Día</h2>
+                        <p class="panel-subtitle">Señales accionables de HOY de los 4 motores (Core, Satélite, Pairs Trading, Factor Investing) y las alertas de Arbitraje de Canje, Dólar Sintético y Renta Fija/Carry Trade.</p>
+                    </div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="view-toolbar-actions">
+                        <button id="refresh-dual-engine-signals-btn" class="btn btn-secondary" type="button">Actualizar señales de hoy</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body" id="dual-engine-signals-container">{{ skeleton_chart(220) }}</div>
         </div>
-        <div class="panel-body">
-            <p class="hint" style="margin-bottom: 16px;">
-                Heur&iacute;stica sobre el pron&oacute;stico de Kronos, no es asesoramiento financiero.
-            </p>
-            <div id="signals-funds-note" style="margin-bottom: 16px;"></div>
-            <div class="forecast-grid" id="signals-grid">{{ skeleton_chart(160) }}{{ skeleton_chart(160) }}{{ skeleton_chart(160) }}</div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="motor">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Configuración del Motor</h2>
+                    <p class="panel-subtitle">Asignación de capital dinámica entre el Fondo de Mediano Plazo (Core) y la Estrategia Corto Plazo (Satélite), y los parámetros de salida de esta última.</p>
+                </div>
+            </div>
+            <div class="panel-body" id="core-satellite-allocation"></div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="propuestas">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Propuestas</h2>
+                        <p class="panel-subtitle">Sugerencias de compra/venta ordenadas por confianza -- vos decidís, nunca se ejecuta nada solo.</p>
+                    </div>
+                </div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="proposals-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="proposals-search-bar"></div>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div id="proposals-table-container">{{ skeleton_chart(240) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Paper Trading / dinero ficticio (ver conversacion): ejecucion SIMULADA
+         de las señales de ambos motores sobre un patrimonio virtual propio --
+         nunca toca holdings/transacciones reales. Posiciones abiertas e
+         historial generados por el scanner intradia en background (ver
+         portfolio/monitor.py), 11:00-17:00 ART. Carga perezosa, mismo
+         criterio que el resto de las subtabs de Decisiones. -->
+    <div class="subtab-panel" data-subtab-panel="paper-trading">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Paper Trading</h2>
+                        <p class="panel-subtitle">Simulación con dinero ficticio de las señales de ambos motores -- valida el edge real sin arriesgar capital. Patrimonio virtual en USD CCL.</p>
+                    </div>
+                    <div class="user-menu-row" style="padding: 0;">
+                        <span class="hint">Activado (aplica al Guardar)</span>
+                        <label class="switch">
+                            <input type="checkbox" id="paper-trading-enabled-toggle">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                    </div>
+                </div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="paper-trading-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="field-row" style="align-items: flex-end;">
+                        <label class="field">Capital inicial virtual (USD)
+                            <input type="number" id="paper-trading-initial-capital-input" min="1" step="100">
+                        </label>
+                        <button id="paper-trading-save-settings-btn" class="btn btn-secondary" type="button">Guardar</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body">
+                <h3>Posiciones abiertas</h3>
+                <div id="paper-trading-positions-container">{{ skeleton_chart(140) }}</div>
+                <h3>Historial de operaciones cerradas</h3>
+                <div id="paper-trading-trades-container">{{ skeleton_chart(180) }}</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rendimiento Histórico (ver conversacion): backtest global de ambos
+         motores (antes vivia dentro de "Core/Satélite") + precisión de
+         pronósticos de Kronos por instrumento (antes una vista propia
+         "Kronos" con selector de instrumento -- el detalle completo de cada
+         activo vive ahora directo en su página de detalle, pestaña
+         Precisión; acá solo el resumen comparativo entre todos). La vista
+         "Cartera" (real vs. teórico Kronos) se eliminó -- ya está cubierta
+         por la vista Patrimonio. -->
+    <div class="subtab-panel" data-subtab-panel="rendimiento">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Backtest global Core / Satélite</h2>
+                    <p class="panel-subtitle">Último walk-forward comparativo de ambos motores + el blend global según la asignación de capital vigente.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div id="dual-engine-backtest-container">{{ skeleton_chart(120) }}</div>
+            </div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Precisión de Kronos por instrumento</h2>
+                    <p class="panel-subtitle">MAPE, acierto direccional y calibración de cada instrumento con pronósticos corridos -- el detalle completo de cada uno vive en su propia página (pestaña Precisión).</p>
+                </div>
+            </div>
+            <div class="panel-body" id="rendimiento-kronos-leaderboard">{{ skeleton_chart(180) }}</div>
         </div>
     </div>
 </section>
 
 <section class="view" id="view-instrumentos">
-    <div class="panel">
-        <div class="panel-header"><h2>Instrumentos</h2></div>
-        <div class="view-toolbar">
-            <div id="instruments-search-bar"></div>
-            <div class="view-toolbar-actions">
-                <button id="new-instrument-btn" class="btn btn-primary" type="button">+ Nuevo instrumento</button>
+    <div class="subtabs" data-subtabs="instrumentos">
+        <button class="subtab-btn active" type="button" data-subtab-target="catalogo">Instrumentos</button>
+        <button class="subtab-btn" type="button" data-subtab-target="comparar">Comparar</button>
+    </div>
+
+    <!-- Catálogo unificado (ver conversación, limpieza de UI): "Catálogo" y
+         "Explorador BYMA" eran 2 pestañas separadas que mostraban en parte la
+         misma info -- ahora es UNA tabla con un filtro superior de un solo
+         toque (ver webui/static/js/portfolio/instrumentos.js), fuente
+         combinada (catálogo propio + universo BYMA buscable). -->
+    <div class="subtab-panel active" data-subtab-panel="catalogo">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header"><h2>Instrumentos</h2></div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="instrumentos-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="instrumentos-bucket-bar" class="segmented-toggle">
+                        <button type="button" class="segmented-toggle-option active" data-bucket="todos">Todos</button>
+                        <button type="button" class="segmented-toggle-option" data-bucket="cartera">En Cartera</button>
+                        <button type="button" class="segmented-toggle-option" data-bucket="cedear">CEDEARs</button>
+                        <button type="button" class="segmented-toggle-option" data-bucket="accion">Acciones</button>
+                        <button type="button" class="segmented-toggle-option" data-bucket="bono">Bonos</button>
+                    </div>
+                    <div id="instrumentos-search-bar" class="view-toolbar-grow"></div>
+                    <div class="view-toolbar-actions">
+                        <button id="new-instrument-btn" class="btn btn-secondary" type="button">+ Nuevo instrumento</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body flush" id="instrumentos-table-container">
+                <table>
+                    <tbody>{{ skeleton_rows(7, 4) }}</tbody>
+                </table>
             </div>
         </div>
-        <div class="panel-body flush">
-            <table>
-                <thead>
-                    <tr><th>S&iacute;mbolo</th><th>Nombre</th><th>Tipo</th><th>Mercado</th><th>Moneda</th><th>Fuente</th><th></th></tr>
-                </thead>
-                <tbody id="instruments-tbody">{{ skeleton_rows(7, 4) }}</tbody>
-            </table>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="comparar">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Comparar</h2>
+                    <p class="panel-subtitle">Pronóstico, riesgo, técnico, fundamental y confiabilidad histórica de hasta 4 instrumentos, lado a lado -- estén o no en tu cartera.</p>
+                </div>
+            </div>
+            <div class="panel-body flush" id="comparador-table-container">
+                <p class="table-empty">Elegí 2 a 4 instrumentos para comparar.</p>
+            </div>
         </div>
     </div>
 </section>
@@ -171,26 +264,24 @@
 
     <div class="subtab-panel active" data-subtab-panel="historial">
         <div class="panel">
-            <div class="panel-header">
-                <h2>Historial</h2>
-                <div class="date-range-filter">
-                    <input type="date" id="tx-filter-from" aria-label="Desde">
-                    <span>&mdash;</span>
-                    <input type="date" id="tx-filter-to" aria-label="Hasta">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <h2>Historial</h2>
+                    <div class="chart-range-controls" id="tx-period-controls"></div>
+                </div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="tx-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="transactions-search-bar"></div>
+                    <div class="view-toolbar-actions">
+                        <button id="new-transaction-btn" class="btn btn-secondary" type="button">+ Nueva transacci&oacute;n</button>
+                    </div>
                 </div>
             </div>
-            <div class="view-toolbar">
-                <div id="transactions-search-bar"></div>
-                <div class="view-toolbar-actions">
-                    <button id="new-transaction-btn" class="btn btn-primary" type="button">+ Nueva transacci&oacute;n</button>
-                </div>
-            </div>
-            <div class="panel-body flush">
+            <div class="panel-body flush" id="transactions-table-container">
                 <table>
-                    <thead>
-                        <tr><th>Fecha</th><th>Instrumento</th><th>Tipo</th><th class="num">Cantidad</th><th class="num">Precio</th><th class="num">Comisi&oacute;n</th><th></th></tr>
-                    </thead>
-                    <tbody id="transactions-tbody">{{ skeleton_rows(7, 4) }}</tbody>
+                    <tbody>{{ skeleton_rows(7, 4) }}</tbody>
                 </table>
             </div>
         </div>
@@ -198,16 +289,18 @@
 
     <div class="subtab-panel" data-subtab-panel="rentas">
         <div class="panel">
-            <div class="panel-header"><h2>Dividendos y Rentas</h2></div>
-            <div class="view-toolbar">
-                <div id="rentas-search-bar"></div>
+            <div class="panel-sticky-head">
+                <div class="panel-header"><h2>Dividendos y Rentas</h2></div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="rentas-kpi-container"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="rentas-search-bar"></div>
+                </div>
             </div>
-            <div class="panel-body flush">
+            <div class="panel-body flush" id="rentas-table-container">
                 <table>
-                    <thead>
-                        <tr><th>Fecha</th><th>S&iacute;mbolo</th><th>Tipo</th><th class="num">Bruto</th><th class="num">Gastos</th><th class="num">Neto</th><th>Moneda</th></tr>
-                    </thead>
-                    <tbody id="rentas-dividendos-tbody">{{ skeleton_rows(7, 3) }}</tbody>
+                    <tbody>{{ skeleton_rows(7, 3) }}</tbody>
                 </table>
             </div>
         </div>
@@ -222,22 +315,21 @@
 
     <div class="subtab-panel active" data-subtab-panel="pf">
         <div class="panel">
-            <div class="panel-header"><h2>Plazos Fijos</h2></div>
-            <div class="view-toolbar">
-                <div id="pf-search-bar"></div>
-                <div class="view-toolbar-actions">
-                    <button id="new-pf-btn" class="btn btn-primary" type="button">+ Nuevo plazo fijo</button>
+            <div class="panel-sticky-head">
+                <div class="panel-header"><h2>Plazos Fijos</h2></div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="pf-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="pf-search-bar"></div>
+                    <div class="view-toolbar-actions">
+                        <button id="new-pf-btn" class="btn btn-secondary" type="button">+ Nuevo plazo fijo</button>
+                    </div>
                 </div>
             </div>
-            <div class="panel-body flush">
+            <div class="panel-body flush" id="pf-table-container">
                 <table>
-                    <thead>
-                        <tr>
-                            <th>Banco</th><th>Tipo</th><th class="num">Monto</th><th class="num">TNA</th>
-                            <th class="num">D&iacute;as</th><th class="num">Devengado</th><th class="num">Valor Actual</th><th>Estado</th><th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="pf-tbody">{{ skeleton_rows(9, 3) }}</tbody>
+                    <tbody>{{ skeleton_rows(9, 3) }}</tbody>
                 </table>
             </div>
         </div>
@@ -245,55 +337,343 @@
 
     <div class="subtab-panel" data-subtab-panel="cauciones">
         <div class="panel">
-            <div class="panel-header"><h2>Cauciones</h2></div>
-            <p class="hint" style="padding: 16px 20px 0;">Pr&eacute;stamo colateralizado de muy corto plazo v&iacute;a el broker &mdash; no es un activo que Kronos pueda pronosticar, se incluye para ver el panorama general.</p>
-            <div class="view-toolbar">
-                <div id="cauciones-search-bar"></div>
-                <div class="view-toolbar-actions">
-                    <button id="new-caucion-btn" class="btn btn-primary" type="button">+ Nueva cauci&oacute;n</button>
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Cauciones</h2>
+                        <p class="panel-subtitle">Pr&eacute;stamo colateralizado de muy corto plazo v&iacute;a el broker &mdash; no es un activo que Kronos pueda pronosticar, se incluye para ver el panorama general.</p>
+                    </div>
+                </div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="cauciones-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="cauciones-search-bar"></div>
+                    <div class="view-toolbar-actions">
+                        <button id="new-caucion-btn" class="btn btn-secondary" type="button">+ Nueva cauci&oacute;n</button>
+                    </div>
                 </div>
             </div>
-            <div class="panel-body flush">
+            <div class="panel-body flush" id="cauciones-table-container">
                 <table>
-                    <thead>
-                        <tr>
-                            <th class="num">Monto</th><th class="num">Tasa</th><th class="num">D&iacute;as</th>
-                            <th class="num">Devengado</th><th class="num">Valor Actual</th><th>Vencimiento</th><th>Estado</th><th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="cauciones-tbody">{{ skeleton_rows(8, 2) }}</tbody>
+                    <tbody>{{ skeleton_rows(8, 2) }}</tbody>
                 </table>
             </div>
         </div>
     </div>
 </section>
-<section class="view" id="view-explorador">
-    <div class="panel">
-        <div class="panel-header">
-            <h2>Explorador BYMA</h2>
-            <span class="hint" id="explorer-count"></span>
-        </div>
-        <div class="view-toolbar">
-            <div id="explorer-search-bar"></div>
-        </div>
-        <div class="panel-body flush">
-            <div class="table-scroll">
-                <table>
-                    <thead>
-                        <tr>
-                            <th class="sortable" data-sort="symbol">S&iacute;mbolo</th>
-                            <th class="sortable" data-sort="type">Tipo</th>
-                            <th class="num sortable" data-sort="price">Precio</th>
-                            <th class="num sortable" data-sort="pct_change">Var. %</th>
-                        </tr>
-                    </thead>
-                    <tbody id="explorer-results-tbody">{{ skeleton_rows(4, 6) }}</tbody>
-                </table>
-            </div>
-        </div>
+<section class="view" id="view-prestamos">
+    <div class="subtabs" data-subtabs="prestamos">
+        <button class="subtab-btn active" type="button" data-subtab-target="listado">Préstamos</button>
+        <button class="subtab-btn" type="button" data-subtab-target="flujo">Flujo de fondos</button>
     </div>
-</section>
 
+    <div class="subtab-panel active" data-subtab-panel="listado">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Préstamos</h2>
+                        <p class="panel-subtitle">Plata prestada a terceros, con su propio plan de pagos -- un activo más de la cartera.</p>
+                    </div>
+                </div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="loans-summary"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div id="loans-search-bar"></div>
+                    <div class="view-toolbar-actions">
+                        <button id="new-loan-btn" class="btn btn-secondary" type="button">+ Nuevo préstamo</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body flush" id="loans-table-container">
+                <table>
+                    <tbody>{{ skeleton_rows(8, 3) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="flujo">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Flujo de cuotas</h2>
+                    <p class="panel-subtitle">Todas las cuotas futuras de préstamos vigentes, combinadas mes a mes -- te deben suma, debés resta.</p>
+                </div>
+            </div>
+            <div class="panel-body flush" id="loans-projection-container">{{ skeleton_chart(180) }}</div>
+        </div>
+    </div>
+</section>
+<section class="view" id="view-ajustes">
+    <!-- Reestructuracion (ver conversacion): subtabs, MISMO patron que
+         Prestamos/Decisiones (data-subtabs + subtab-btn + subtab-panel, ya
+         resuelto globalmente por shared/subtabs.js -- nunca recarga la
+         pagina, es un toggle de clase CSS). -->
+    <div class="subtabs" data-subtabs="ajustes">
+        <button class="subtab-btn active" type="button" data-subtab-target="estrategia">Estrategia y Motores</button>
+        <button class="subtab-btn" type="button" data-subtab-target="telegram">Telegram y Accesos</button>
+        <button class="subtab-btn" type="button" data-subtab-target="moneda">Moneda y Referencias</button>
+        <button class="subtab-btn" type="button" data-subtab-target="conexiones">Conexiones</button>
+        <button class="subtab-btn" type="button" data-subtab-target="notificaciones">Notificaciones</button>
+    </div>
+
+    <div class="subtab-panel active" data-subtab-panel="estrategia">
+        <div class="grid12" style="margin-bottom: 14px;">
+            <div class="col-6 ajustes-engine-card">
+                <h3>🛡️ Motor Core -- mediano plazo</h3>
+                <p>Busca tendencia (hasta 15 ruedas de horizonte). Solo opera cuando el <strong>régimen macro acompaña</strong> (SPY por encima de su propia media móvil de 50 ruedas) y el activo supera un <strong>umbral mínimo de eficiencia</strong> proyectada por el Motor Cuantitativo Kronos (retorno esperado vs. incertidumbre del propio pronóstico). Sin eso, el capital Core queda en Caución.</p>
+            </div>
+            <div class="col-6 ajustes-engine-card">
+                <h3>⚡ Motor Satélite -- corto plazo</h3>
+                <p>Táctico, de 1 a 3 ruedas. Reacciona a patrones técnicos (reversión a la media, rupturas de volumen/volatilidad) con reglas fijas, sin consultar al modelo. Cada posición sale sola por <strong>Take Profit</strong> fijo o <strong>Stop Loss</strong> dinámico (ajustado por la volatilidad propia del activo, nunca más ancho que el techo configurado).</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Perfiles de Inversión</h2>
+                    <p class="panel-subtitle">Presets de asignación Core/Satélite + Take Profit/Stop Loss del Satélite. Activar un perfil pisa los controles manuales de abajo con sus valores -- las métricas esperadas son de referencia (del backtest de este proyecto), no una promesa de rendimiento futuro.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="grid12" id="ajustes-risk-profiles-container">{{ skeleton_chart(220) }}</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Controles de configuración</h2>
+                    <p class="panel-subtitle">Se aplican en caliente -- la próxima evaluación de señales ya los usa, sin reiniciar nada.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="field-row">
+                    <div class="field" style="flex: 1 1 100%;">
+                        <label for="ajustes-core-allocation-slider">
+                            <span class="glossary-term" tabindex="0">Asignación de capital<span class="glossary-term-panel">Qué % del patrimonio total se dedica a cada motor. El resto siempre es 100 menos esto -- nunca se guardan por separado, para que no puedan desincronizarse.</span></span>:
+                            Core <b id="ajustes-core-pct-label">20</b>% / Satélite <b id="ajustes-satellite-pct-label">80</b>%
+                        </label>
+                        <input type="range" id="ajustes-core-allocation-slider" min="0" max="100" step="1" value="20" style="width: 100%;">
+                    </div>
+                </div>
+                <div class="field-row" style="margin-top: 18px; align-items: flex-start;">
+                    <div class="field">
+                        <label for="ajustes-satellite-tp-input">
+                            <span class="glossary-term" tabindex="0">Take Profit Satélite (%)<span class="glossary-term-panel">Ganancia a la que el Satélite cierra la posición solo, tomando la ganancia. Fijo, no depende de la volatilidad del activo.</span></span>
+                        </label>
+                        <input type="number" id="ajustes-satellite-tp-input" min="0.1" max="100" step="0.1">
+                        <span class="hint">Ganancia fija a la que el Satélite cierra la posición.</span>
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-satellite-sl-input">
+                            <span class="glossary-term" tabindex="0">Stop Loss Máximo (%)<span class="glossary-term-panel">Techo de pérdida por operación: el stop real puede ser más angosto en activos calmos (se ajusta por ATR), pero NUNCA pierde más que este %, por más volátil que sea el activo.</span></span>
+                        </label>
+                        <input type="number" id="ajustes-satellite-sl-input" min="0.1" max="100" step="0.1">
+                        <span class="hint">El stop real nunca supera este %, aunque el activo sea muy volátil.</span>
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-core-threshold-input">
+                            <span class="glossary-term" tabindex="0">Umbral del Core<span class="glossary-term-panel">efficiency_score mínimo (retorno proyectado / incertidumbre del pronóstico) para que el Core considere abrir una posición. No es un porcentaje: en la práctica rondó entre -40 y 400 según el activo y el momento -- más alto = más selectivo, menos operaciones.</span></span>
+                        </label>
+                        <input type="number" id="ajustes-core-threshold-input" min="0" step="1">
+                        <span class="hint">efficiency_score mínimo para que el Core abra una posición (no es un %).</span>
+                    </div>
+                </div>
+                <div class="view-toolbar-actions" style="margin-top: 18px;">
+                    <button id="ajustes-save-quant-btn" class="btn btn-primary" type="button">Guardar cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="telegram">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Estado del bot</h2>
+                        <p class="panel-subtitle">El token se configura por variable de entorno (<code>TELEGRAM_BOT_TOKEN</code>), nunca desde acá -- es una credencial.</p>
+                    </div>
+                </div>
+                <div class="panel-body no-bottom">
+                    <div class="mini-stat-grid row" id="telegram-bot-status"></div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="view-toolbar-actions">
+                        <button id="telegram-test-message-btn" class="btn btn-secondary" type="button">Enviar mensaje de prueba</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body" id="telegram-test-message-result"></div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Usuarios autorizados</h2>
+                        <p class="panel-subtitle">Quién puede usar el bot y qué puede hacer -- cualquier usuario autorizado puede consultar (<code>/signals</code>, <code>/capital</code>, etc.), pero solo los <strong>admin</strong> pueden cambiar configuración (<code>/set_core</code>, <code>/set_tp</code>, <code>/set_sl</code>).</p>
+                    </div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="view-toolbar-actions">
+                        <button id="new-telegram-user-btn" class="btn btn-secondary" type="button">+ Agregar usuario</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body flush" id="telegram-users-table-container">
+                <table>
+                    <tbody>{{ skeleton_rows(3, 5) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="moneda">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Moneda y Referencias</h2>
+                    <p class="panel-subtitle">Moneda por defecto, fuente de cotización USD y tasa de referencia de Caución -- también accesible desde Preferencias, en la barra lateral, para cambios rápidos.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label>Moneda</label>
+                        <div class="segmented-toggle" id="ajustes-currency-toggle">
+                            <button class="segmented-toggle-option" data-value="ARS" type="button">ARS</button>
+                            <button class="segmented-toggle-option" data-value="USD" type="button">USD</button>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label class="glossary-term" tabindex="0">Fuente USD<span class="glossary-term-panel">Fuente de la cotización USD usada para el toggle general ARS/USD de Tenencias y Posiciones: BNA, MEP o CCL.</span></label>
+                        <div class="segmented-toggle" id="ajustes-usd-source-toggle">
+                            <button class="segmented-toggle-option" data-value="bna" type="button">BNA</button>
+                            <button class="segmented-toggle-option" data-value="mep" type="button">MEP</button>
+                            <button class="segmented-toggle-option" data-value="ccl" type="button">CCL</button>
+                        </div>
+                    </div>
+                    <div class="field" id="ajustes-bna-variant-field" hidden>
+                        <label for="ajustes-bna-variant-select">Variante BNA</label>
+                        <select id="ajustes-bna-variant-select">
+                            <option value="divisa_venta">Divisa venta</option>
+                            <option value="divisa_compra">Divisa compra</option>
+                            <option value="billete_venta">Billete venta</option>
+                            <option value="billete_compra">Billete compra</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-caucion-reference-input" class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera (y el backtest Core/Satélite) contra "invertir en cauciones" -- no existe una fuente pública gratuita de esta tasa.</span></label>
+                        <input type="number" id="ajustes-caucion-reference-input" step="0.1" min="0" placeholder="sin configurar">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="conexiones">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Cuentas de bróker (Multi-Broker)</h2>
+                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker -- nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano en esta instalación local y nunca se muestran completos, solo los últimos 4 caracteres.</p>
+                    </div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="view-toolbar-actions">
+                        <button id="new-broker-account-btn" class="btn btn-secondary" type="button">+ Agregar cuenta</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body flush" id="broker-accounts-table-container">
+                <table>
+                    <tbody>{{ skeleton_rows(2, 6) }}</tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="subtab-panel" data-subtab-panel="notificaciones">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Reporte PDF y Notificaciones</h2>
+                    <p class="panel-subtitle">Qué secciones y en qué moneda se arma el PDF, y cuándo se manda por Telegram. Tenencias siempre está incluida -- un cambio de horario tarda hasta 5 minutos en reflejarse en el bot, no es instantáneo ni requiere reiniciar nada.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <h3>Configuración del PDF</h3>
+                <div class="field-row" style="align-items: flex-end;">
+                    <div class="field">
+                        <label for="ajustes-pdf-currency-select">Moneda del reporte</label>
+                        <select id="ajustes-pdf-currency-select">
+                            <option value="DUAL">Dual (ARS y USD)</option>
+                            <option value="USD">Solo USD</option>
+                            <option value="ARS">Solo ARS</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>Métricas de riesgo</label>
+                        <label class="switch">
+                            <input type="checkbox" id="ajustes-pdf-include-risk">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                    </div>
+                    <div class="field">
+                        <label>Paper Trading</label>
+                        <label class="switch">
+                            <input type="checkbox" id="ajustes-pdf-include-paper">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                    </div>
+                    <div class="field">
+                        <label>Rendimiento de Caución</label>
+                        <label class="switch">
+                            <input type="checkbox" id="ajustes-pdf-include-caucion">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                    </div>
+                    <div class="field">
+                        <label>Oportunidades del día</label>
+                        <label class="switch">
+                            <input type="checkbox" id="ajustes-pdf-include-opportunities">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                    </div>
+                </div>
+                <p class="hint" style="margin-top: 6px;">"Oportunidades del día" consulta al Motor Cuantitativo Kronos -- puede hacer que generar el reporte tarde más.</p>
+
+                <h3 style="margin-top: 22px;">Horario de envío</h3>
+                <div class="field-row" style="align-items: flex-end;">
+                    <div class="field">
+                        <label for="ajustes-pdf-schedule-select">Frecuencia</label>
+                        <select id="ajustes-pdf-schedule-select">
+                            <option value="morning">Solo mañana (pre-rueda)</option>
+                            <option value="afternoon">Solo tarde</option>
+                            <option value="both">Mañana y tarde</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-pdf-time-input">Hora de la mañana</label>
+                        <input type="time" id="ajustes-pdf-time-input">
+                    </div>
+                    <div class="field">
+                        <button id="ajustes-pdf-test-send-btn" class="btn btn-secondary" type="button">Enviar Reporte de Prueba Ahora</button>
+                    </div>
+                </div>
+                <p class="hint" style="margin-top: 8px;">La tarde es fija, 17:30 ART.</p>
+                <div id="ajustes-pdf-test-send-result"></div>
+            </div>
+        </div>
+    </div>
+</section>
 <section class="view" id="view-detalle">
     <div id="instrument-detail-root"></div>
 </section>

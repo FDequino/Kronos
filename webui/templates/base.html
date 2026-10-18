@@ -39,12 +39,21 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/subtabs.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/modal.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/search-bar.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/resumen-v2.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/ajustes.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/grid12.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/kronos-history.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/opportunity-cards.css') }}">
     {% block extra_styles %}{% endblock %}
 </head>
 <body>
     {% from "_icons.html" import icon %}
     <div class="app-shell">
         <aside class="sidebar" id="sidebar">
+            <div class="sidebar-brand">
+                <span class="sidebar-brand-mark">K</span>
+                <span class="sidebar-brand-name">KRONOS</span>
+            </div>
             <div class="sidebar-top">
                 <button id="sidebar-collapse-toggle" class="sidebar-collapse-btn" type="button" aria-label="Colapsar men&uacute;">
                     {{ icon('menu') }}
@@ -54,15 +63,16 @@
                 {% for item in nav_items %}
                 <a class="nav-item" data-nav-id="{{ item.id }}" href="{{ item.href }}" title="{{ item.label }}">
                     {{ icon(item.icon) }}
-                    <span>{{ item.label }}</span>
+                    <span class="nav-item-label">{{ item.label }}</span>
                 </a>
                 {% endfor %}
             </nav>
             <div class="sidebar-foot">
                 <div class="sidebar-actions">
                     <div class="header-notifications">
-                        <button id="notifications-trigger" class="icon-button" type="button" aria-label="Notificaciones">
+                        <button id="notifications-trigger" class="nav-item nav-item-action" type="button" title="Notificaciones">
                             {{ icon('bell') }}
+                            <span class="nav-item-label">Notificaciones</span>
                             <span class="notifications-badge" id="notifications-badge" hidden></span>
                         </button>
                         <div id="notifications-panel" class="notifications-panel" hidden>
@@ -71,25 +81,46 @@
                         </div>
                     </div>
                     <div class="user-menu">
-                        <button id="user-menu-trigger" class="icon-button" type="button" aria-label="Preferencias">
+                        <button id="user-menu-trigger" class="nav-item nav-item-action" type="button" title="Preferencias">
                             {{ icon('user') }}
+                            <span class="nav-item-label">Preferencias</span>
                         </button>
                         <div id="user-menu-panel" class="user-menu-panel" hidden>
                             <div class="user-menu-row">
                                 <span>Moneda</span>
+                                <div class="segmented-toggle" id="currency-toggle">
+                                    <button class="segmented-toggle-option" data-value="ARS" type="button">ARS</button>
+                                    <button class="segmented-toggle-option" data-value="USD" type="button">USD</button>
+                                </div>
+                            </div>
+                            <div class="user-menu-row">
+                                <span class="glossary-term" tabindex="0">Fuente USD<span class="glossary-term-panel">Fuente de la cotización USD usada para el toggle general ARS/USD de Tenencias y Posiciones: BNA, MEP o CCL. No afecta el patrimonio del encabezado, "Exposición por moneda" ni la columna P&amp;L USD, que siempre usan MEP.</span></span>
                                 <div class="user-menu-currency">
-                                    <div class="segmented-toggle" id="currency-toggle">
-                                        <button class="segmented-toggle-option" data-value="ARS" type="button">ARS</button>
-                                        <button class="segmented-toggle-option" data-value="USD" type="button">USD</button>
+                                    <div class="segmented-toggle" id="usd-source-toggle">
+                                        <button class="segmented-toggle-option" data-value="bna" type="button">BNA</button>
+                                        <button class="segmented-toggle-option" data-value="mep" type="button">MEP</button>
+                                        <button class="segmented-toggle-option" data-value="ccl" type="button">CCL</button>
                                     </div>
-                                    <button id="bna-variant-chevron" class="user-menu-chevron-btn" type="button" aria-label="Elegir cotizacion BNA">{{ icon('chevron') }}</button>
+                                    <button id="bna-variant-chevron" class="user-menu-chevron-btn" type="button" aria-label="Elegir cotizacion BNA" hidden>{{ icon('chevron') }}</button>
                                 </div>
                             </div>
                             <div id="bna-variant-panel" class="bna-variant-panel" hidden>
+                                <p class="hint" style="margin: 0 4px 4px;">BNA cotiza 4 variantes -- elegí cuál usar:</p>
                                 <label><input type="radio" name="bna-variant" value="divisa_venta">Divisa venta</label>
                                 <label><input type="radio" name="bna-variant" value="divisa_compra">Divisa compra</label>
                                 <label><input type="radio" name="bna-variant" value="billete_venta">Billete venta</label>
                                 <label><input type="radio" name="bna-variant" value="billete_compra">Billete compra</label>
+                            </div>
+                            <div class="user-menu-row">
+                                <span class="glossary-term" tabindex="0">Ajustar ARS por inflación<span class="glossary-term-panel">Si está activo, los montos en ARS se muestran ajustados por inflación acumulada ("pesos de hoy") en vez de pesos nominales de cada fecha.</span></span>
+                                <label class="switch">
+                                    <input type="checkbox" id="inflation-adjusted-switch">
+                                    <span class="switch-track"><span class="switch-thumb"></span></span>
+                                </label>
+                            </div>
+                            <div class="user-menu-row">
+                                <span class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera contra "invertir en cauciones" -- no existe una fuente pública gratuita de esta tasa.</span></span>
+                                <input type="number" id="caucion-reference-input" class="user-menu-number-input" step="0.1" min="0" placeholder="sin configurar">
                             </div>
                             <div class="user-menu-row">
                                 <span>Modo oscuro</span>
@@ -106,8 +137,8 @@
         </aside>
         <div class="main">
             <div class="page-heading">
-                <h1>{% block page_title %}{% endblock %}</h1>
-                <p>{% block page_subtitle %}{% endblock %}</p>
+                <h1 id="page-title">{% block page_title %}{% endblock %}</h1>
+                <p id="page-subtitle">{% block page_subtitle %}{% endblock %}</p>
             </div>
             <div class="page-body">
                 {% block content %}{% endblock %}

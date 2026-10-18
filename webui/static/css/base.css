@@ -4,8 +4,24 @@
     box-sizing: border-box;
 }
 
+/* Varios componentes fijan su propio `display` (flex/grid) para cuando estan
+   abiertos -- sin esta regla, ese `display` le gana en la cascada al `[hidden]`
+   nativo del navegador (ambos son origen "author"/UA con la misma
+   especificidad, y gana el ultimo en orden de cascada) y el panel queda
+   visible para siempre una vez que se abre una vez. Confirmado: pasaba con
+   .column-toggle-panel y .bna-variant-panel. */
+[hidden] {
+    display: none !important;
+}
+
 html {
     color-scheme: dark;
+    /* Fase 1 (ver conversación): el ancho de contenido disponible variaba
+       entre vistas (1016 vs 1026px reportado) según si ESA vista en
+       particular era lo bastante alta como para necesitar el scrollbar
+       vertical de la página o no -- stable reserva ese gutter siempre, haya
+       o no overflow real, para que ningún layout salte al cambiar de vista. */
+    scrollbar-gutter: stable;
 }
 
 body {
@@ -56,7 +72,7 @@ a {
 }
 
 .num {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     font-feature-settings: 'tnum' 1;
 }

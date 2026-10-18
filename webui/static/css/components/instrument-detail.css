@@ -1,8 +1,28 @@
+/* Breadcrumb + "Ver en Cartera" en la misma fila (ver conversación, pase de
+   UX/UI) -- interconexión entre el detalle de un instrumento y el catálogo
+   unificado de Instrumentos, siempre a mano sin tener que usar el nav lateral.
+   Fase 1: breadcrumb pasó de "último nav activo" a jerárquico fijo
+   "Instrumentos › SÍMBOLO" (link + separador + símbolo actual, no clickeable)
+   -- justify-content flex-start (antes space-between, pensado para solo 2
+   hijos) + margin-left:auto en el botón de la derecha, para no estirar el
+   separador/símbolo lejos del link cuando ahora son 4 elementos en la fila. */
+.detail-top-row {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.detail-top-row .btn {
+    margin-left: auto;
+}
+
 .detail-breadcrumb {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    margin-bottom: 16px;
     color: var(--text-secondary);
     text-decoration: none;
     font-size: var(--step--1);
@@ -18,16 +38,82 @@
     height: 14px;
 }
 
+.detail-breadcrumb-sep {
+    color: var(--text-tertiary);
+    font-size: var(--step--1);
+}
+
+.detail-breadcrumb-current {
+    color: var(--text-primary);
+    font-size: var(--step--1);
+    font-weight: 600;
+}
+
+.detail-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-bottom: 20px;
+}
+
 .detail-title-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    margin-bottom: 20px;
 }
 
 .detail-title-row h2 {
+    font-family: var(--font-sans);
+    font-size: 2rem;
+    font-weight: 600;
+}
+
+.detail-price-row {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    margin-top: 6px;
+}
+
+.detail-price-value {
+    font-family: var(--font-sans);
     font-size: var(--step-3);
     font-weight: 600;
+}
+
+.detail-price-change {
+    font-size: var(--step-0);
+    font-weight: 600;
+}
+
+.detail-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.detail-explain {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.detail-explain summary {
+    cursor: pointer;
+    font-size: var(--step--1);
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.detail-explain summary:hover {
+    color: var(--text-primary);
+}
+
+.detail-explain p.hint {
+    margin-top: 10px;
 }
 
 .detail-position-grid {
@@ -42,8 +128,139 @@
 }
 
 .detail-position-item .value {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
     font-size: var(--step-1);
     font-weight: 600;
     margin-top: 2px;
+}
+
+/* Barra de Posicion + Riesgo SIEMPRE visible debajo del precio de cabecera
+   (ya no son pestañas aparte -- ver instrument-detail.js) -- mismos items
+   que .detail-position-grid, pero mas angosta y con un separador propio para
+   no quedar pegada al precio de arriba ni a las pestañas de abajo. */
+.detail-position-compact {
+    padding: 12px 16px;
+    margin: 4px 0 16px;
+    background: var(--bg-content);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+}
+
+.detail-position-compact .detail-position-item .value {
+    font-size: var(--step-0);
+}
+
+/* Layout de 2 columnas (ver conversación, limpieza de UI): izquierda el
+   gráfico + alertas de precio, derecha "Análisis Cuantitativo Kronos" +
+   Fundamentales -- 60/40 para darle mas aire al grafico, que es lo que mas
+   espacio horizontal necesita (velas + RSI + MACD apilados). */
+.detail-layout-2col {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(280px, 2fr);
+    gap: 20px;
+    align-items: start;
+}
+
+@media (max-width: 1100px) {
+    .detail-layout-2col {
+        grid-template-columns: 1fr;
+    }
+}
+
+.detail-analysis-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.detail-analysis-col .panel {
+    margin-bottom: 0;
+}
+
+.detail-analysis-col .panel-body {
+    padding: 14px 16px;
+}
+
+.detail-chart-col .panel {
+    margin-top: 16px;
+    margin-bottom: 0;
+}
+
+.detail-section-title {
+    margin-top: 24px;
+    margin-bottom: 8px;
+    font-size: var(--step-0);
+}
+
+/* Botones "Fijar/Quitar TP/SL" dentro de un .mini-stat (ver conversación,
+   pase de UX/UI) -- .btn-compact (buttons.css) les da el tamaño chico, acá
+   solo se agrega el posicionamiento propio de la tile (bloque, pegado al
+   número de arriba). */
+.mini-stat-action-btn {
+    display: block;
+    margin-top: 6px;
+}
+
+.detail-fundamentals-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+    gap: 14px;
+}
+
+.detail-fundamental-item .label {
+    font-size: 0.7rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.detail-fundamental-item .value {
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
+    font-size: var(--step-0);
+    font-weight: 600;
+    margin-top: 2px;
+}
+
+.detail-fundamental-note {
+    margin-top: 2px;
+}
+
+.hint-spaced {
+    margin-top: 8px;
+}
+
+.btn-spaced {
+    margin-top: 12px;
+}
+
+.detail-chart-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 16px;
+    margin: 16px 0;
+}
+
+.detail-chart-header .hint {
+    margin: 0;
+}
+
+/* Reemplaza style="display:flex; justify-content:space-between; ..." inline
+   (ver DESIGN_SYSTEM.md) -- fila de controles de rango + toolbar de alertas,
+   arriba del grafico. */
+.detail-chart-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+/* Reemplaza style="display:none" inline en #detail-chart-content -- JS sigue
+   alternando con .style.display directo (gana sobre esta clase sin
+   !important), mismo patron que index.html. */
+.hidden-block {
+    display: none;
 }

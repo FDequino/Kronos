@@ -2,6 +2,48 @@
     display: flex;
     gap: 6px;
     margin-bottom: 18px;
+    /* Fase 1 (ver conversación): con botones de texto largo ("Configuración
+       del Motor"), el flex container los achicaba hasta que el TEXTO
+       envolvía adentro del botón -- saltaba a 2 líneas y todo el layout de
+       abajo brincaba, justo cuando aparecía/desaparecía el scrollbar
+       vertical de la página (el ancho disponible cambiaba unos px). Ahora en
+       vez de achicar los botones, la fila entera scrollea horizontal.
+       scrollbar-gutter:stable reserva el espacio del scrollbar de PÁGINA
+       siempre (haya o no contenido que lo active), así el ancho de esta fila
+       nunca cambia entre vistas. */
+    overflow-x: auto;
+    scrollbar-gutter: stable;
+}
+
+/* Fase 18: no alcanzaba con fijar título/KPIs/buscador de CADA panel --
+   "no es que el buscador esté quieto, es todo lo de arriba con las tabs".
+   La fila de subtabs (con la que se cambia, ej. Bandeja/Kronos/Alertas) es
+   la que de verdad define el "espacio de trabajo": va pegada arriba de
+   TODO, y el header fijo de cada panel (.panel-sticky-head) se corre hacia
+   abajo exactamente su alto real (--subtabs-h, medido por JS con
+   ResizeObserver -- ver shared/sticky-offset.js) para no superponerse.
+   Solo la fila de más arriba (hija directa de .view) necesita esto -- las
+   subtabs anidadas (ej. Kronos->Histórico/Calibración/Cartera, adentro de
+   su propio .panel) no son parte del "espacio de trabajo" global. */
+.view > .subtabs {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--bg-content);
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+/* Subtabs anidadas directo adentro de un .panel (ej. Kronos ->
+   Histórico/Calibración/Cartera) quedan pegadas a la línea del
+   panel-header sin esto -- las subtabs de nivel superior (fuera de un
+   .panel, arriba de toda la página) no la necesitan. El padding horizontal
+   es el mismo que .panel-header usa (16px 20px) -- sin él, los botones
+   quedaban pegados al borde izquierdo del panel en vez de alinearse con
+   el título de arriba. */
+.panel > .subtabs {
+    margin-top: 16px;
+    padding: 0 20px;
 }
 
 .subtab-btn {
@@ -14,6 +56,13 @@
     font-size: var(--step--1);
     font-weight: 500;
     cursor: pointer;
+    /* Fase 1: nunca envolver el texto adentro del botón -- combinado con el
+       overflow-x de .subtabs de arriba, un botón de texto largo scrollea con
+       el resto de la fila en vez de partirse en 2 líneas. flex-shrink:0 evita
+       que el flex container los achique para hacerlos "entrar" (eso era lo
+       que forzaba el wrap en primer lugar). */
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .subtab-btn:hover {

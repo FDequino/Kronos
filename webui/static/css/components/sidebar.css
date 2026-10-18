@@ -24,9 +24,15 @@
     justify-content: center;
 }
 
-.sidebar.collapsed .nav-item span,
-.sidebar.collapsed .sidebar-foot-meta {
+.sidebar.collapsed .nav-item-label,
+.sidebar.collapsed .sidebar-foot-meta,
+.sidebar.collapsed .sidebar-brand-name {
     display: none;
+}
+
+.sidebar.collapsed .sidebar-brand {
+    justify-content: center;
+    padding: 16px 0 0;
 }
 
 .sidebar.collapsed .nav-item {
@@ -35,6 +41,36 @@
 
 .sidebar.collapsed .sidebar-actions {
     align-items: center;
+}
+
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 18px 16px 0;
+}
+
+.sidebar-brand-mark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+    border-radius: var(--radius-sm);
+    background: var(--accent-dim);
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: var(--step-0);
+}
+
+.sidebar-brand-name {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: var(--step-0);
+    letter-spacing: 0.04em;
+    color: var(--text-primary);
 }
 
 .sidebar-top {
@@ -126,8 +162,36 @@
 .sidebar-actions {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
+    gap: 2px;
+}
+
+/* Notificaciones/Preferencias se comportan como un nav-item mas (icono+texto
+   expandido, solo icono colapsado) en vez de los circulos sueltos de antes --
+   .nav-item ya resuelve el layout/hover/colapso, esto solo resetea que es
+   un <button>, no un <a>. */
+.nav-item-action {
+    width: 100%;
+    background: transparent;
+    border: none;
+    border-left: 1px solid transparent;
+    font: inherit;
+    cursor: pointer;
+    position: relative;
+}
+
+/* Mas especifico que la regla base de header-bar.css (position:absolute
+   pegada al icono) a proposito: acá, expandido, el badge pasa a ser una
+   pastilla al final de la fila en vez de una esquinita sobre el icono. */
+.nav-item-action .notifications-badge {
+    position: static;
+    margin-left: auto;
+}
+
+.sidebar.collapsed .nav-item-action .notifications-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    margin-left: 0;
 }
 
 .sidebar .notifications-panel,
@@ -156,25 +220,30 @@
         align-items: center;
     }
 
+    /* La navegación principal (Resumen/Decisiones/Instrumentos/...) va
+       primero -- antes quedaba al final (order:3) con Notificaciones/
+       Preferencias arriba de todo (order:1), invirtiendo la jerarquía real:
+       lo más importante para moverse por la app terminaba lo menos visible. */
     .sidebar-nav {
-        order: 3;
+        order: 1;
         flex: 1 1 100%;
         flex-direction: row;
         padding: 10px;
         overflow-x: auto;
-        border-top: 1px solid var(--border);
+        border-top: none;
+        border-bottom: 1px solid var(--border);
     }
 
     .sidebar-foot {
         flex: 1 1 100%;
-        order: 1;
+        order: 2;
         flex-direction: row;
         align-items: center;
         justify-content: space-between;
         gap: 10px;
         min-width: 0;
-        border-top: none;
-        border-bottom: 1px solid var(--border);
+        border-top: 1px solid var(--border);
+        border-bottom: none;
     }
 
     .sidebar-foot-meta {
