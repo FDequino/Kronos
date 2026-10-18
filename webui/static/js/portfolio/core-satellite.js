@@ -7,7 +7,6 @@
 // GET /api/backtest/summary.
 import { $ } from '../shared/dom.js';
 import { fmt, fmtPct, fmtMoney, fmtDate } from '../shared/format.js';
-import { showStatus } from '../shared/status.js';
 import { loadingHtml } from '../shared/loading.js';
 import { activateSubtab } from '../shared/subtabs.js';
 import { infoTooltipHtml, riskTooltipContentHtml } from '../shared/info-tooltip.js';
@@ -51,6 +50,7 @@ let loaded = false;
 let lastSignals = null; // respuesta cruda de /api/signals, para recalcular montos sin re-pedir al servidor
 let allocation = { core_pct: 70, satellite_pct: 30 };
 let exitParams = { take_profit_pct: 4.0, stop_loss_pct: 9.0 };
+let coreThreshold = null; // min_efficiency_score, ver ajustes.js (Umbral del Core)
 
 function suggestedAmount(positionWeight, enginePct) {
     if (!lastSignals?.account_value_ars) return null;
@@ -65,54 +65,26 @@ function dualPrice(usd, ars) {
 }
 
 // --- Configuración del Motor -------------------------------------------------
-
+// Fase 6 (ver conversación): esto ANTES era un editor completo (slider +
+// inputs de TP/SL + guardar), un duplicado exacto del bloque "Motor
+// Cuantitativo y Estrategia" de Ajustes -- mismos endpoints
+// (capitalAllocation/satelliteExitParams), dos lugares para cambiar el mismo
+// valor. Ahora es de solo lectura acá -- un link lleva a Ajustes, la única
+// fuente editable. `allocation`/`exitParams` se siguen pidiendo igual (la
+// fila de Oportunidades del Día los necesita para el "Monto sugerido" de
+// cada tarjeta).
 function renderAllocationControls() {
     const el = $('core-satellite-allocation');
     if (!el) return;
     el.innerHTML = `
-        <div class="range-slider" style="max-width: 420px;">
-            <label for="core-allocation-slider" class="hint">Asignación de capital: Core <b id="core-pct-label">${fmt(allocation.core_pct, 0)}</b>% / Satélite <b id="satellite-pct-label">${fmt(allocation.satellite_pct, 0)}</b>%</label>
-            <input type="range" id="core-allocation-slider" min="0" max="100" step="1" value="${allocation.core_pct}" style="width: 100%;">
-        </div>
-        <div class="exit-params-controls" style="margin-top: 16px; display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap;">
-            <label class="hint">Take Profit Satélite (%)
-                <input type="number" id="satellite-tp-input" min="0.1" max="100" step="0.1" value="${exitParams.take_profit_pct}" style="display:block; width: 110px;">
-            </label>
-            <label class="hint">Stop Loss Satélite (%, techo máx.)
-                <input type="number" id="satellite-sl-input" min="0.1" max="100" step="0.1" value="${exitParams.stop_loss_pct}" style="display:block; width: 110px;">
-            </label>
-            <button id="save-exit-params-btn" class="btn btn-secondary" type="button">Guardar</button>
-        </div>
+        <p class="hint">
+            Core <b>${fmt(allocation.core_pct, 0)}%</b> / Satélite <b>${fmt(allocation.satellite_pct, 0)}%</b>
+            · Take Profit Satélite <b>+${fmt(exitParams.take_profit_pct, 1)}%</b>
+            · Stop Loss Satélite hasta <b>-${fmt(exitParams.stop_loss_pct, 1)}%</b>
+            ${coreThreshold !== null ? `· Umbral del Core <b>${fmt(coreThreshold, 0)}</b>` : ''}
+        </p>
+        <a href="#ajustes/estrategia" class="btn btn-secondary">Editar en Ajustes</a>
     `;
-    const slider = $('core-allocation-slider');
-    slider.addEventListener('input', () => {
-        const corePct = Number(slider.value);
-        allocation = { core_pct: corePct, satellite_pct: Math.round((100 - corePct) * 100) / 100 };
-        $('core-pct-label').textContent = fmt(allocation.core_pct, 0);
-        $('satellite-pct-label').textContent = fmt(allocation.satellite_pct, 0);
-        renderOpportunityCards(); // recalcula montos sugeridos al instante, sin red
-    });
-    slider.addEventListener('change', async () => {
-        try {
-            const { data } = await api.setCapitalAllocation(allocation.core_pct);
-            allocation = data;
-            showStatus('status-banner', 'success', `Asignación actualizada: Core ${fmt(data.core_pct, 0)}% / Satélite ${fmt(data.satellite_pct, 0)}%`);
-        } catch (error) {
-            showStatus('status-banner', 'error', error.response?.data?.error || error.message);
-        }
-    });
-    $('save-exit-params-btn').addEventListener('click', async () => {
-        const take_profit_pct = Number($('satellite-tp-input').value);
-        const stop_loss_pct = Number($('satellite-sl-input').value);
-        try {
-            const { data } = await api.updateSatelliteExitParams({ take_profit_pct, stop_loss_pct });
-            exitParams = data;
-            showStatus('status-banner', 'success',
-                `Salida Satélite actualizada: TP +${fmt(data.take_profit_pct, 1)}% / SL hasta -${fmt(data.stop_loss_pct, 1)}%`);
-        } catch (error) {
-            showStatus('status-banner', 'error', error.response?.data?.error || error.message);
-        }
-    });
 }
 
 // --- Oportunidades del Día (tarjetas, ver conversación: reemplaza la tabla
@@ -312,6 +284,10 @@ async function loadAllocationAndRender() {
         const { data } = await api.satelliteExitParams();
         exitParams = data;
     } catch { /* se queda con el default 4.0/9.0 si el endpoint falla */ }
+    try {
+        const { data } = await api.coreParams();
+        coreThreshold = data.min_efficiency_score;
+    } catch { /* se omite del resumen si el endpoint falla, nunca se inventa un valor */ }
     renderAllocationControls();
 }
 
@@ -399,7 +375,11 @@ export function initCoreSatelliteView() {
     // hash directo #decisiones (recarga/bookmark, sin ningún click real).
     const navBtn = document.querySelector('.nav-item[data-nav-id="decisiones"]');
     if (navBtn) navBtn.addEventListener('click', loadCoreSatelliteIfNeeded);
-    if (location.hash.slice(1).split('?')[0] === 'decisiones') loadCoreSatelliteIfNeeded();
+    // split('/')[0] (no solo split('?')[0]) -- el hash de 2 segmentos
+    // #decisiones/motor (Fase 1) no matcheaba antes acá, así que entrar
+    // directo a esa URL (recarga/bookmark) dejaba el panel en su skeleton
+    // para siempre (bug real, encontrado al probar el resumen de Fase 6).
+    if (location.hash.slice(1).split('?')[0].split('/')[0] === 'decisiones') loadCoreSatelliteIfNeeded();
 
     const refreshBtn = $('refresh-dual-engine-signals-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', loadSignals);

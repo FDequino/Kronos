@@ -17,7 +17,7 @@ const VIEW_META = {
     transacciones: { title: 'Transacciones', subtitle: 'Historial de operaciones, dividendos y rentas' },
     'plazos-fijos': { title: 'Plazos Fijos', subtitle: 'Plazos fijos y cauciones' },
     prestamos: { title: 'Préstamos', subtitle: 'Préstamos otorgados y recibidos' },
-    ajustes: { title: 'Ajustes', subtitle: 'Estrategia, notificaciones, conexiones y preferencias' },
+    ajustes: { title: 'Ajustes', subtitle: 'Estrategia, reporte PDF, conexiones y preferencias' },
 };
 
 function setPageMeta(target, hash, isDetail) {

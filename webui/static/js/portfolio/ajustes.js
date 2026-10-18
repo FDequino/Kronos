@@ -317,6 +317,7 @@ async function loadPreferencesControls() {
     setAjustesCurrencyActive(settings.display_currency);
     setAjustesUsdSourceActive(settings.usd_rate_source);
     $('ajustes-bna-variant-select').value = settings.bna_rate_variant;
+    $('ajustes-inflation-adjusted-switch').checked = !!settings.ars_inflation_adjusted;
 
     const { data: config } = await api.signalConfig();
     if (config.caucion_reference_tna !== null && config.caucion_reference_tna !== undefined) {
@@ -345,6 +346,10 @@ function initPreferencesControls() {
         await api.updateSettings({ bna_rate_variant: e.target.value });
         notifyCurrencyChanged($('ajustes-currency-toggle').querySelector('.active')?.dataset.value);
     });
+    $('ajustes-inflation-adjusted-switch').addEventListener('change', async (e) => {
+        await api.updateSettings({ ars_inflation_adjusted: e.target.checked ? 1 : 0 });
+        notifyCurrencyChanged($('ajustes-currency-toggle').querySelector('.active')?.dataset.value);
+    });
     let caucionSaveTimer = null;
     $('ajustes-caucion-reference-input').addEventListener('input', (e) => {
         clearTimeout(caucionSaveTimer);
@@ -360,7 +365,12 @@ function initPreferencesControls() {
     document.addEventListener('currency-changed', () => { loadPreferencesControls(); });
 }
 
-// --- Bloque 4: Reporte PDF y Notificaciones ---------------------------------
+// --- Bloque 4: Reporte PDF ---------------------------------------------------
+// Renombrado de "Notificaciones" (ver conversación, Fase 6) -- colisionaba
+// con la campana de la barra lateral (esa sí son notificaciones de verdad:
+// vencimientos, señales). Esto siempre fue, nada más, la configuración del
+// PDF y su envío por Telegram -- nunca hubo acá un ajuste de qué dispara una
+// alerta o no.
 
 async function loadPdfReportControls() {
     const { data: settings } = await api.settings();

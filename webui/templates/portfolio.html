@@ -101,7 +101,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Configuración del Motor</h2>
-                    <p class="panel-subtitle">Asignación de capital dinámica entre el Fondo de Mediano Plazo (Core) y la Estrategia Corto Plazo (Satélite), y los parámetros de salida de esta última.</p>
+                    <p class="panel-subtitle">Asignación de capital entre el Fondo de Mediano Plazo (Core) y la Estrategia Corto Plazo (Satélite), y los parámetros de salida de esta última — de solo lectura acá, se edita desde Ajustes.</p>
                 </div>
             </div>
             <div class="panel-body" id="core-satellite-allocation"></div>
@@ -145,7 +145,7 @@
                         <p class="panel-subtitle">Simulación con dinero ficticio de las señales de ambos motores — valida el edge real sin arriesgar capital. Patrimonio virtual en USD CCL.</p>
                     </div>
                     <div class="user-menu-row" style="padding: 0;">
-                        <span class="hint">Activado (aplica al Guardar)</span>
+                        <span class="hint">Activado — recién toma efecto al tocar "Guardar", más abajo</span>
                         <label class="switch">
                             <input type="checkbox" id="paper-trading-enabled-toggle">
                             <span class="switch-track"><span class="switch-thumb"></span></span>
@@ -428,7 +428,7 @@
         <button class="subtab-btn" type="button" data-subtab-target="telegram">Telegram y Accesos</button>
         <button class="subtab-btn" type="button" data-subtab-target="moneda">Moneda y Referencias</button>
         <button class="subtab-btn" type="button" data-subtab-target="conexiones">Conexiones</button>
-        <button class="subtab-btn" type="button" data-subtab-target="notificaciones">Notificaciones</button>
+        <button class="subtab-btn" type="button" data-subtab-target="notificaciones">Reporte PDF</button>
     </div>
 
     <div class="subtab-panel active" data-subtab-panel="estrategia">
@@ -583,6 +583,13 @@
                         <label for="ajustes-caucion-reference-input" class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera (y el backtest Core/Satélite) contra "invertir en cauciones" — no existe una fuente pública gratuita de esta tasa.</span></label>
                         <input type="number" id="ajustes-caucion-reference-input" step="0.1" min="0" placeholder="sin configurar">
                     </div>
+                    <div class="field">
+                        <label class="glossary-term" tabindex="0">Ajustar ARS por inflación<span class="glossary-term-panel">Si está activo, los montos en ARS se muestran ajustados por inflación acumulada ("pesos de hoy") en vez de pesos nominales de cada fecha.</span></label>
+                        <label class="switch">
+                            <input type="checkbox" id="ajustes-inflation-adjusted-switch">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -615,7 +622,7 @@
         <div class="panel">
             <div class="panel-header">
                 <div class="panel-header-text">
-                    <h2>Reporte PDF y Notificaciones</h2>
+                    <h2>Reporte PDF</h2>
                     <p class="panel-subtitle">Qué secciones y en qué moneda se arma el PDF, y cuándo se manda por Telegram. Tenencias siempre está incluida — un cambio de horario tarda hasta 5 minutos en reflejarse en el bot, no es instantáneo ni requiere reiniciar nada.</p>
                 </div>
             </div>
