@@ -61,6 +61,28 @@
     padding: 20px 24px 16px;
     color: var(--hero-fg);
     margin-bottom: 24px;
+    transition: padding 160ms ease;
+}
+
+/* Colapso al scrollear (ver conversación, Fase 5): un IntersectionObserver
+   sobre un sentinel ANTES de .page-sticky-head (ver patrimonio.js::
+   wireHeroCollapse) agrega esta clase cuando el sentinel deja de
+   intersectar -- nunca un scroll listener (el usuario lo pidió
+   explícitamente: "usá position:sticky + IntersectionObserver, no un scroll
+   listener"). El valor + delta siguen siempre visibles; lo que desaparece es
+   el texto de apoyo (eyebrow, conversión MEP) que ya cumplió su propósito
+   una vez que el usuario empezó a scrollear más abajo. */
+.hero-card.collapsed {
+    padding: 10px 24px;
+}
+
+.hero-card.collapsed .hero-eyebrow,
+.hero-card.collapsed .hero-sub {
+    display: none;
+}
+
+.hero-card.collapsed .hero-value {
+    font-size: var(--step-1);
 }
 
 .hero-card .hero-eyebrow {
@@ -80,6 +102,7 @@
     font-weight: 600;
     color: var(--hero-fg);
     letter-spacing: -0.01em;
+    transition: font-size 160ms ease;
 }
 
 .hero-card .hero-sub {
@@ -101,6 +124,17 @@
    la derecha -- igual que el mockup (topbar-top), nunca los pills metidos
    adentro del panel de Evolución. */
 .hero-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+
+/* Header de "Evolución patrimonial" dentro de un .panel-body comun (no
+   .panel-header) -- este panel vive en un tile-detail-panel, no arranca con
+   su propio .panel-header con border-bottom. */
+.evolucion-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
 .hero-card .segmented-toggle { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
 .hero-card .segmented-toggle .segmented-toggle-option { color: rgba(255, 255, 255, 0.85); }
 .hero-card .segmented-toggle .segmented-toggle-option.active { background: var(--hero-fg); color: var(--accent); }
@@ -146,8 +180,16 @@
 /* Resumen horizontal -- arriba de la barra de búsqueda en vez de aside
    lateral, para aprovechar el ancho completo del panel en todas las
    pestañas con tabla + búsqueda (decisión del usuario sobre el layout). */
+/* auto-fill, no auto-fit (ver conversación, Fase 5: "tarjeta huérfana" --
+   repetido en las 9 vistas que usan esta fila, no solo Paper Trading) --
+   auto-fit colapsa las columnas vacías y reparte ese espacio entre las
+   tarjetas existentes vía 1fr, así que la última tarjeta de una fila
+   incompleta (ej. la 5ta de 5 cuando solo entran 4 por fila) se estiraba
+   mucho más ancha que sus hermanas. auto-fill deja las columnas vacías
+   ocupando su lugar -- la tarjeta huérfana queda del mismo ancho que el
+   resto, con espacio en blanco al lado en vez de un estirón inconsistente. */
 .mini-stat-grid.row {
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     margin-bottom: 16px;
 }
 /* En la grilla vertical de 2 columnas, "span2" destaca una tarjeta ancha a

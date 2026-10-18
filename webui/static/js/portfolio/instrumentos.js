@@ -189,17 +189,38 @@ function rowHtml(row) {
     `;
 }
 
+// "Mostrados"/"Clases" (ver conversación, Fase 5) no decían nada accionable
+// -- un conteo crudo de filas ya lo muestra "Mostrar más" de la tabla, y la
+// cantidad de clases distintas no ayuda a decidir nada. Mayor suba/baja usa
+// el mismo pct_change que ya trae cada fila (Explorador BYMA), sobre el
+// bucket/filtro/búsqueda ACTUAL -- sirve para notar algo del universo
+// filtrado sin tener que escanear la tabla entera a mano.
+function topMover(items, dir) {
+    const withPct = items.filter((i) => i.pct_change !== null && i.pct_change !== undefined);
+    if (!withPct.length) return null;
+    return withPct.reduce((best, i) => {
+        if (!best) return i;
+        return (dir === 'up' ? i.pct_change > best.pct_change : i.pct_change < best.pct_change) ? i : best;
+    }, null);
+}
+
+function moverCellHtml(item, cls) {
+    if (!item) return '—';
+    return `<span class="${cls}">${item.symbol} ${fmtPct(item.pct_change, 2, { signed: true })}</span>`;
+}
+
 function renderSummary(items) {
     const el = $('instrumentos-summary');
     if (!el) return;
     const enCartera = items.filter((i) => i.isCartera).length;
     const sinAgregar = items.filter((i) => !i.inCatalog).length;
-    const clases = new Set(items.map((i) => i.clase)).size;
+    const up = topMover(items, 'up');
+    const down = topMover(items, 'down');
     el.innerHTML = `
-        <div class="mini-stat"><div class="l">Mostrados</div><div class="v num">${items.length}</div></div>
         <div class="mini-stat"><div class="l">En cartera</div><div class="v num">${enCartera}</div></div>
         <div class="mini-stat"><div class="l">Sin agregar</div><div class="v num">${sinAgregar}</div></div>
-        <div class="mini-stat"><div class="l">Clases</div><div class="v num">${clases}</div></div>
+        <div class="mini-stat"><div class="l">Mayor suba</div><div class="v num">${moverCellHtml(up, 'cell-positive')}</div></div>
+        <div class="mini-stat"><div class="l">Mayor baja</div><div class="v num">${moverCellHtml(down, 'cell-negative')}</div></div>
     `;
 }
 

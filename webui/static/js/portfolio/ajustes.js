@@ -85,41 +85,49 @@ function profileCardHtml(profile, activeProfileId) {
     const sharpeRange = profile.sharpe_low === profile.sharpe_high
         ? fmt(profile.sharpe_low, 2)
         : `${fmt(profile.sharpe_low, 2)} a ${fmt(profile.sharpe_high, 2)}`;
+    // Un solo nivel (col-4 + panel en el MISMO div, ver conversación, Fase 5)
+    // -- antes .col-4 envolvía un .panel aparte, lo que lo dejaba afuera de
+    // la regla ".grid12 > .panel" (flex-column, alto parejo con el resto de
+    // la fila) porque esa regla pide hijo DIRECTO de .grid12. Mismo patrón
+    // que gananciaAsideHtml ya usa (<aside class="panel col-4">).
+    // El badge "Activo" ya dice que este es el perfil activo -- un botón
+    // deshabilitado "Perfil Activo" debajo repetía la misma info sin ninguna
+    // acción posible, solo ruido visual.
     return `
-        <div class="col-4">
-            <div class="panel ajustes-profile-card ${isActive ? 'active' : ''}">
-                <div class="panel-header">
-                    <div class="panel-header-text"><h2>${profile.label}</h2></div>
-                    ${isActive ? '<span class="tag tag-positive">Activo</span>' : ''}
-                </div>
-                <div class="panel-body">
-                    <div class="mini-stat-grid">
-                        <div class="mini-stat span2">
-                            <div class="l">Asignación</div>
-                            <div class="v">Core ${fmt(profile.core_pct, 0)}% / Satélite ${fmt(satellitePct, 0)}%</div>
-                        </div>
-                        <div class="mini-stat">
-                            <div class="l">Retorno Est. USD${INDICATOR_TOOLTIPS.dispersionP10P90}</div>
-                            <div class="v">+${fmt(profile.expected_return_usd_low_pct, 1)}% a +${fmt(profile.expected_return_usd_high_pct, 1)}%</div>
-                        </div>
-                        <div class="mini-stat">
-                            <div class="l">Sharpe${INDICATOR_TOOLTIPS.sharpe}</div>
-                            <div class="v">${sharpeRange}</div>
-                        </div>
-                        <div class="mini-stat">
-                            <div class="l">Max Drawdown${INDICATOR_TOOLTIPS.maxDrawdown}</div>
-                            <div class="v">${fmt(profile.max_drawdown_pct, 1)}%</div>
-                        </div>
-                        <div class="mini-stat">
-                            <div class="l">Stop Loss / Take Profit</div>
-                            <div class="v">-${fmt(profile.stop_loss_pct, 1)}% / +${fmt(profile.take_profit_pct, 1)}%</div>
-                        </div>
+        <div class="col-4 panel ajustes-profile-card ${isActive ? 'active' : ''}">
+            <div class="panel-header">
+                <div class="panel-header-text"><h2>${profile.label}</h2></div>
+                ${isActive ? '<span class="tag tag-positive">Activo</span>' : ''}
+            </div>
+            <div class="panel-body">
+                <div class="mini-stat-grid">
+                    <div class="mini-stat span2">
+                        <div class="l">Asignación</div>
+                        <div class="v">Core ${fmt(profile.core_pct, 0)}% / Satélite ${fmt(satellitePct, 0)}%</div>
                     </div>
-                    <button type="button" class="btn ${isActive ? 'btn-secondary' : 'btn-primary'} ajustes-activate-profile-btn"
-                            data-profile-id="${profile.id}" ${isActive ? 'disabled' : ''} style="width: 100%;">
-                        ${isActive ? 'Perfil Activo' : 'Activar Perfil'}
-                    </button>
+                    <div class="mini-stat">
+                        <div class="l">Retorno Est. USD${INDICATOR_TOOLTIPS.dispersionP10P90}</div>
+                        <div class="v">+${fmt(profile.expected_return_usd_low_pct, 1)}% a +${fmt(profile.expected_return_usd_high_pct, 1)}%</div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="l">Sharpe${INDICATOR_TOOLTIPS.sharpe}</div>
+                        <div class="v">${sharpeRange}</div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="l">Max Drawdown${INDICATOR_TOOLTIPS.maxDrawdown}</div>
+                        <div class="v">${fmt(profile.max_drawdown_pct, 1)}%</div>
+                    </div>
+                    <div class="mini-stat">
+                        <div class="l">Stop Loss / Take Profit</div>
+                        <div class="v">-${fmt(profile.stop_loss_pct, 1)}% / +${fmt(profile.take_profit_pct, 1)}%</div>
+                    </div>
                 </div>
+                ${isActive ? '' : `
+                    <button type="button" class="btn btn-primary ajustes-activate-profile-btn"
+                            data-profile-id="${profile.id}" style="width: 100%;">
+                        Activar Perfil
+                    </button>
+                `}
             </div>
         </div>
     `;

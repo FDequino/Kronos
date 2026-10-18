@@ -438,6 +438,25 @@ td.num, th.num {
     color: var(--text-tertiary);
 }
 
+/* Estado vacío "de verdad" (ver conversación, Fase 5: Plazos Fijos mostraba
+   KPIs en cero + buscador + filtros encima de este mismo mensaje, puro ruido
+   cuando no hay una sola fila cargada) -- a diferencia de .table-empty (que
+   sigue usándose tal cual para "sin resultados para este filtro", un caso
+   mucho más frecuente que no amerita una CTA grande), esto se reserva para
+   cuando la tabla entera está vacía: mensaje + un botón para cargar el
+   primer registro, sin el resto del chrome (buscador/filtros/columnas/KPIs
+   en cero) que .view-toolbar/.mini-stat-grid ya ocultan por su lado.*/
+.table-empty-state {
+    padding: 48px 20px;
+    text-align: center;
+}
+
+.table-empty-state p {
+    color: var(--text-tertiary);
+    max-width: 440px;
+    margin: 0 auto 16px;
+}
+
 .tag {
     display: inline-flex;
     align-items: center;

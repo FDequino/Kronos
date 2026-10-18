@@ -723,7 +723,6 @@ function headerHtml(exposure, usdMepRate, benchmarks) {
                         ${heroDeltaHtml(benchmarks, patrimonioPeriod)}
                     </div>
                 </div>
-                <div class="segmented-toggle" id="patrimonio-period-controls">${benchmarkPeriodControlsHtml(patrimonioPeriod)}</div>
             </div>
         </div>
     `;
@@ -732,8 +731,14 @@ function headerHtml(exposure, usdMepRate, benchmarks) {
 // --- Evolución patrimonial (Gap A/B): mismo chart de benchmarks del Dashboard
 // (TWR cartera vs. caución/SPY) -- el período se controla desde el topbar.
 function evolucionSectionHtml() {
+    // Los pills de período se mudan acá (ver conversación, Fase 5) -- antes
+    // vivían en el hero, lejos del gráfico que en realidad controlan; el
+    // hero solo muestra el delta resultante (heroDeltaHtml), no el selector.
     return `
-        <h2>Evolución patrimonial</h2>
+        <div class="evolucion-section-header">
+            <h2>Evolución patrimonial</h2>
+            <div class="segmented-toggle" id="patrimonio-period-controls">${benchmarkPeriodControlsHtml(patrimonioPeriod)}</div>
+        </div>
         <p class="panel-subtitle">${glossaryTerm('twr', 'TWR')} de la cartera vs. ${glossaryTerm('benchmark_caucion', 'caución')} y ${glossaryTerm('spy_benchmark', 'SPY')}.</p>
         <div id="patrimonio-benchmark-container"></div>
         <div id="patrimonio-benchmark-stats" style="margin-top:14px;"></div>
@@ -1047,6 +1052,7 @@ export async function renderPatrimonio(bundle, { forceRefresh = false } = {}) {
     const reload = async (opts) => { await renderPatrimonio(bundle, opts); };
 
     container.innerHTML = `
+        <div id="patrimonio-hero-sentinel"></div>
         <div class="page-sticky-head">
             ${headerHtml(exposure, usdMepRate, benchmarks)}
             ${tilesRowHtml({
@@ -1085,4 +1091,26 @@ export async function renderPatrimonio(bundle, { forceRefresh = false } = {}) {
     applyTileSelection(container);
     wireTiles(container);
     wirePatrimonioDelegation(reload);
+    wireHeroCollapse();
+}
+
+// Colapso del hero al scrollear (ver conversación, Fase 5): un sentinel sin
+// alto, pegado JUSTO antes de .page-sticky-head, deja de intersectar apenas
+// el scroll lo empuja por encima del punto donde el header se "engancha" --
+// ahí recién se agrega .collapsed al hero-card. Se re-crea en cada render
+// (el contenedor entero se reemplaza via innerHTML) -- el observer viejo se
+// desconecta primero para no acumular uno por cada cambio de período/moneda.
+let heroCollapseObserver = null;
+
+function wireHeroCollapse() {
+    heroCollapseObserver?.disconnect();
+    const sentinel = $('patrimonio-hero-sentinel');
+    const hero = document.querySelector('#patrimonio-panel .hero-card');
+    if (!sentinel || !hero) return;
+    const subtabsH = getComputedStyle(document.documentElement).getPropertyValue('--subtabs-h').trim() || '0px';
+    heroCollapseObserver = new IntersectionObserver(
+        ([entry]) => hero.classList.toggle('collapsed', !entry.isIntersecting),
+        { rootMargin: `-${subtabsH} 0px 0px 0px`, threshold: 0 },
+    );
+    heroCollapseObserver.observe(sentinel);
 }

@@ -77,14 +77,20 @@ const CAUCION_SEARCH_CONFIG = {
 export async function loadPlazosFijos() {
     const { data } = await api.plazosFijos();
     currentPlazos = data;
+    const toolbar = $('pf-toolbar');
+    if (toolbar) toolbar.hidden = !currentPlazos.length;
     renderTable();
     renderPfSummary();
 }
 
 // Fase 16: panel "Resumen" al costado, mismo patrón que ya tiene Cauciones.
+// Fase 5: sin un solo plazo fijo cargado, un "Vigentes 0 / Vencen hoy 0 /
+// Monto que vence hoy —" no aporta nada -- queda vacío, el mensaje grande
+// de abajo (ver renderTable) ya cubre ese caso.
 function renderPfSummary() {
     const el = $('pf-summary');
     if (!el) return;
+    if (!currentPlazos.length) { el.innerHTML = ''; return; }
     const vigentes = currentPlazos.filter((r) => !r.vencido);
     const hoy = todayLocalISO();
     const venceHoy = vigentes.filter((r) => r.plazo_fijo.fecha_vencimiento === hoy);
@@ -104,6 +110,7 @@ function renderPfSummary() {
 function renderCaucionesSummary() {
     const el = $('cauciones-summary');
     if (!el) return;
+    if (!currentCauciones.length) { el.innerHTML = ''; return; }
     const vigentes = currentCauciones.filter((r) => !r.vencido);
     const hoy = todayLocalISO();
     const venceHoy = vigentes.filter((r) => r.caucion.fecha_vencimiento === hoy);
@@ -120,6 +127,8 @@ function renderCaucionesSummary() {
 export async function loadCauciones() {
     const { data } = await api.cauciones();
     currentCauciones = data;
+    const toolbar = $('cauciones-toolbar');
+    if (toolbar) toolbar.hidden = !currentCauciones.length;
     renderCaucionesTable();
     renderCaucionesSummary();
 }
@@ -180,11 +189,13 @@ function renderTable() {
     const colspan = columns.length + 1;
     if (!currentPlazos.length) {
         container.innerHTML = `
-            <table><tbody><tr><td colspan="${colspan}" class="table-empty">
-                Todavía no cargáste ningún plazo fijo. Un plazo fijo tradicional o UVA en un banco, para ver el devengado y compararlo contra el resto de la cartera.
-            </td></tr></tbody></table>`;
+            <div class="table-empty-state">
+                <p>Todavía no cargáste ningún plazo fijo. Un plazo fijo tradicional o UVA en un banco, para ver el devengado y compararlo contra el resto de la cartera.</p>
+                <button type="button" class="btn btn-primary" id="pf-empty-add-btn">+ Nuevo plazo fijo</button>
+            </div>`;
         const slot = $('pf-columns-slot');
         if (slot) slot.innerHTML = '';
+        $('pf-empty-add-btn')?.addEventListener('click', () => openPlazoFijoModal());
         return;
     }
     const sorted = pfSorter.key ? pfSorter.apply(currentPlazos, pfSortValue) : currentPlazos;
@@ -262,9 +273,14 @@ function renderCaucionesTable() {
     const columns = caucionColumnsWithAggregates(caucionColumns.visibleColumns());
     const colspan = columns.length + 1;
     if (!currentCauciones.length) {
-        container.innerHTML = `<table><tbody><tr><td colspan="${colspan}" class="table-empty">Sin cauciones registradas.</td></tr></tbody></table>`;
+        container.innerHTML = `
+            <div class="table-empty-state">
+                <p>Sin cauciones registradas. Un préstamo colateralizado de muy corto plazo vía el broker, para ver el panorama general de la cartera.</p>
+                <button type="button" class="btn btn-primary" id="cauciones-empty-add-btn">+ Nueva caución</button>
+            </div>`;
         const slot = $('cauciones-columns-slot');
         if (slot) slot.innerHTML = '';
+        $('cauciones-empty-add-btn')?.addEventListener('click', () => openCaucionModal());
         return;
     }
     const sorted = caucionSorter.key ? caucionSorter.apply(currentCauciones, caucionSortValue) : currentCauciones;

@@ -2,6 +2,17 @@
 
 Lets portfolio/forecast_worker.py reuse whatever model is loaded without
 importing anything from webui/, and without reloading weights per forecast.
+
+NOTA (migración a Chronos-Bolt): el motor predictivo de la cartera real
+(portfolio/forecasting.py) ya NO usa este módulo -- corre en un microservicio
+aparte (services/predictor/) consumido vía model/client.py::ChronosServiceClient.
+Este archivo sigue vivo solo para el demo standalone de Kronos (rutas
+/api/predict, /api/load-model, /api/model-status, /api/available-models en
+webui/app.py), que todavía carga Kronos in-process a propósito -- no se tocó
+porque no era parte de lo pedido en la migración y seguía funcionando.
+Nunca carga pesos al importar este módulo ni al arrancar Flask: load_model()/
+ensure_loaded() son perezosos, solo se disparan si alguien pide explícitamente
+el demo viejo.
 """
 import torch
 
@@ -18,7 +29,7 @@ AVAILABLE_MODELS = {
         'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-2k',
         'context_length': 2048,
         'params': '4.1M',
-        'description': 'Lightweight model, suitable for fast prediction',
+        'description': 'Modelo liviano, para predicciones rápidas',
     },
     'kronos-small': {
         'name': 'Kronos-small',
@@ -26,7 +37,7 @@ AVAILABLE_MODELS = {
         'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
         'context_length': 512,
         'params': '24.7M',
-        'description': 'Small model, balanced performance and speed',
+        'description': 'Modelo chico, equilibrio entre precisión y velocidad',
     },
     'kronos-base': {
         'name': 'Kronos-base',
@@ -34,7 +45,7 @@ AVAILABLE_MODELS = {
         'tokenizer_id': 'NeoQuasar/Kronos-Tokenizer-base',
         'context_length': 512,
         'params': '102.3M',
-        'description': 'Base model, provides better prediction quality',
+        'description': 'Modelo base, mejor calidad de predicción',
     },
 }
 
