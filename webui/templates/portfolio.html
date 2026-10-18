@@ -6,6 +6,7 @@
 
 {% block content %}
 {% from "_skeleton.html" import skeleton_chart, skeleton_rows %}
+{% from "_icons.html" import icon %}
 <div id="status-banner" class="status"></div>
 
 <section class="view" id="view-resumen">
@@ -30,7 +31,7 @@
                     <h2>Tenencias</h2>
                     <div class="panel-header-actions">
                         <span class="hint" id="holdings-currency-note"></span>
-                        <button id="refresh-quotes-btn" class="btn btn-secondary" title="Las cotizaciones ya se actualizan solas en horario de mercado -- este botón fuerza una actualización manual ahora.">Actualizar ahora</button>
+                        <button id="refresh-quotes-btn" class="btn btn-secondary" title="Las cotizaciones ya se actualizan solas en horario de mercado — este botón fuerza una actualización manual ahora.">Actualizar ahora</button>
                     </div>
                 </div>
                 <div class="view-toolbar">
@@ -110,7 +111,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Propuestas</h2>
-                        <p class="panel-subtitle">Sugerencias de compra/venta ordenadas por confianza -- vos decidís, nunca se ejecuta nada solo.</p>
+                        <p class="panel-subtitle">Sugerencias de compra/venta ordenadas por confianza — vos decidís, nunca se ejecuta nada solo.</p>
                     </div>
                 </div>
                 <div class="panel-body no-bottom">
@@ -138,7 +139,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Paper Trading</h2>
-                        <p class="panel-subtitle">Simulación con dinero ficticio de las señales de ambos motores -- valida el edge real sin arriesgar capital. Patrimonio virtual en USD CCL.</p>
+                        <p class="panel-subtitle">Simulación con dinero ficticio de las señales de ambos motores — valida el edge real sin arriesgar capital. Patrimonio virtual en USD CCL.</p>
                     </div>
                     <div class="user-menu-row" style="padding: 0;">
                         <span class="hint">Activado (aplica al Guardar)</span>
@@ -193,7 +194,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Precisión de Kronos por instrumento</h2>
-                    <p class="panel-subtitle">MAPE, acierto direccional y calibración de cada instrumento con pronósticos corridos -- el detalle completo de cada uno vive en su propia página (pestaña Precisión).</p>
+                    <p class="panel-subtitle">MAPE, acierto direccional y calibración de cada instrumento con pronósticos corridos — el detalle completo de cada uno vive en su propia página (pestaña Precisión).</p>
                 </div>
             </div>
             <div class="panel-body" id="rendimiento-kronos-leaderboard">{{ skeleton_chart(180) }}</div>
@@ -246,7 +247,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Comparar</h2>
-                    <p class="panel-subtitle">Pronóstico, riesgo, técnico, fundamental y confiabilidad histórica de hasta 4 instrumentos, lado a lado -- estén o no en tu cartera.</p>
+                    <p class="panel-subtitle">Pronóstico, riesgo, técnico, fundamental y confiabilidad histórica de hasta 4 instrumentos, lado a lado — estén o no en tu cartera.</p>
                 </div>
             </div>
             <div class="panel-body flush" id="comparador-table-container">
@@ -267,7 +268,7 @@
             <div class="panel-sticky-head">
                 <div class="panel-header">
                     <h2>Historial</h2>
-                    <div class="chart-range-controls" id="tx-period-controls"></div>
+                    <div class="segmented-toggle" id="tx-period-controls"></div>
                 </div>
                 <div class="panel-body no-bottom">
                     <div class="mini-stat-grid row" id="tx-summary"></div>
@@ -374,7 +375,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Préstamos</h2>
-                        <p class="panel-subtitle">Plata prestada a terceros, con su propio plan de pagos -- un activo más de la cartera.</p>
+                        <p class="panel-subtitle">Plata prestada a terceros, con su propio plan de pagos — un activo más de la cartera.</p>
                     </div>
                 </div>
                 <div class="panel-body no-bottom">
@@ -400,7 +401,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Flujo de cuotas</h2>
-                    <p class="panel-subtitle">Todas las cuotas futuras de préstamos vigentes, combinadas mes a mes -- te deben suma, debés resta.</p>
+                    <p class="panel-subtitle">Todas las cuotas futuras de préstamos vigentes, combinadas mes a mes — te deben suma, debés resta.</p>
                 </div>
             </div>
             <div class="panel-body flush" id="loans-projection-container">{{ skeleton_chart(180) }}</div>
@@ -423,11 +424,11 @@
     <div class="subtab-panel active" data-subtab-panel="estrategia">
         <div class="grid12" style="margin-bottom: 14px;">
             <div class="col-6 ajustes-engine-card">
-                <h3>🛡️ Motor Core -- mediano plazo</h3>
+                <h3><span class="inline-icon">{{ icon('shield') }}</span> Motor Core — mediano plazo</h3>
                 <p>Busca tendencia (hasta 15 ruedas de horizonte). Solo opera cuando el <strong>régimen macro acompaña</strong> (SPY por encima de su propia media móvil de 50 ruedas) y el activo supera un <strong>umbral mínimo de eficiencia</strong> proyectada por el Motor Cuantitativo Kronos (retorno esperado vs. incertidumbre del propio pronóstico). Sin eso, el capital Core queda en Caución.</p>
             </div>
             <div class="col-6 ajustes-engine-card">
-                <h3>⚡ Motor Satélite -- corto plazo</h3>
+                <h3><span class="inline-icon">{{ icon('signal') }}</span> Motor Satélite — corto plazo</h3>
                 <p>Táctico, de 1 a 3 ruedas. Reacciona a patrones técnicos (reversión a la media, rupturas de volumen/volatilidad) con reglas fijas, sin consultar al modelo. Cada posición sale sola por <strong>Take Profit</strong> fijo o <strong>Stop Loss</strong> dinámico (ajustado por la volatilidad propia del activo, nunca más ancho que el techo configurado).</p>
             </div>
         </div>
@@ -436,7 +437,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Perfiles de Inversión</h2>
-                    <p class="panel-subtitle">Presets de asignación Core/Satélite + Take Profit/Stop Loss del Satélite. Activar un perfil pisa los controles manuales de abajo con sus valores -- las métricas esperadas son de referencia (del backtest de este proyecto), no una promesa de rendimiento futuro.</p>
+                    <p class="panel-subtitle">Presets de asignación Core/Satélite + Take Profit/Stop Loss del Satélite. Activar un perfil pisa los controles manuales de abajo con sus valores — las métricas esperadas son de referencia (del backtest de este proyecto), no una promesa de rendimiento futuro.</p>
                 </div>
             </div>
             <div class="panel-body">
@@ -448,14 +449,14 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Controles de configuración</h2>
-                    <p class="panel-subtitle">Se aplican en caliente -- la próxima evaluación de señales ya los usa, sin reiniciar nada.</p>
+                    <p class="panel-subtitle">Se aplican en caliente — la próxima evaluación de señales ya los usa, sin reiniciar nada.</p>
                 </div>
             </div>
             <div class="panel-body">
                 <div class="field-row">
                     <div class="field" style="flex: 1 1 100%;">
                         <label for="ajustes-core-allocation-slider">
-                            <span class="glossary-term" tabindex="0">Asignación de capital<span class="glossary-term-panel">Qué % del patrimonio total se dedica a cada motor. El resto siempre es 100 menos esto -- nunca se guardan por separado, para que no puedan desincronizarse.</span></span>:
+                            <span class="glossary-term" tabindex="0">Asignación de capital<span class="glossary-term-panel">Qué % del patrimonio total se dedica a cada motor. El resto siempre es 100 menos esto — nunca se guardan por separado, para que no puedan desincronizarse.</span></span>:
                             Core <b id="ajustes-core-pct-label">20</b>% / Satélite <b id="ajustes-satellite-pct-label">80</b>%
                         </label>
                         <input type="range" id="ajustes-core-allocation-slider" min="0" max="100" step="1" value="20" style="width: 100%;">
@@ -478,7 +479,7 @@
                     </div>
                     <div class="field">
                         <label for="ajustes-core-threshold-input">
-                            <span class="glossary-term" tabindex="0">Umbral del Core<span class="glossary-term-panel">efficiency_score mínimo (retorno proyectado / incertidumbre del pronóstico) para que el Core considere abrir una posición. No es un porcentaje: en la práctica rondó entre -40 y 400 según el activo y el momento -- más alto = más selectivo, menos operaciones.</span></span>
+                            <span class="glossary-term" tabindex="0">Umbral del Core<span class="glossary-term-panel">efficiency_score mínimo (retorno proyectado / incertidumbre del pronóstico) para que el Core considere abrir una posición. No es un porcentaje: en la práctica rondó entre -40 y 400 según el activo y el momento — más alto = más selectivo, menos operaciones.</span></span>
                         </label>
                         <input type="number" id="ajustes-core-threshold-input" min="0" step="1">
                         <span class="hint">efficiency_score mínimo para que el Core abra una posición (no es un %).</span>
@@ -497,7 +498,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Estado del bot</h2>
-                        <p class="panel-subtitle">El token se configura por variable de entorno (<code>TELEGRAM_BOT_TOKEN</code>), nunca desde acá -- es una credencial.</p>
+                        <p class="panel-subtitle">El token se configura por variable de entorno (<code>TELEGRAM_BOT_TOKEN</code>), nunca desde acá — es una credencial.</p>
                     </div>
                 </div>
                 <div class="panel-body no-bottom">
@@ -517,7 +518,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Usuarios autorizados</h2>
-                        <p class="panel-subtitle">Quién puede usar el bot y qué puede hacer -- cualquier usuario autorizado puede consultar (<code>/signals</code>, <code>/capital</code>, etc.), pero solo los <strong>admin</strong> pueden cambiar configuración (<code>/set_core</code>, <code>/set_tp</code>, <code>/set_sl</code>).</p>
+                        <p class="panel-subtitle">Quién puede usar el bot y qué puede hacer — cualquier usuario autorizado puede consultar (<code>/signals</code>, <code>/capital</code>, etc.), pero solo los <strong>admin</strong> pueden cambiar configuración (<code>/set_core</code>, <code>/set_tp</code>, <code>/set_sl</code>).</p>
                     </div>
                 </div>
                 <div class="view-toolbar">
@@ -539,7 +540,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Moneda y Referencias</h2>
-                    <p class="panel-subtitle">Moneda por defecto, fuente de cotización USD y tasa de referencia de Caución -- también accesible desde Preferencias, en la barra lateral, para cambios rápidos.</p>
+                    <p class="panel-subtitle">Moneda por defecto, fuente de cotización USD y tasa de referencia de Caución — también accesible desde Preferencias, en la barra lateral, para cambios rápidos.</p>
                 </div>
             </div>
             <div class="panel-body">
@@ -569,7 +570,7 @@
                         </select>
                     </div>
                     <div class="field">
-                        <label for="ajustes-caucion-reference-input" class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera (y el backtest Core/Satélite) contra "invertir en cauciones" -- no existe una fuente pública gratuita de esta tasa.</span></label>
+                        <label for="ajustes-caucion-reference-input" class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera (y el backtest Core/Satélite) contra "invertir en cauciones" — no existe una fuente pública gratuita de esta tasa.</span></label>
                         <input type="number" id="ajustes-caucion-reference-input" step="0.1" min="0" placeholder="sin configurar">
                     </div>
                 </div>
@@ -583,7 +584,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Cuentas de bróker (Multi-Broker)</h2>
-                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker -- nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano en esta instalación local y nunca se muestran completos, solo los últimos 4 caracteres.</p>
+                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker — nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano en esta instalación local y nunca se muestran completos, solo los últimos 4 caracteres.</p>
                     </div>
                 </div>
                 <div class="view-toolbar">
@@ -605,7 +606,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Reporte PDF y Notificaciones</h2>
-                    <p class="panel-subtitle">Qué secciones y en qué moneda se arma el PDF, y cuándo se manda por Telegram. Tenencias siempre está incluida -- un cambio de horario tarda hasta 5 minutos en reflejarse en el bot, no es instantáneo ni requiere reiniciar nada.</p>
+                    <p class="panel-subtitle">Qué secciones y en qué moneda se arma el PDF, y cuándo se manda por Telegram. Tenencias siempre está incluida — un cambio de horario tarda hasta 5 minutos en reflejarse en el bot, no es instantáneo ni requiere reiniciar nada.</p>
                 </div>
             </div>
             <div class="panel-body">
@@ -648,7 +649,7 @@
                         </label>
                     </div>
                 </div>
-                <p class="hint" style="margin-top: 6px;">"Oportunidades del día" consulta al Motor Cuantitativo Kronos -- puede hacer que generar el reporte tarde más.</p>
+                <p class="hint" style="margin-top: 6px;">"Oportunidades del día" consulta al Motor Cuantitativo Kronos — puede hacer que generar el reporte tarde más.</p>
 
                 <h3 style="margin-top: 22px;">Horario de envío</h3>
                 <div class="field-row" style="align-items: flex-end;">

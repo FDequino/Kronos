@@ -1,0 +1,390 @@
+/* Fase 15: sistema de layout uniforme (validado primero en mockup, Artifact
+   tool, antes de tocar código real). Reglas:
+   - Toda fila de contenido pareado usa esta grilla, nunca alturas dispares
+     entre columnas (align-items: stretch, nunca start -- esa fue la causa
+     real del bug de "elementos de distinto tamaño" en el mockup).
+   - Un panel "Resumen" que acompaña una tabla/gráfico siempre es
+     .mini-stat-grid (2 columnas), nunca una lista vertical angosta. */
+
+.grid12 {
+    display: grid;
+    grid-template-columns: repeat(12, 1fr);
+    gap: 14px;
+    align-items: stretch;
+}
+
+.grid12 .col-3 { grid-column: span 3; }
+.grid12 .col-4 { grid-column: span 4; }
+/* col-6 (mitad/mitad, ver vista Ajustes -- tarjetas explicativas de Core y
+   Satelite lado a lado) faltaba en el set original (3/4/8/9/12 cubre
+   cuartos/tercios, nunca mitades) -- agregado aca, nunca duplicado en otra
+   hoja de estilos. */
+.grid12 .col-6 { grid-column: span 6; }
+.grid12 .col-8 { grid-column: span 8; }
+.grid12 .col-9 { grid-column: span 9; }
+.grid12 .col-12 { grid-column: span 12; }
+
+@media (max-width: 860px) {
+    /* Mismo nivel de especificidad que ".grid12 .col-N" (dos clases) en vez
+       de !important -- como este bloque va despues en el archivo, gana por
+       orden de cascada sin necesidad de forzar prioridad (ver DESIGN_SYSTEM.md
+       hallazgo 3). */
+    .grid12 .col-3,
+    .grid12 .col-4,
+    .grid12 .col-6,
+    .grid12 .col-8,
+    .grid12 .col-9,
+    .grid12 .col-12 {
+        grid-column: span 12;
+    }
+}
+
+.grid12 > .panel { display: flex; flex-direction: column; }
+/* El panel principal de la fila suele tener subtítulo (2 líneas) y el aside
+   "Resumen" no (1 línea) -- sin esto la línea separadora del header queda a
+   distinta altura entre los dos, aunque el título use el mismo estilo. */
+.grid12 > .panel > .panel-header { min-height: 77px; box-sizing: border-box; }
+
+/* Tarjeta "hero" -- fondo sólido en el acento, para el número principal de
+   una página (patrimonio neto, etc.), nunca una tarjeta neutra más.
+
+   --hero-fg es un blanco FIJO, no un token de tema: --text-primary no sirve
+   acá porque en tema claro es casi negro y perdería contraste contra el
+   fondo --accent (que sigue siendo un azul sólido en ambos temas). No es una
+   inconsistencia de paleta (ver DESIGN_SYSTEM.md hallazgo 3) -- es "texto
+   sobre una superficie de acento", el mismo valor sin importar el tema de la
+   página, centralizado acá en vez de repetido en cada regla de abajo. */
+.hero-card {
+    --hero-fg: #fff;
+    background: var(--accent);
+    border-radius: var(--radius);
+    padding: 20px 24px 16px;
+    color: var(--hero-fg);
+    margin-bottom: 24px;
+}
+
+.hero-card .hero-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: var(--step--1);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.72);
+    margin-bottom: 8px;
+}
+
+.hero-card .hero-value {
+    font-size: var(--step-4);
+    font-weight: 600;
+    color: var(--hero-fg);
+    letter-spacing: -0.01em;
+}
+
+.hero-card .hero-sub {
+    color: rgba(255, 255, 255, 0.78);
+    font-size: var(--step--1);
+}
+
+.hero-card .hero-delta {
+    display: inline-block;
+    background: rgba(255, 255, 255, 0.18);
+    color: var(--hero-fg);
+    font-weight: 600;
+    font-size: var(--step--1);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+}
+
+/* Fila superior del hero: bloque de valor a la izquierda, pills de período a
+   la derecha -- igual que el mockup (topbar-top), nunca los pills metidos
+   adentro del panel de Evolución. */
+.hero-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+.hero-card .segmented-toggle { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+.hero-card .segmented-toggle .segmented-toggle-option { color: rgba(255, 255, 255, 0.85); }
+.hero-card .segmented-toggle .segmented-toggle-option.active { background: var(--hero-fg); color: var(--accent); }
+
+.ccy-toggle { display: inline-flex; border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 7px; overflow: hidden; }
+.ccy-toggle button { border: none; background: rgba(255, 255, 255, 0.14); color: rgba(255, 255, 255, 0.8); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.04em; padding: 3px 9px; }
+.ccy-toggle button.active { background: #fff; color: var(--accent); }
+
+/* Ecuación Activos - Pasivos = Patrimonio neto (tile Activos) -- igual que el mockup. */
+.equation { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; background: var(--bg-content); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px 18px; font-size: var(--step--1); margin-top: 18px; }
+.equation .term { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.equation .term .t-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); }
+.equation .term .t-value { font-weight: 600; font-size: var(--step-1); }
+.equation .op { color: var(--text-tertiary); font-size: 1rem; }
+
+/* "¿Cuánto gané?" -- aside siempre visible junto al tile-switcher, solo en el
+   tile Patrimonio (igual que el mockup: gananciaAside). */
+.ganancia-cols { display: flex; gap: 14px; }
+@media (max-width: 500px) { .ganancia-cols { flex-direction: column; } }
+.ganancia-col { background: var(--bg-content); border-radius: var(--radius-sm); padding: 14px 16px; flex: 1; min-width: 0; }
+.ganancia-col h3 { margin: 0 0 10px; font-size: var(--step--1); font-weight: 600; }
+.ganancia-row { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: var(--step--1); }
+.ganancia-row .l { color: var(--text-secondary); }
+.ganancia-row .v { font-weight: 600; }
+
+.mora-banner { display: flex; justify-content: space-between; align-items: center; background: var(--bg-content); border-left: 3px solid var(--border); border-radius: var(--radius-sm); padding: 12px 16px; gap: 10px; flex-wrap: wrap; }
+.mora-banner.has-mora { border-left-color: var(--negative); }
+.mora-banner .ml { font-size: var(--step--1); color: var(--text-secondary); }
+.mora-banner .mv { font-size: var(--step-0); font-weight: 600; }
+.mora-banner .mv.has-mora { color: var(--negative); }
+
+/* Panel "Resumen" acompañando una tabla/gráfico -- siempre grilla 2x2 de
+   mini-tarjetas, nunca una lista vertical (esa fue justamente la queja real
+   sobre el mockup: "ese resumen no me gusta" cuando era una lista angosta). */
+.mini-stat-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.mini-stat-grid .span2 { grid-column: 1 / -1; }
+
+/* Resumen horizontal -- arriba de la barra de búsqueda en vez de aside
+   lateral, para aprovechar el ancho completo del panel en todas las
+   pestañas con tabla + búsqueda (decisión del usuario sobre el layout). */
+.mini-stat-grid.row {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    margin-bottom: 16px;
+}
+/* En la grilla vertical de 2 columnas, "span2" destaca una tarjeta ancha a
+   propósito (ej. "Monto en mora" en Patrimonio). En la fila horizontal eso
+   mismo forzaba una fila entera casi vacía solo para esa tarjeta (bug real) --
+   acá se anula, la tarjeta ocupa 1 columna como cualquier otra. */
+.mini-stat-grid.row .span2 { grid-column: auto; }
+
+.mini-stat {
+    background: var(--bg-content);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+}
+
+.mini-stat .l {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.mini-stat .v {
+    font-size: var(--step-1);
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Columna del donut y columna del árbol: MISMA altura fija ("el contenedor
+   de la cascada es más petizo que el del donut, debería ser igual") y mismo
+   comportamiento de scroll interno si el contenido no entra -- nunca
+   max-height (un árbol colapsado que mide menos que el tope igual empuja
+   todo lo de abajo al abrirse, porque el contenedor crecía junto con el
+   contenido hasta llegar recién ahí al tope). Con height fija ambas columnas
+   ya ocupan ese espacio desde el principio -- abrir una rama nunca mueve
+   nada de la página, solo scrollea adentro si hace falta. */
+.decomp-panel-col {
+    height: 500px;
+    overflow: auto;
+}
+
+/* Árbol de descomposición estilo PowerBI (Fase 17, reemplaza el treemap
+   anterior -- "no me gusta como se lee, ni que el click haga un drill-down en
+   toda la pantalla"). root -> clase -> instrumento, creciendo hacia la
+   derecha, conectado con líneas tipo file-tree (border-left del riel +
+   conector, sin SVG ni librería de gráficos). Un solo nodo abierto a la vez
+   ("que se pueda ver de a un solo item, no todos abiertos"). */
+.decomp-tree {
+    padding: 8px 4px 16px;
+}
+
+/* Truco CSS para animar una altura "auto" sin JS de medición: el wrapper es
+   un grid de una sola fila que va de 0fr a 1fr, y el contenido adentro se
+   clampea con overflow:hidden mientras la fila mide 0 -- abre/cierra con
+   transition normal, nada de reconstruir el HTML en cada click (eso es lo
+   que permite togglear con una clase en vez de volver a pintar la tabla).
+
+   Bug real encontrado (tarjetas de ancho desparejo, "vos ves que tienen
+   diferentes largos las barras?"): .decomp-branch es flex ROW con el nodo +
+   este wrapper como DOS hijos lado a lado -- grid-template-rows:0fr solo
+   clampeaba el ALTO a 0, nunca el ANCHO. Un wrapper cerrado seguía
+   reclamando el ancho "hug" de su contenido invisible (los instrumentos de
+   adentro), robándole ese espacio al nodo vecino vía flex-grow -- por eso
+   SOLO las clases expandibles (las que tienen wrapper) quedaban angostas, y
+   las no-expandibles (sin wrapper) sí llenaban todo el ancho. width:0 en
+   el estado cerrado saca al wrapper por completo de esa pelea. */
+.decomp-children-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    width: 0;
+    transition: grid-template-rows 220ms ease;
+}
+
+.decomp-children-wrap.open {
+    grid-template-rows: 1fr;
+    width: auto;
+}
+
+.decomp-children-wrap > .decomp-children {
+    overflow: hidden;
+    min-height: 0;
+}
+
+.decomp-branch {
+    display: flex;
+    align-items: flex-start;
+}
+
+.decomp-node {
+    position: relative;
+    flex-shrink: 0;
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    min-width: 170px;
+    margin: 4px 0;
+}
+
+/* El nodo raíz ("Activos") tiene menos información que los de abajo (sin %,
+   sin +) -- estirarlo a lo ancho de toda la columna (flex-grow:1 heredado de
+   .decomp-node) dejaba una tarjeta enorme con texto chiquito perdido adentro
+   ("hacé más chicos los rectángulos con menos información"). Se achica a su
+   contenido real en vez de pelear por el espacio sobrante de la fila. */
+.decomp-node-root {
+    flex-grow: 0;
+    min-width: 0;
+}
+
+/* Toda la tarjeta es el blanco de click, no solo el +/− -- pedido explícito
+   del usuario ("agrandar la cascada tocando en cualquier lado"). */
+.decomp-node-expandable {
+    cursor: pointer;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.decomp-node-expandable:hover {
+    background: var(--bg-elevated-hover);
+    border-color: var(--border-strong);
+}
+
+.decomp-node-expandable:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.decomp-node-label {
+    font-weight: 600;
+    font-size: var(--step--1);
+    white-space: nowrap;
+}
+
+.decomp-node-value {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* Objetivo/desvío apilado debajo del valor (Fase 17: la tabla "Asignación
+   objetivo" se unificó acá -- solo aparece en clases con objetivo
+   configurado, ver buildDecompTree/decompNodeHtml). */
+.decomp-node-right {
+    margin-left: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+}
+
+.decomp-node-target {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+/* Ya no es el blanco del click (lo es toda la tarjeta, .decomp-node-expandable)
+   -- queda solo como indicador visual de +/−. */
+.decomp-toggle {
+    flex-shrink: 0;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 1px solid var(--border-strong);
+    background: var(--bg-content);
+    color: var(--text-primary);
+    font-weight: 700;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.decomp-node-expandable:hover .decomp-toggle { border-color: var(--accent); color: var(--accent); }
+
+.decomp-children {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    margin-left: 28px;
+    padding-left: 28px;
+    border-left: 1px solid var(--border-strong);
+}
+
+.decomp-children .decomp-branch { position: relative; }
+
+.decomp-children .decomp-branch::before {
+    content: '';
+    position: absolute;
+    left: -28px;
+    top: 24px;
+    width: 28px;
+    height: 1px;
+    background: var(--border-strong);
+}
+
+/* Selector de tiles (Patrimonio, Fase 15.1) -- 6 tiles clickeables, un solo
+   panel de detalle visible por vez debajo, igual que el mockup aprobado. */
+.tile-row {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 10px;
+    margin-bottom: 24px;
+}
+@media (max-width: 900px) { .tile-row { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 500px) { .tile-row { grid-template-columns: repeat(2, 1fr); } }
+
+.tile-btn {
+    text-align: left;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    cursor: pointer;
+    font-family: inherit;
+}
+.tile-btn:hover { border-color: var(--accent); }
+.tile-btn.active { border-color: var(--accent); background: var(--accent-dim); }
+.tile-btn .t-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-tertiary); font-weight: 600; }
+.tile-btn .t-value { font-size: var(--step-1); font-weight: 600; color: var(--text-primary); }
+.tile-btn .t-sub { font-size: 0.72rem; color: var(--text-secondary); }
+.tile-btn .t-sub.alert { color: var(--negative); font-weight: 600; }
+
+/* Nombre propio (no ".detail-panel") a propósito -- esa clase ya la usa
+   instrument-detail.js para el panel contenedor de la página de detalle de
+   un instrumento, sin relación con el tile-switcher de Patrimonio. Reusar
+   el mismo nombre hacía que CUALQUIER página de detalle de instrumento
+   quedara con display:none permanente (bug real, encontrado por el
+   usuario: "no tengo los gráficos ni el pronóstico de Kronos"). */
+.tile-detail-panel { display: none; }
+.tile-detail-panel.active { display: block; }

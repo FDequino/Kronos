@@ -10,6 +10,10 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    /* .btn en un <a> (ej. "Ver Gráfico"/"Ver en Cartera", ver conversación,
+       pase de UX/UI -- hipervínculos entre pantallas) -- sin esto quedaba
+       con el subrayado nativo del link, pisando el aspecto de botón. */
+    text-decoration: none;
 }
 
 .btn:active:not(:disabled) {
@@ -36,7 +40,39 @@
     border-color: var(--text-tertiary);
 }
 
+/* Estado "armado"/toggled de un boton de accion -- ej. "+ Stop-loss" en
+   price-alerts.js mientras espera el click en el grafico para fijar el
+   nivel (ver conversación, Fase 2: antes reusaba .chart-range-btn, que no
+   es ni navegación ni filtro/selección de datos, para tener ESTE look). */
+.btn-secondary.active {
+    background: var(--accent-dim);
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
 .btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+
+/* Botón chico reusable (ver conversación, pase de UX/UI) -- "Fijar TP/SL"
+   dentro de un .mini-stat, "Eliminar" en una fila compacta de alertas de
+   precio: mismo .btn-secondary pero sin el padding/tamaño pensado para una
+   acción principal de pantalla. */
+.btn-compact {
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    gap: 4px;
+}
+
+/* "Quitar TP"/"Quitar SL" (ver conversación) -- mismo .btn-secondary pero en
+   rojo, para que el estado "ya existe, un click la borra" se distinga de
+   un click al pleno "Fijar" (acción positiva, agrega). */
+.btn-danger-outline {
+    border-color: var(--negative);
+    color: var(--negative);
+}
+
+.btn-danger-outline:hover {
+    background: var(--negative-dim);
 }

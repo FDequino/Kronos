@@ -13,6 +13,25 @@
     gap: 6px;
 }
 
+/* Items con data-series son toggleables (como en TradingView: click en la
+   leyenda prende/apaga ese overlay) -- "Real" (las velas) no lleva el
+   atributo, no tiene sentido ocultar el precio. */
+.chart-legend-item[data-series] {
+    cursor: pointer;
+    user-select: none;
+    padding: 2px 6px;
+    margin: -2px -6px;
+    border-radius: var(--radius-sm);
+}
+
+.chart-legend-item[data-series]:hover {
+    background: var(--bg-elevated-hover);
+}
+
+.chart-legend-item.off {
+    opacity: 0.45;
+}
+
 .chart-legend-swatch {
     width: 10px;
     height: 10px;
@@ -20,42 +39,28 @@
     display: inline-block;
 }
 
-.chart-range-controls {
-    display: flex;
-    gap: 6px;
-    margin-bottom: 12px;
-}
-
-.chart-range-btn {
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-    border: 1px solid var(--border-strong);
-    background: transparent;
+/* Título de los paneles de abajo (RSI/MACD) -- sin esto no había forma de
+   saber qué indicador se estaba mirando sin ya conocerlo de antes. */
+.chart-pane-title {
+    font-size: var(--step--1);
+    font-weight: 600;
     color: var(--text-secondary);
-    font-family: inherit;
-    font-size: 0.75rem;
-    cursor: pointer;
+    margin-bottom: 4px;
 }
 
-.chart-range-btn:hover {
-    background: var(--bg-elevated-hover);
-    color: var(--text-primary);
-}
-
-.chart-range-btn.active {
-    background: var(--accent-dim);
-    border-color: var(--accent);
-    color: var(--text-primary);
-}
-
+/* Anclado fijo arriba a la izquierda del panel (como el legend de
+   TradingView) -- nunca sigue al cursor, para no tapar la vela que el
+   usuario esta mirando (ver DESIGN_SYSTEM.md). */
 .chart-tooltip {
     position: absolute;
+    top: 8px;
+    left: 8px;
     pointer-events: none;
     background: var(--bg-elevated);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
-    padding: 8px 10px;
-    font-size: 0.75rem;
+    padding: 6px 10px;
+    font-size: 0.7rem;
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     opacity: 0;
     z-index: 5;
@@ -69,18 +74,33 @@
 
 .chart-tooltip-date {
     font-weight: 600;
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     color: var(--text-primary);
 }
 
-.chart-tooltip-row {
+/* OHLC en una sola fila (antes 4 filas apiladas) -- ver DESIGN_SYSTEM.md. */
+.chart-tooltip-ohlc {
     display: flex;
-    justify-content: space-between;
-    gap: 16px;
+    gap: 10px;
     color: var(--text-secondary);
 }
 
-.chart-tooltip-row .num {
-    font-family: var(--font-mono);
+.chart-tooltip-ohlc b {
+    font-family: var(--font-sans);
+    font-weight: 600;
     color: var(--text-primary);
+}
+
+/* SMA/EMA/Bollinger/RSI/MACD en una sola linea secundaria, separados por
+   "·" -- antes una fila entera por indicador. */
+.chart-tooltip-extra {
+    margin-top: 2px;
+    color: var(--text-tertiary);
+    font-size: 0.68rem;
+}
+
+.chart-tooltip-extra b {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    color: var(--text-secondary);
 }

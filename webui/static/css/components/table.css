@@ -61,6 +61,48 @@ table {
     height: 14px;
 }
 
+/* Tooltip propio de la plataforma para iconos de accion (ver conversacion:
+   "usas tooltip de chrome, no de la plataforma" -- un `title` nativo del
+   browser no tiene el look&feel de la app). CSS puro (sin wrapper extra ni
+   JS): `data-tooltip="texto"` en cualquier elemento, el texto sale de un
+   atributo (nunca duplicado en el DOM visible) via `content: attr(...)`,
+   mismo fondo/borde/sombra que .info-tooltip-panel/.glossary-term-panel
+   para que se sienta consistente con el resto de los tooltips de la app. */
+[data-tooltip] {
+    position: relative;
+}
+
+[data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: max-content;
+    max-width: 240px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 6px 10px;
+    font-size: var(--step--1);
+    font-weight: 400;
+    color: var(--text-secondary);
+    white-space: normal;
+    text-align: center;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+    z-index: 30;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+}
+
 .row-action-delete:hover {
     color: var(--negative);
 }
@@ -81,7 +123,10 @@ thead th {
     font-size: var(--step--1);
     font-weight: 600;
     color: var(--text-secondary);
-    padding: 10px 20px;
+    /* Densidad institucional (estilo terminal) -- antes 10px 20px, ver
+       DESIGN_SYSTEM.md. Mismo recorte en .table-total-row td y tbody td de
+       mas abajo, para que header/filas/total midan parejo. */
+    padding: 8px 16px;
     border-bottom: 1px solid var(--border-strong);
     border-right: 1px solid var(--border);
     white-space: nowrap;
@@ -138,6 +183,8 @@ th.sortable:active {
     right: 0;
     z-index: 5;
     min-width: 180px;
+    max-height: min(60vh, 420px);
+    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 2px;
@@ -165,9 +212,70 @@ th.sortable:active {
     color: var(--text-primary);
 }
 
+/* Antes: max-height:70vh + overflow-y:auto -- clampeaba la tabla a un alto
+   fijo con su PROPIO scroll interno, cortando filas a la mitad ("se cortan
+   en alto") y generando un segundo scroll confuso además del de la página
+   ("es raro como se mueven"). También clipeaba cualquier tooltip (ver
+   info-tooltip.css/.glossary-term) que intentara abrirse cerca del borde
+   inferior, porque un ancestro con overflow:auto recorta a sus hijos
+   posicionados aunque sean position:absolute. Ahora la tabla crece a su
+   alto real (sin scroll propio) y es la página la que scrollea -- el
+   título/KPIs/buscador de arriba quedan fijos vía .panel-sticky-head en vez
+   de depender de este contenedor. */
 .table-scroll {
-    max-height: 70vh;
-    overflow-y: auto;
+    /* Sin esto, una tabla mas ancha que su contenedor (ej. Propuestas, con
+       columnas de texto libre largas) desbordaba la PAGINA entera en vez de
+       scrollear solo la tabla -- ninguna otra tabla de la app era lo
+       bastante ancha para exponer que faltaba esto (bug real, no solo de
+       Propuestas: cualquier tabla ancha futura lo hubiera pisado igual). */
+    overflow-x: auto;
+}
+
+/* Lista apilada de rebalanceo (panel "Asignacion por tipo", 1 de 3 columnas
+   angostas en el dashboard) -- una tabla ancha con monto no entra sin scroll
+   horizontal, asi que cada clase de activo es una fila + una linea de
+   detalle debajo en vez de columnas. */
+.rebalance-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.rebalance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 7px 4px 0;
+    font-size: var(--step--1);
+}
+
+.rebalance-row-detail {
+    padding: 0 4px 7px;
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2px;
+}
+
+.rebalance-row:has(+ .rebalance-row-detail) {
+    padding-bottom: 2px;
+}
+
+.rebalance-row:not(:has(+ .rebalance-row-detail)) {
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 2px;
+}
+
+.target-pct-input {
+    width: 64px;
+    padding: 4px 6px;
+    background: var(--bg-content);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    text-align: right;
+    font-size: var(--step--1);
 }
 
 .table-scroll thead th {
@@ -177,8 +285,31 @@ th.sortable:active {
     z-index: 1;
 }
 
+/* Fila de total SIEMPRE visible (Dashboard Posiciones + Tabla Tenencias) --
+   antes cada tabla mostraba una composicion distinta (cauciones/fondos
+   incluidos o no) sin ningun numero que las cerrara, dejando que el usuario
+   sume a mano para notar la diferencia. */
+.table-total-row {
+    position: sticky;
+    bottom: 0;
+    background: var(--bg-elevated);
+    border-top: 2px solid var(--border-strong);
+}
+
+/* tfoot td no hereda el padding de "tbody td" (selector distinto) -- sin
+   esto la fila de total queda sin aire, pegada visualmente a la última
+   fila de la tabla ("el total al fondo esta pegado a la tabla"). */
+.table-total-row td {
+    padding: 8px 16px;
+    font-weight: 600;
+}
+
+.table-total-label {
+    color: var(--text-secondary);
+}
+
 tbody td {
-    padding: 11px 20px;
+    padding: 8px 16px;
     border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
 }
@@ -203,15 +334,72 @@ tbody tr:hover {
     background: var(--bg-elevated-hover);
 }
 
+/* Propuestas: "Nueva" se transmite con un tinte en toda la fila (como un
+   hover permanente) en vez de un tag que compite por espacio con los
+   botones de acción -- mismo criterio que .nav-item.active/.selected ya
+   usan en el resto de la app (fondo tenue + borde izquierdo de acento). */
+/* Selector calificado (tbody tr.proposal-row-new, no solo .proposal-row-new)
+   a propósito: mismo nivel de especificidad que tbody tr:nth-child(even) de
+   arriba, para que el tinte de "nueva" no quede tapado por el rayado par/
+   impar en las filas pares. */
+tbody tr.proposal-row-new {
+    background: var(--accent-dim);
+    border-left: 2px solid var(--accent);
+}
+
+tbody tr.proposal-row-new:hover {
+    background: var(--bg-elevated-hover);
+}
+
 td.num, th.num {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
     text-align: right;
+}
+
+.cell-date { white-space: nowrap; }
+
+.clase-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    margin-right: 7px;
+    flex-shrink: 0;
+}
+
+.row-inline-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.cell-truncate {
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .cell-positive { color: var(--positive); }
 .cell-negative { color: var(--negative); }
 .cell-muted { color: var(--text-tertiary); }
+/* Vencimientos próximos (todavía no atrasados) -- antes cualquier "vence
+   pronto" caía en tag-neutral/cell-muted, indistinguible de un dato sin
+   relevancia. --warning ya existía como token (status.css) pero nunca se
+   había extendido a la familia tag/cell de tablas y alertas (ver
+   conversación, Fase 2). */
+.cell-warning { color: var(--warning); }
+
+/* Señales predictivas (Kronos/Chronos-Bolt comprar-vender-mantener) e
+   indicadores tecnicos (RSI con edge) -- NUNCA var(--positive)/var(--negative):
+   esos quedan reservados exclusivamente para P&L real de la cartera (ver
+   DESIGN_SYSTEM.md). Una sola variante "con lectura" en la familia de
+   --accent en vez de verde/rojo -- la direccion (comprar vs. vender) la sigue
+   llevando el texto/signo del numero, no el color, asi que no se pierde
+   informacion por dejar de usar dos matices. */
+.cell-signal { color: var(--accent-strong); font-weight: 600; }
 
 .table-row-hidden {
     display: none;
@@ -232,8 +420,32 @@ td.num, th.num {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.03em;
+    white-space: nowrap;
 }
 
 .tag-positive { background: var(--positive-dim); color: var(--positive); }
 .tag-negative { background: var(--negative-dim); color: var(--negative); }
 .tag-neutral { background: var(--bg-content); color: var(--text-secondary); border: 1px solid var(--border-strong); }
+.tag-warning { background: var(--warning-dim); color: var(--warning); }
+
+/* Icono SVG inline pegado a texto (reemplaza emoji sueltos -- ver
+   shared/icons.js, Fase 2) -- vertical-align:-3px lo centra con el x-height
+   del texto en vez de quedar pegado a la línea de base. */
+.inline-icon {
+    display: inline-flex;
+    vertical-align: -3px;
+}
+
+.inline-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+/* Señales predictivas (comprar/vender) e indicadores tecnicos -- ver nota en
+   .cell-signal arriba, mismo motivo: nunca tag-positive/tag-negative para
+   esto. "Comprar" y "vender" se distinguen por PESO visual (fill solido vs.
+   contorno), no por matiz -- las dos quedan en la familia de --accent, nunca
+   verde/rojo. "Mantener"/"sin validar" siguen usando tag-neutral tal cual,
+   son el mismo "sin accion" que ya representaba antes. */
+.tag-signal-buy { background: var(--accent); color: var(--bg-sidebar); }
+.tag-signal-sell { background: var(--accent-dim); color: var(--accent-strong); border: 1px solid var(--accent-strong); }

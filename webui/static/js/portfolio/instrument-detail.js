@@ -84,10 +84,18 @@ export function parseDetailRoute(hash) {
     };
 }
 
+// Fase 2 (ver conversación, sistema de diseño unificado): esta barra es
+// NAVEGACIÓN (cambia qué panel se ve, no qué datos), mismo rol que
+// .subtab-btn del resto de la app -- reusa esa clase/estilo en vez de
+// .detail-tab-btn (antes subrayado, un cuarto estilo de tab distinto sin
+// motivo). Sigue siendo estado LOCAL del DOM (ver wireTabs), nunca pasa por
+// el router de hash de Fase 1 -- ".detail-tabs" en el contenedor es solo el
+// separador inferior propio de esta barra, el layout (flex/gap/overflow) ya
+// lo da ".subtabs" compartido.
 function tabsBarHtml(tabs) {
     if (tabs.length <= 1) return '';
-    return `<div class="detail-tabs">${tabs.map((t, i) => `
-        <button class="detail-tab-btn${i === 0 ? ' active' : ''}" data-tab="${t.id}" type="button">${t.label}</button>
+    return `<div class="subtabs detail-tabs">${tabs.map((t, i) => `
+        <button class="subtab-btn${i === 0 ? ' active' : ''}" data-tab="${t.id}" type="button">${t.label}</button>
     `).join('')}</div>`;
 }
 
@@ -182,7 +190,7 @@ function shellHtml(symbol, tabs) {
                                     <div class="panel-header">
                                         <div class="panel-header-text">
                                             <h2>Fundamentales</h2>
-                                            <p class="panel-subtitle">Vía yfinance (actualizado cada 24h) -- evaluados contra tus umbrales configurados en Ajustes; solo aplica a acciones/CEDEARs, bonos y ON no tienen estos datos.</p>
+                                            <p class="panel-subtitle">Vía yfinance (actualizado cada 24h) — evaluados contra tus umbrales configurados en Ajustes; solo aplica a acciones/CEDEARs, bonos y ON no tienen estos datos.</p>
                                         </div>
                                     </div>
                                     <div class="panel-body" id="detail-fundamentals"></div>
@@ -207,7 +215,7 @@ function shellHtml(symbol, tabs) {
 }
 
 function wireTabs(root) {
-    const buttons = [...root.querySelectorAll('.detail-tab-btn')];
+    const buttons = [...root.querySelectorAll('.subtabs.detail-tabs .subtab-btn')];
     buttons.forEach((btn) => {
         btn.addEventListener('click', () => {
             buttons.forEach((b) => b.classList.toggle('active', b === btn));
@@ -332,13 +340,13 @@ function forecastKpisHtml(result, validation, predLen) {
     const horizonte = predLen ? ` (${predLen}d)` : '';
     const tiles = [
         `<div class="mini-stat"><div class="l">Señal actual</div><div class="v"><span class="tag ${SIGNAL_TAG_CLASS[result.signal] || 'tag-neutral'}">${SIGNAL_LABEL[result.signal] || result.signal}</span></div></div>`,
-        `<div class="mini-stat"><div class="l">${glossaryTerm('mediana_pronostico', `Mediana${horizonte}`)}</div><div class="v num cell-signal">${pct >= 0 ? '+' : ''}${fmtPct(pct)}</div></div>`,
+        `<div class="mini-stat"><div class="l">${glossaryTerm('mediana_pronostico', `Mediana${horizonte}`)}</div><div class="v num cell-signal">${fmtPct(pct, 2, { signed: true })}</div></div>`,
     ];
     if (dist) {
         tiles.push(`<div class="mini-stat"><div class="l">${glossaryTerm('rango_p10_p90', `Rango p10-p90${horizonte}`)}</div><div class="v num">${fmtPct(dist.p10_pct)} / +${fmtPct(dist.p90_pct)}</div></div>`);
         tiles.push(`<div class="mini-stat"><div class="l">${glossaryTerm('prob_suba', `P(suba)${horizonte}`)}</div><div class="v num">${fmt(dist.prob_up_pct, 0)}%</div></div>`);
         if (dist.edge_ratio !== null && dist.edge_ratio !== undefined) {
-            const edgeTitle = dist.degraded_low_edge ? 'Movimiento chico frente a la incertidumbre -- señal degradada a mantener.' : '';
+            const edgeTitle = dist.degraded_low_edge ? 'Movimiento chico frente a la incertidumbre — señal degradada a mantener.' : '';
             tiles.push(`<div class="mini-stat"><div class="l">Edge ratio</div><div class="v num${dist.degraded_low_edge ? ' cell-muted' : ''}" title="${edgeTitle}">${fmt(dist.edge_ratio, 2)}</div></div>`);
         }
     }
@@ -426,8 +434,8 @@ async function loadTechnicalBacktest(instrumentId) {
             const edge = bucket.edge_vs_base_rate_pct;
             const significant = edge !== null && Math.abs(edge) >= EDGE_SIGNIFICANT_PTS;
             const cls = significant ? 'cell-signal' : 'cell-muted';
-            const edgeTxt = edge !== null ? `${edge >= 0 ? '+' : ''}${edge} pts` : 'sin dato';
-            const title = `${bucket.count} señales de ${label.toLowerCase()} pasadas -- acierto crudo ${bucket.hit_rate_pct}%, retorno promedio ${bucket.avg_forward_return_pct}%, tasa base sin señal ${baseRateForDirection ?? '—'}% (ventanas de ${data.horizon_days} días)`;
+            const edgeTxt = edge !== null ? `${fmt(edge, 1, { signed: true })} pts` : 'sin dato';
+            const title = `${bucket.count} señales de ${label.toLowerCase()} pasadas — acierto crudo ${bucket.hit_rate_pct}%, retorno promedio ${bucket.avg_forward_return_pct}%, tasa base sin señal ${baseRateForDirection ?? '—'}% (ventanas de ${data.horizon_days} días)`;
             return `<div class="mini-stat"><div class="l">RSI ${label} (edge)</div><div class="v num ${cls}" title="${title}">${edgeTxt}</div></div>`;
         };
         analysisTiles.technicalBacktest = [tile('Comprar', comprar, baseRate), tile('Vender', vender, baseDown)].filter(Boolean).join('');
@@ -449,7 +457,7 @@ function renderBreakoutNote() {
         el.innerHTML = '';
         return;
     }
-    el.innerHTML = `<p class="hint">⚠ Ruptura de ${breakout.kind} detectada (precio ${fmt(breakout.price)} vs. nivel ${fmt(breakout.level)}) -- ${glossaryTerm('tendencia_soporte_resistencia', 'evento informativo, no genera una propuesta')}.</p>`;
+    el.innerHTML = `<p class="hint">⚠ Ruptura de ${breakout.kind} detectada (precio ${fmt(breakout.price)} vs. nivel ${fmt(breakout.level)}) — ${glossaryTerm('tendencia_soporte_resistencia', 'evento informativo, no genera una propuesta')}.</p>`;
 }
 
 async function loadPriceAlertsPanel(instrumentId) {
@@ -576,7 +584,7 @@ async function loadSuggestedLevels(instrumentId, lastClose, rsiValue, currency) 
             const { data: exitParams } = await api.satelliteExitParams();
             const tpPrice = lastClose * (1 + exitParams.take_profit_pct / 100);
             const slPrice = lastClose * (1 - exitParams.stop_loss_pct / 100);
-            const note = 'Mismo % configurado para el Motor Satélite (Ajustes > Estrategia y Motores) aplicado sobre el último cierre -- no es un backtest propio de este activo.';
+            const note = 'Mismo % configurado para el Motor Satélite (Ajustes > Estrategia y Motores) aplicado sobre el último cierre — no es un backtest propio de este activo.';
             tiles.push(tpSlTileHtml('tp', 'Take Profit', 'TP', tpPrice, exitParams.take_profit_pct, '+', currency, note));
             tiles.push(tpSlTileHtml('sl', 'Stop Loss', 'SL', slPrice, exitParams.stop_loss_pct, '-', currency, note));
         } catch {
@@ -626,7 +634,7 @@ export function evaluateFundamental(key, raw, config) {
         case 'pe_ratio': {
             const max = config.fa_max_pe;
             const pass = raw > 0 && raw < max;
-            return { cls: pass ? 'cell-positive' : 'cell-negative', note: raw <= 0 ? 'negativo -- la empresa está perdiendo plata' : `tu umbral: < ${fmt(max, 0)}` };
+            return { cls: pass ? 'cell-positive' : 'cell-negative', note: raw <= 0 ? 'negativo — la empresa está perdiendo plata' : `tu umbral: < ${fmt(max, 0)}` };
         }
         case 'profit_margin': {
             const min = config.fa_min_margin_pct;
@@ -634,10 +642,10 @@ export function evaluateFundamental(key, raw, config) {
             return { cls: pass ? 'cell-positive' : 'cell-negative', note: `tu umbral: > ${fmt(min, 0)}%` };
         }
         case 'forward_pe': {
-            if (raw <= 0) return { cls: 'cell-negative', note: 'negativo -- el mercado espera pérdidas' };
+            if (raw <= 0) return { cls: 'cell-negative', note: 'negativo — el mercado espera pérdidas' };
             if (raw < 25) return { cls: 'cell-positive', note: 'rango típico de mercado (10-25)' };
-            if (raw < 40) return { cls: '', note: 'por encima del rango típico -- puede ser crecimiento esperado' };
-            return { cls: 'cell-negative', note: 'muy por encima del rango típico -- posible sobrevaluación' };
+            if (raw < 40) return { cls: '', note: 'por encima del rango típico — puede ser crecimiento esperado' };
+            return { cls: 'cell-negative', note: 'muy por encima del rango típico — posible sobrevaluación' };
         }
         case 'debt_to_equity': {
             if (raw < 100) return { cls: 'cell-positive', note: 'conservador (deuda < patrimonio)' };
@@ -748,7 +756,7 @@ async function loadRentaFija(instrumentId, symbol) {
 // ahora) se muestra como referencia, con esa salvedad en el tooltip.
 function mapeHorizonteNote(currentPredLen) {
     return currentPredLen
-        ? `El horizonte configurado hoy es ${currentPredLen} ruedas -- los pronósticos ya evaluados pueden haberse corrido con un horizonte distinto si ese valor cambió desde entonces.`
+        ? `El horizonte configurado hoy es ${currentPredLen} ruedas — los pronósticos ya evaluados pueden haberse corrido con un horizonte distinto si ese valor cambió desde entonces.`
         : '';
 }
 
@@ -884,8 +892,8 @@ function historyForecastRowHtml(f) {
         switch (c.key) {
             case 'created_at': return `<td>${fmtForecastDate(f)}</td>`;
             case 'pred_len': return `<td class="num">${f.pred_len}</td>`;
-            case 'median_pct': return `<td class="num">${f.median_pct !== null ? `${f.median_pct >= 0 ? '+' : ''}${fmt(f.median_pct, 1)}%` : '—'}</td>`;
-            case 'actual_change_pct': return `<td class="num">${f.resolved ? `${f.actual_change_pct >= 0 ? '+' : ''}${fmt(f.actual_change_pct, 1)}%` : '<span class="hint">pendiente</span>'}</td>`;
+            case 'median_pct': return `<td class="num">${fmtPct(f.median_pct, 1, { signed: true })}</td>`;
+            case 'actual_change_pct': return `<td class="num">${f.resolved ? fmtPct(f.actual_change_pct, 1, { signed: true }) : '<span class="hint">pendiente</span>'}</td>`;
             case 'error_pct': return `<td class="num">${f.error_pct !== null ? `${fmt(f.error_pct, 1)} pts` : '—'}</td>`;
             case 'within_band': {
                 if (!f.resolved || f.within_band === null) return '<td><span class="hint">—</span></td>';
@@ -916,7 +924,7 @@ function historicoBlockHtml(symbol) {
     return `
         <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:8px;">
             ${forecastFanLegendHtml()}
-            <button type="button" class="chart-range-btn" id="detail-fan-zoom-all">Ver todo el histórico</button>
+            <button type="button" class="btn btn-secondary btn-compact" id="detail-fan-zoom-all">Ver todo el histórico</button>
         </div>
         <div class="forecast-card-chart" id="detail-fan-chart"></div>
         <p class="hint" style="margin: 12px 0;">Click en una fila para resaltar ese pronóstico en el gráfico.</p>
@@ -932,7 +940,7 @@ function historicoBlockHtml(symbol) {
 function calibracionBlockHtml(symbol) {
     const cal = historyData.calibration;
     if (!cal) {
-        return `<p class="hint">Todavía no hay pronósticos no superpuestos y ya resueltos para ${symbol} -- la calibración necesita al menos uno.</p>`;
+        return `<p class="hint">Todavía no hay pronósticos no superpuestos y ya resueltos para ${symbol} — la calibración necesita al menos uno.</p>`;
     }
     const diff = cal.coverage_pct - cal.expected_pct;
     const cls = Math.abs(diff) <= 10 ? 'cell-positive' : 'cell-negative';
@@ -1072,7 +1080,7 @@ export async function renderInstrumentDetail(hash) {
     // hay holding -- ver DESIGN_SYSTEM.md).
     $('detail-position-bar').innerHTML = holding ? positionHtml(holding) : '';
 
-    const precisionBtn = root.querySelector('.detail-tab-btn[data-tab="precision"]');
+    const precisionBtn = root.querySelector('.subtab-btn[data-tab="precision"]');
     if (precisionBtn && resolvedInstrumentId) {
         let accuracyLoaded = false;
         precisionBtn.addEventListener('click', () => {
@@ -1082,7 +1090,7 @@ export async function renderInstrumentDetail(hash) {
         });
     }
 
-    const rentaFijaBtn = root.querySelector('.detail-tab-btn[data-tab="renta-fija"]');
+    const rentaFijaBtn = root.querySelector('.subtab-btn[data-tab="renta-fija"]');
     if (rentaFijaBtn && resolvedInstrumentId) {
         let rentaFijaLoaded = false;
         rentaFijaBtn.addEventListener('click', () => {
@@ -1114,7 +1122,7 @@ export async function renderInstrumentDetail(hash) {
         $('detail-fundamentals').innerHTML = '<p class="hint">Agregá este instrumento a tu cartera para ver fundamentales e indicadores técnicos.</p>';
         analysisTiles.forecast = '';
         renderAnalysisCard();
-        $('detail-chart-loading').innerHTML = '<span class="hint">Sin gráfico disponible -- agregá este instrumento a tu cartera para generar su historial de precios.</span>';
+        $('detail-chart-loading').innerHTML = '<span class="hint">Sin gráfico disponible — agregá este instrumento a tu cartera para generar su historial de precios.</span>';
         const hasForecast = await checkKronosStatus({ symbol, instrumentId: resolvedInstrumentId, market: resolvedMarket });
         if (!hasForecast) await runKronosForecast({ symbol, instrumentId: resolvedInstrumentId, market: resolvedMarket, assetType: resolvedType });
     }
