@@ -37,6 +37,7 @@ def portfolio_instruments():
                     coupon_frequency=data.get('coupon_frequency'),
                     rate_type=data.get('rate_type'),
                     cuenta=data.get('cuenta'),
+                    broker_account_id=data.get('broker_account_id'),
                 )
             except Exception as e:
                 return jsonify({'error': str(e)}), 400
@@ -65,7 +66,7 @@ def instrument_detail_route(instrument_id):
         data = request.get_json()
         fields = {}
         for key in ('symbol', 'name', 'type', 'market', 'currency', 'price_source', 'price_source_params',
-                    'maturity_date', 'coupon_rate', 'coupon_frequency', 'rate_type', 'cuenta'):
+                    'maturity_date', 'coupon_rate', 'coupon_frequency', 'rate_type', 'cuenta', 'broker_account_id'):
             if key in data:
                 fields[key] = data[key].strip().upper() if key == 'symbol' else data[key]
         try:

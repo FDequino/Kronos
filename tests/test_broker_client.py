@@ -237,3 +237,60 @@ def test_auto_trading_se_puede_volver_a_apagar(temp_db):
     db.update_app_settings(temp_db, auto_trading_enabled=0)
     with pytest.raises(broker_client.AutoTradingDisabledError):
         broker_client.ensure_auto_trading_enabled(temp_db)
+
+
+# --- tope general de exposición (ver conversación: "tope general, no por orden") --
+
+def test_limite_modo_pct_por_default(temp_db):
+    db.update_app_settings(temp_db, auto_trading_limit_pct=20)
+    assert broker_client.compute_auto_trading_limit_ars(temp_db, 1_000_000) == 200_000
+
+
+def test_limite_modo_fixed(temp_db):
+    db.update_app_settings(temp_db, auto_trading_limit_mode="fixed", auto_trading_limit_ars=500_000)
+    assert broker_client.compute_auto_trading_limit_ars(temp_db, 999_999_999) == 500_000
+
+
+def test_limite_sin_configurar_da_cero_nunca_un_numero_inventado(temp_db):
+    assert broker_client.compute_auto_trading_limit_ars(temp_db, 1_000_000) == 0.0
+    db.update_app_settings(temp_db, auto_trading_limit_mode="fixed")
+    assert broker_client.compute_auto_trading_limit_ars(temp_db, 1_000_000) == 0.0
+
+
+# --- precio de ejecución por cuenta de bróker específica (ver conversación) ---
+
+def test_ppi_get_current_price_ok_mockeado(temp_db, manager, monkeypatch):
+    monkeypatch.setattr(
+        broker_client.requests, "post",
+        lambda *a, **kw: _fake_response({"accessToken": "tok", "refreshToken": "ref"}),
+    )
+    monkeypatch.setattr(broker_client.requests, "get", lambda *a, **kw: _fake_response({"price": 123.45}))
+    account = manager.add_account(temp_db, broker_name="PPI", api_key="k", api_secret="s", account_number="1")
+    adapter = broker_client.PPIAdapter(db.get_broker_account(temp_db, account["id"]))
+    result = adapter.get_current_price("GGAL", "accion")
+    assert result == {"price": 123.45, "bid": None, "ask": None}
+
+
+def test_ppi_get_current_price_tipo_no_mapeado_falla_explicito(temp_db, manager):
+    account = manager.add_account(temp_db, broker_name="PPI", api_key="k", api_secret="s", account_number="1")
+    adapter = broker_client.PPIAdapter(db.get_broker_account(temp_db, account["id"]))
+    with pytest.raises(ValueError, match="sin mapeo"):
+        adapter.get_current_price("USD", "moneda")
+
+
+def test_iol_get_current_price_ok_mockeado(temp_db, manager, monkeypatch):
+    monkeypatch.setattr(
+        broker_client.requests, "post",
+        lambda *a, **kw: _fake_response({"access_token": "tok"}),
+    )
+    monkeypatch.setattr(
+        broker_client.requests, "get",
+        lambda *a, **kw: _fake_response({
+            "ultimoPrecio": 50.5,
+            "puntas": [{"precioCompra": 50.0, "precioVenta": 51.0}],
+        }),
+    )
+    account = manager.add_account(temp_db, broker_name="IOL", api_key="usuario", api_secret="pass")
+    adapter = broker_client.IOLAdapter(db.get_broker_account(temp_db, account["id"]))
+    result = adapter.get_current_price("GGAL", "accion")
+    assert result == {"price": 50.5, "bid": 50.0, "ask": 51.0}

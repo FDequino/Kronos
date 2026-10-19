@@ -595,6 +595,29 @@
                     </label>
                     <span class="hint" id="auto-trading-status-label"></span>
                 </div>
+                <hr class="rule">
+                <!-- Tope GENERAL de exposición (ver conversación: "tope
+                     general, no por orden") -- nunca un límite por
+                     operación individual, siempre contra el total que el
+                     bot tenga abierto (ver compute_auto_trading_limit_ars). -->
+                <div class="field-row">
+                    <div class="field">
+                        <label>Tope de exposición del bot</label>
+                        <div class="segmented-toggle" id="auto-trading-limit-mode-toggle">
+                            <button class="segmented-toggle-option" data-value="pct" type="button">% del patrimonio</button>
+                            <button class="segmented-toggle-option" data-value="fixed" type="button">Monto fijo</button>
+                        </div>
+                    </div>
+                    <div class="field" id="auto-trading-limit-pct-field">
+                        <label for="auto-trading-limit-pct-input">% del patrimonio</label>
+                        <input type="number" id="auto-trading-limit-pct-input" min="0" max="100" step="1" placeholder="ej. 20">
+                    </div>
+                    <div class="field" id="auto-trading-limit-ars-field" hidden>
+                        <label for="auto-trading-limit-ars-input">Monto fijo (ARS)</label>
+                        <input type="number" id="auto-trading-limit-ars-input" min="0" step="1000" placeholder="ej. 500000">
+                    </div>
+                </div>
+                <p class="hint" id="auto-trading-limit-resolved"></p>
             </div>
         </div>
 

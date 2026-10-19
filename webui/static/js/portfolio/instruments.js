@@ -11,10 +11,25 @@ import { openModal } from '../shared/modal.js';
 // cualquier otra pantalla que necesite elegir/crear un instrumento
 // (Transacciones, Comparador, Alertas de precio, etc.).
 let currentInstruments = [];
+let currentBrokerAccounts = [];
 
 export async function fetchInstrumentsList() {
     const { data } = await api.instruments();
     return data;
+}
+
+// Precio de EJECUCIÓN (ver conversación: "que tome los precios de la
+// plataforma que usa" -- si opera en PPI, el de PPI; si en IOL, el de
+// IOL). Solo cuentas ACTIVAS -- una desactivada no debería ser la fuente
+// de precio de nada.
+function brokerAccountOptionsHtml(selectedId) {
+    const activas = currentBrokerAccounts.filter((a) => a.is_active);
+    return `
+        <option value="">Automático (como hoy)</option>
+        ${activas.map((a) => `
+            <option value="${a.id}" ${selectedId === a.id ? 'selected' : ''}>${a.alias || a.broker_name} (${a.broker_name})</option>
+        `).join('')}
+    `;
 }
 
 const CUENTA_DEFAULT = 'NH Capital';
@@ -93,6 +108,10 @@ function formFieldsHtml(inst = {}) {
             <div class="field" id="binance-fields-inst" style="display: none;">
                 <label for="inst-pair">Par Binance</label>
                 <input type="text" id="inst-pair" placeholder="BTCUSDT">
+            </div>
+            <div class="field">
+                <label for="inst-broker-account" class="glossary-term" tabindex="0">Cotiza según<span class="glossary-term-panel">Precio de EJECUCIÓN, no de visualización general -- si se elige una cuenta, este instrumento ignora "Fuente de precio" de arriba y pide la cotización directo a esa cuenta puntual (PPI/IOL), no a data912/etc. "Automático" es el comportamiento de siempre.</span></label>
+                <select id="inst-broker-account">${brokerAccountOptionsHtml(inst.broker_account_id)}</select>
             </div>
         </div>
         <div class="field-row" id="bono-fields" style="display: none;">
@@ -181,7 +200,9 @@ function resolveCuenta(form) {
 // propia -- quien este mostrando la lista (instrumentos.js) se re-renderiza
 // solo, desacoplado de este modulo.
 export async function openInstrumentModal(inst = null) {
-    currentInstruments = await fetchInstrumentsList();
+    const [instruments, brokerAccounts] = await Promise.all([fetchInstrumentsList(), api.brokerAccounts()]);
+    currentInstruments = instruments;
+    currentBrokerAccounts = brokerAccounts.data;
     openModal({
         title: inst?.id ? `Editar ${inst.symbol}` : 'Nuevo instrumento',
         bodyHtml: formFieldsHtml(inst || {}),
@@ -198,6 +219,8 @@ export async function openInstrumentModal(inst = null) {
                 currency: form.querySelector('#inst-currency').value,
                 price_source: source,
                 price_source_params: buildPriceSourceParams(source),
+                broker_account_id: form.querySelector('#inst-broker-account').value
+                    ? Number(form.querySelector('#inst-broker-account').value) : null,
             };
             if (['bono', 'on'].includes(type)) {
                 const maturity = form.querySelector('#inst-maturity').value;

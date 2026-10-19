@@ -19,6 +19,15 @@ CREATE TABLE IF NOT EXISTS instruments (
     -- Capital (la unica cuenta que existia antes de esto, nunca se re-etiqueta
     -- lo ya cargado, NULL es simplemente "no se especifico otra cuenta").
     cuenta TEXT,
+    -- Precio de EJECUCION (ver conversacion: "que tome los precios de la
+    -- plataforma que usa" -- PPI/IOL/etc.) -- NULL = sigue como siempre
+    -- (price_source de arriba: data912/dolarapi/binance/manual). Si se
+    -- setea, fetchers.py::update_quote ignora price_source para este
+    -- instrumento y pide la cotizacion a ESTA cuenta puntual (nunca "PPI"
+    -- en abstracto -- si hay 2 cuentas del mismo broker, esto saca la
+    -- ambiguedad de cual usar). ON DELETE SET NULL: borrar la cuenta de
+    -- broker nunca rompe el instrumento, solo lo vuelve a data912/etc.
+    broker_account_id INTEGER REFERENCES broker_accounts(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     UNIQUE (symbol, market)
 );
@@ -393,6 +402,16 @@ CREATE TABLE IF NOT EXISTS app_settings (
     -- el punto unico de chequeo que CUALQUIER codigo futuro de ordenes
     -- tiene que llamar primero.
     auto_trading_enabled INTEGER NOT NULL DEFAULT 0,
+    -- Tope GENERAL de exposicion para la ejecucion real (ver conversacion:
+    -- "tope general, no por orden" -- nunca un limite por operacion
+    -- individual, siempre contra el total que el bot tenga abierto).
+    -- auto_trading_limit_mode elige si el tope efectivo sale de
+    -- auto_trading_limit_pct (% del patrimonio, se ajusta solo) o
+    -- auto_trading_limit_ars (monto fijo) -- ver
+    -- portfolio/broker_client.py::compute_auto_trading_limit_ars.
+    auto_trading_limit_mode TEXT NOT NULL DEFAULT 'pct' CHECK (auto_trading_limit_mode IN ('pct', 'fixed')),
+    auto_trading_limit_pct REAL,
+    auto_trading_limit_ars REAL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);

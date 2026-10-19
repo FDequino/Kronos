@@ -79,6 +79,25 @@ def ensure_auto_trading_enabled(conn):
             "si de verdad querés que este código mande una orden real a un bróker."
         )
 
+
+def compute_auto_trading_limit_ars(conn, patrimonio_ars):
+    """Tope GENERAL de exposición para la ejecución real (ver conversación:
+    "tope general, no por orden" -- nunca un límite por operación
+    individual, siempre contra el total que el bot tenga abierto).
+    Resuelve el modo elegido (% del patrimonio o un monto fijo) a un número
+    concreto en ARS. Sin caller todavía, mismo criterio que
+    ensure_auto_trading_enabled: el código futuro de órdenes tiene que
+    sumar lo que el bot ya tiene abierto + la orden nueva y comparar eso
+    contra este número antes de confirmar."""
+    settings = db.get_app_settings(conn)
+    if settings.get("auto_trading_limit_mode") == "fixed":
+        return settings.get("auto_trading_limit_ars") or 0.0
+    pct = settings.get("auto_trading_limit_pct")
+    if not pct:
+        return 0.0
+    return patrimonio_ars * pct / 100.0
+
+
 BROKER_NAMES = ("PPI", "IOL", "Balanz", "Matrix")
 
 
@@ -120,6 +139,14 @@ class BrokerAdapter:
         raise NotImplementedError
 
     def get_holdings(self):
+        raise NotImplementedError
+
+    def get_current_price(self, symbol, asset_type):
+        """Precio de EJECUCIÓN de un símbolo puntual (ver conversación: "que
+        tome los precios de la plataforma que usa" -- usado por
+        fetchers.py::update_quote cuando un instrumento tiene
+        broker_account_id seteado, en vez de data912/etc. genérico).
+        Devuelve {"price": float, "bid": float|None, "ask": float|None}."""
         raise NotImplementedError
 
 
@@ -177,6 +204,33 @@ class IOLAdapter(BrokerAdapter):
         resp.raise_for_status()
         return resp.json()
 
+    def get_current_price(self, symbol, asset_type):
+        """Confirmado contra iol.apidocs.ar (WebFetch real, ver conversación
+        -- no de memoria): GET /api/v2/{mercado}/Titulos/{simbolo}/Cotizacion,
+        respuesta con "ultimoPrecio" y un array "puntas" para bid/ask. Mismo
+        disclaimer que el resto del adapter: nunca probado con credenciales
+        reales. mercado="bCBA" para todo lo que maneja esta app (todo listado
+        en BYMA/Argentina) -- IOL no necesita un "type" como PPI, el símbolo +
+        mercado ya alcanzan."""
+        resp = requests.get(
+            f"{self.BASE_URL}/api/v2/bCBA/Titulos/{symbol}/Cotizacion",
+            headers=self._headers(), timeout=self.TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        price = data.get("ultimoPrecio")
+        if price is None:
+            raise ValueError(f"Cotización de IOL sin 'ultimoPrecio': {list(data.keys())}")
+        # "puntas" (array de puntas de compra/venta) -- nombres de sub-campo
+        # NO confirmados contra la documentación consultada, así que nunca se
+        # inventan: si la forma no es la esperada, bid/ask quedan None en vez
+        # de un número adivinado.
+        puntas = data.get("puntas") or []
+        punta = puntas[0] if puntas else {}
+        bid = punta.get("precioCompra") if isinstance(punta, dict) else None
+        ask = punta.get("precioVenta") if isinstance(punta, dict) else None
+        return {"price": price, "bid": bid, "ask": ask}
+
 
 class PPIAdapter(BrokerAdapter):
     """Portfolio Personal Inversiones -- mecanismo COMPLETO, confirmado
@@ -208,6 +262,19 @@ class PPIAdapter(BrokerAdapter):
     AUTHORIZED_CLIENT = "API_CLI_PYTHON"
     CLIENT_KEY = "pp19PythonApp12"
     TIMEOUT = 15
+
+    # Enum confirmado contra la documentación oficial (itatppi.github.io,
+    # WebFetch real -- ver conversación) para el parámetro "type" de
+    # MarketData/Current. moneda/cripto no tienen equivalente en PPI -- se
+    # omiten a propósito (get_current_price tira ValueError en vez de
+    # adivinar uno).
+    _ASSET_TYPE_MAP = {
+        "accion": "ACCIONES",
+        "cedear": "CEDEARS",
+        "bono": "BONOS",
+        "on": "ON",
+        "fondo": "FCI",
+    }
 
     def _base_headers(self):
         return {"AuthorizedClient": self.AUTHORIZED_CLIENT, "ClientKey": self.CLIENT_KEY}
@@ -260,6 +327,31 @@ class PPIAdapter(BrokerAdapter):
         )
         resp.raise_for_status()
         return resp.json()
+
+    def get_current_price(self, symbol, asset_type):
+        """MarketData/Current -- confirmado contra la documentación oficial
+        (WebFetch real: ppi.marketdata.current(ticker, type, settlement) ->
+        GET 1.0/MarketData/Current?ticker=...&type=...&settlement=...,
+        respuesta con campo "price"). settlement="A-48HS" es el valor del
+        ejemplo oficial para acciones -- puede no ser el correcto para todo
+        instrumento/mercado, pero es el único confirmado contra una fuente
+        real en vez de adivinado. Sin bid/ask: la documentación confirma que
+        ese dato vive en MarketData/Book (otro endpoint), no en Current --
+        nunca se inventan acá."""
+        ppi_type = self._ASSET_TYPE_MAP.get(asset_type)
+        if ppi_type is None:
+            raise ValueError(f"PPI: sin mapeo de tipo de instrumento para '{asset_type}'")
+        resp = requests.get(
+            f"{self.BASE_URL}/1.0/MarketData/Current",
+            params={"ticker": symbol, "type": ppi_type, "settlement": "A-48HS"},
+            headers=self._auth_headers(), timeout=self.TIMEOUT,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        price = data.get("price")
+        if price is None:
+            raise ValueError(f"MarketData/Current de PPI sin 'price': {list(data.keys())}")
+        return {"price": price, "bid": None, "ask": None}
 
 
 class _PendingIntegrationAdapter(BrokerAdapter):

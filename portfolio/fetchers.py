@@ -20,7 +20,7 @@ import requests
 import yfinance as yf
 from bs4 import BeautifulSoup
 
-from portfolio import db
+from portfolio import broker_client, db
 
 DATA912_BASE = "https://data912.com"
 DOLARAPI_BASE = "https://dolarapi.com"
@@ -345,16 +345,36 @@ _QUOTE_FETCHERS = {
 }
 
 
-def update_quote(conn, instrument):
-    """Trae y guarda la cotizacion actual de un instrumento. No hace nada para price_source='manual'."""
-    fetcher = _QUOTE_FETCHERS.get(instrument["price_source"])
-    if fetcher is None:
-        return None
+def fetch_broker_account_quote(account, instrument):
+    """Precio de EJECUCIÓN (ver conversación: "que tome los precios de la
+    plataforma que usa" -- si opera en PPI, el de PPI; si en IOL, el de
+    IOL). Solo se llama cuando instrument['broker_account_id'] está seteado
+    -- ver update_quote. Nunca "PPI" en abstracto: una cuenta PUNTUAL (si
+    hay 2 cuentas del mismo bróker, esto saca la ambigüedad de cuál usar)."""
+    adapter = broker_client._adapter_for(account)
+    return adapter.get_current_price(instrument["symbol"], instrument["type"])
 
-    quote = fetcher(instrument)
+
+def update_quote(conn, instrument):
+    """Trae y guarda la cotizacion actual de un instrumento. No hace nada
+    para price_source='manual'. broker_account_id (si está seteado) manda
+    por encima de price_source -- ver fetch_broker_account_quote."""
+    if instrument.get("broker_account_id"):
+        account = db.get_broker_account(conn, instrument["broker_account_id"])
+        if account is None:
+            raise ValueError(f"broker_account_id={instrument['broker_account_id']} no existe (¿se borró la cuenta?)")
+        quote = fetch_broker_account_quote(account, instrument)
+        source = account["broker_name"].lower()
+    else:
+        fetcher = _QUOTE_FETCHERS.get(instrument["price_source"])
+        if fetcher is None:
+            return None
+        quote = fetcher(instrument)
+        source = instrument["price_source"]
+
     db.upsert_quote(
         conn, instrument["id"], quote["price"],
-        source=instrument["price_source"], bid=quote.get("bid"), ask=quote.get("ask"),
+        source=source, bid=quote.get("bid"), ask=quote.get("ask"),
     )
     return quote
 

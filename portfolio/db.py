@@ -341,6 +341,18 @@ def _migrate(conn):
     if "auto_trading_enabled" not in app_settings_cols:
         conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_enabled INTEGER NOT NULL DEFAULT 0")
         conn.commit()
+    if "auto_trading_limit_mode" not in app_settings_cols:
+        conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_limit_mode TEXT NOT NULL DEFAULT 'pct'")
+        conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_limit_pct REAL")
+        conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_limit_ars REAL")
+        conn.commit()
+
+    # Precio de ejecucion por cuenta de broker especifica (ver conversacion,
+    # "como hacemos con multiples brokers" -- NULL = sigue como siempre).
+    instruments_cols = {row["name"] for row in conn.execute("PRAGMA table_info(instruments)").fetchall()}
+    if "broker_account_id" not in instruments_cols:
+        conn.execute("ALTER TABLE instruments ADD COLUMN broker_account_id INTEGER REFERENCES broker_accounts(id)")
+        conn.commit()
 
     # Pairs Trading / Factor Investing (ver conversacion) -- asignacion
     # NOMINAL/informativa para las tarjetas de estos 2 motores nuevos, nunca
@@ -377,14 +389,15 @@ def _row_to_dict(row):
 
 def add_instrument(conn, symbol, type_, market, price_source, name=None,
                     currency="ARS", price_source_params=None,
-                    maturity_date=None, coupon_rate=None, coupon_frequency=None, rate_type=None, cuenta=None):
+                    maturity_date=None, coupon_rate=None, coupon_frequency=None, rate_type=None, cuenta=None,
+                    broker_account_id=None):
     params_json = json.dumps(price_source_params) if price_source_params else None
     cur = conn.execute(
         """INSERT INTO instruments (symbol, name, type, market, currency, price_source, price_source_params,
-               maturity_date, coupon_rate, coupon_frequency, rate_type, cuenta)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               maturity_date, coupon_rate, coupon_frequency, rate_type, cuenta, broker_account_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (symbol, name, type_, market, currency, price_source, params_json,
-         maturity_date, coupon_rate, coupon_frequency, rate_type, cuenta),
+         maturity_date, coupon_rate, coupon_frequency, rate_type, cuenta, broker_account_id),
     )
     conn.commit()
     return cur.lastrowid

@@ -298,6 +298,28 @@ function openAddTelegramUserModal() {
 // es el único punto que lo chequea; esto solo lo prende/apaga). Vive en
 // app_settings (api.settings/updateSettings), no en signal_config -- es un
 // gate de "qué puede hacer esta instalación", no un parámetro de estrategia.
+function setAutoTradingLimitModeActive(mode) {
+    document.querySelectorAll('#auto-trading-limit-mode-toggle .segmented-toggle-option').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.value === mode);
+    });
+    $('auto-trading-limit-pct-field').hidden = mode !== 'pct';
+    $('auto-trading-limit-ars-field').hidden = mode !== 'fixed';
+}
+
+function renderAutoTradingLimitResolved(settings) {
+    const el = $('auto-trading-limit-resolved');
+    if (!el) return;
+    if (settings.auto_trading_limit_mode === 'fixed') {
+        el.textContent = settings.auto_trading_limit_ars
+            ? `Tope configurado: ${fmt(settings.auto_trading_limit_ars, 0)} ARS fijos.`
+            : 'Sin monto fijo configurado todavía — el tope efectivo es $0 (bloquea todo) hasta que cargues uno.';
+    } else {
+        el.textContent = settings.auto_trading_limit_pct
+            ? `Tope configurado: ${fmt(settings.auto_trading_limit_pct, 0)}% del patrimonio total.`
+            : 'Sin % configurado todavía — el tope efectivo es $0 (bloquea todo) hasta que cargues uno.';
+    }
+}
+
 async function loadAutoTradingControl() {
     const { data: settings } = await api.settings();
     const enabled = !!settings.auto_trading_enabled;
@@ -305,9 +327,43 @@ async function loadAutoTradingControl() {
     $('auto-trading-status-label').textContent = enabled
         ? 'Ejecución real: ENCENDIDA'
         : 'Ejecución real: Apagada — hoy no hay ningún código que la use todavía.';
+
+    setAutoTradingLimitModeActive(settings.auto_trading_limit_mode || 'pct');
+    if (settings.auto_trading_limit_pct !== null && settings.auto_trading_limit_pct !== undefined) {
+        $('auto-trading-limit-pct-input').value = settings.auto_trading_limit_pct;
+    }
+    if (settings.auto_trading_limit_ars !== null && settings.auto_trading_limit_ars !== undefined) {
+        $('auto-trading-limit-ars-input').value = settings.auto_trading_limit_ars;
+    }
+    renderAutoTradingLimitResolved(settings);
 }
 
 function initAutoTradingControl() {
+    document.querySelectorAll('#auto-trading-limit-mode-toggle .segmented-toggle-option').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            setAutoTradingLimitModeActive(btn.dataset.value);
+            await api.updateSettings({ auto_trading_limit_mode: btn.dataset.value });
+            await loadAutoTradingControl();
+        });
+    });
+    let limitSaveTimer = null;
+    $('auto-trading-limit-pct-input').addEventListener('input', (e) => {
+        clearTimeout(limitSaveTimer);
+        const raw = e.target.value.trim();
+        limitSaveTimer = setTimeout(async () => {
+            await api.updateSettings({ auto_trading_limit_pct: raw === '' ? null : Number(raw) });
+            await loadAutoTradingControl();
+        }, 500);
+    });
+    $('auto-trading-limit-ars-input').addEventListener('input', (e) => {
+        clearTimeout(limitSaveTimer);
+        const raw = e.target.value.trim();
+        limitSaveTimer = setTimeout(async () => {
+            await api.updateSettings({ auto_trading_limit_ars: raw === '' ? null : Number(raw) });
+            await loadAutoTradingControl();
+        }, 500);
+    });
+
     $('auto-trading-enabled-switch').addEventListener('change', async (e) => {
         // Encender pide confirmación explícita (apagar nunca, siempre es
         // seguro apagar de una) -- este interruptor no hace nada todavía,
