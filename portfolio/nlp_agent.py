@@ -44,7 +44,16 @@ lleva ademas impact_score/impact_direction/impact_magnitude (VADER sobre
 titulo+resumen, ver _annotate_headline_impact), distinto del sentiment_score
 AGREGADO del conjunto que ya alimenta risk_level: ese es "como esta el
 riesgo de este ticker hoy en conjunto", esto es "que tan fuerte pego o
-podria pegar ESTA noticia puntual"."""
+podria pegar ESTA noticia puntual".
+
+Traduccion a español (ver conversacion: "en español las quiero") -- Finnhub/
+yfinance devuelven titulo+resumen en ingles (fuentes de EE.UU.), asi que se
+traducen para mostrar via MyMemory (api.mymemory.translated.net, gratis, sin
+API key, limite ~500 caracteres por pedido en el plan anonimo). SIEMPRE
+DESPUES de _annotate_headline_impact, nunca antes: VADER puntua en ingles
+(su lexico no cubre español), traducir antes distorsionaria ese score.
+Cualquier falla de la traduccion (red caida, cuota agotada) degrada al texto
+original en ingles, nunca deja un titular sin texto ni rompe el pipeline."""
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -326,6 +335,48 @@ def _annotate_headline_impact(headlines):
     return annotated
 
 
+MYMEMORY_BASE = "https://api.mymemory.translated.net/get"
+MYMEMORY_MAX_CHARS = 490  # limite ~500 caracteres/pedido del plan anonimo (ver docstring del modulo)
+
+
+def _translate_to_spanish(text):
+    """Traduccion gratuita EN->ES via MyMemory, sin API key. SIEMPRE
+    envuelto en try/except -- degrada al texto original en ingles ante
+    cualquier falla (red caida, cuota diaria agotada, respuesta rara),
+    nunca deja un titular sin texto ni rompe el pipeline por depender de un
+    servicio gratuito de terceros."""
+    if not text:
+        return text
+    try:
+        resp = requests.get(
+            MYMEMORY_BASE, params={"q": text[:MYMEMORY_MAX_CHARS], "langpair": "en|es"}, timeout=8,
+        )
+        resp.raise_for_status()
+        translated = resp.json().get("responseData", {}).get("translatedText")
+        return translated or text
+    except Exception:
+        return text
+
+
+def _translate_headlines_to_spanish(headlines):
+    """Traduce title/summary de cada titular (ver conversacion: "en
+    español las quiero") -- SIEMPRE DESPUES de _annotate_headline_impact
+    (ver docstring del modulo: VADER puntua en ingles, traducir antes
+    distorsionaria ese score). url/source/published_at/impact_* quedan
+    intactos, solo el texto visible para el usuario se traduce."""
+    translated = []
+    for h in headlines:
+        if not isinstance(h, dict):
+            translated.append({"title": _translate_to_spanish(h), "url": None})
+            continue
+        item = dict(h)
+        item["title"] = _translate_to_spanish(item.get("title"))
+        if item.get("summary"):
+            item["summary"] = _translate_to_spanish(item["summary"])
+        translated.append(item)
+    return translated
+
+
 def classify_risk_level(sentiment_score, hours_until_event):
     """Combina magnitud del sentimiento con proximidad del evento (pedido
     explicito: risk_level NO es solo sentimiento) --
@@ -394,6 +445,9 @@ def assess_event_risk(conn, symbol, use_cache=True):
     # impacto") se calcula solo sobre estos 10, nunca sobre el crudo
     # completo -- no tiene sentido puntuar titulares que no se van a mostrar.
     stored_headlines = _annotate_headline_impact(headlines[:10])
+    # Traducido RECIEN ACA, despues del impacto (ver conversacion: "en
+    # español las quiero", y docstring del modulo: VADER puntua en ingles).
+    stored_headlines = _translate_headlines_to_spanish(stored_headlines)
 
     db.insert_news_sentiment(
         conn, ticker=symbol, sentiment_score=round(sentiment_score, 4), risk_level=risk_level,

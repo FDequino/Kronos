@@ -751,11 +751,20 @@ function newsDetailModalHtml(h) {
     const impactHtml = direction
         ? `<p><span class="tag ${IMPACT_TAG_CLASS[direction] || 'tag-neutral'}">${direction.toUpperCase()}</span> <span class="hint">impacto estimado: ${magnitude}</span></p>`
         : '<p class="hint">Impacto no evaluado para este titular (guardado antes de este análisis).</p>';
+    // Secciones explícitas (ver conversación: "quiero que abra la noticia,
+    // y tenga un resumen y la noticia como tal, y el impacto") -- la
+    // noticia en sí es el título (lo más parecido a texto completo que da
+    // la fuente gratuita, ver docstring de portfolio/nlp_agent.py: no hay
+    // scraping del cuerpo completo del artículo), con Resumen e Impacto
+    // etiquetados aparte para que no se lean como un solo bloque de texto.
     return `
-        <h3 style="margin:0 0 8px;">${title}</h3>
+        <div class="stat-detail-label" style="margin-top:0;">La noticia</div>
+        <h3 style="margin:4px 0 8px;">${title}</h3>
         ${metaParts.length ? `<p class="hint">${metaParts.join(' · ')}</p>` : ''}
-        ${impactHtml}
+        <div class="stat-detail-label">Resumen</div>
         ${summary ? `<p>${summary}</p>` : '<p class="hint">Sin resumen disponible para este titular.</p>'}
+        <div class="stat-detail-label">Impacto estimado</div>
+        ${impactHtml}
         <div class="modal-footer">
             ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Ver fuente ↗</a>` : ''}
             <button type="button" class="btn btn-secondary modal-close-btn">Cerrar</button>

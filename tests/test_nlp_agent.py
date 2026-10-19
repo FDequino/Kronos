@@ -1,7 +1,7 @@
 """Tests del Agente NLP de Noticias y Sentimiento (ver conversacion,
 portfolio/nlp_agent.py) -- logica pura + persistencia sobre una DB temporal,
-NUNCA red real (yfinance/LLM siempre mockeados, mismo criterio que el resto
-de este suite, ver docstrings de los demas tests/test_*.py)."""
+NUNCA red real (yfinance/LLM/MyMemory siempre mockeados, mismo criterio que
+el resto de este suite, ver docstrings de los demas tests/test_*.py)."""
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -21,6 +21,17 @@ def temp_db(tmp_path, monkeypatch):
     conn = db.get_connection(db_path)
     yield conn
     conn.close()
+
+
+@pytest.fixture(autouse=True)
+def no_real_translation(monkeypatch):
+    # assess_event_risk traduce cada titular via MyMemory (ver conversacion:
+    # "en español las quiero") -- sin este autouse, CUALQUIER test que llame
+    # a assess_event_risk con titulares no vacios pegaria a la red real
+    # (encontrado al correr este archivo: 29s en vez de <1s, y una traduccion
+    # real que rompio dos tests por un acento agregado). Los tests que
+    # prueban la traduccion en si misma pisan esto explicitamente.
+    monkeypatch.setattr(nlp_agent, "_translate_to_spanish", lambda text: text)
 
 
 # --- vader_sentiment_score ----------------------------------------------------
@@ -331,6 +342,99 @@ def test_annotate_headline_impact_conserva_url_y_demas_campos():
     ])
     assert annotated[0]["url"] == "https://example.com"
     assert annotated[0]["source"] == "Reuters"
+
+
+# --- traduccion a español (ver conversacion: "en español las quiero") -------
+
+def test_translate_to_spanish_usa_mymemory(monkeypatch):
+    monkeypatch.undo()  # saca el autouse de este test puntual -- acá se prueba la funcion real
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return SimpleNamespace(
+            json=lambda: {"responseData": {"translatedText": "Hola mundo"}},
+            raise_for_status=lambda: None,
+        )
+
+    monkeypatch.setattr(nlp_agent.requests, "get", fake_get)
+    assert nlp_agent._translate_to_spanish("Hello world") == "Hola mundo"
+    assert captured["url"] == nlp_agent.MYMEMORY_BASE
+    assert captured["params"]["langpair"] == "en|es"
+
+
+def test_translate_to_spanish_recorta_a_490_caracteres(monkeypatch):
+    monkeypatch.undo()
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured["q"] = params["q"]
+        return SimpleNamespace(json=lambda: {"responseData": {"translatedText": "x"}}, raise_for_status=lambda: None)
+
+    monkeypatch.setattr(nlp_agent.requests, "get", fake_get)
+    nlp_agent._translate_to_spanish("a" * 1000)
+    assert len(captured["q"]) == nlp_agent.MYMEMORY_MAX_CHARS
+
+
+def test_translate_to_spanish_falla_de_red_degrada_al_texto_original(monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(nlp_agent.requests, "get", lambda *a, **kw: (_ for _ in ()).throw(ConnectionError("simulado")))
+    assert nlp_agent._translate_to_spanish("Hello world") == "Hello world"
+
+
+def test_translate_to_spanish_respuesta_sin_translatedtext_degrada_al_original(monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(
+        nlp_agent.requests, "get",
+        lambda *a, **kw: SimpleNamespace(json=lambda: {"responseData": {}}, raise_for_status=lambda: None),
+    )
+    assert nlp_agent._translate_to_spanish("Hello world") == "Hello world"
+
+
+def test_translate_to_spanish_texto_vacio_no_llama_a_la_red(monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(nlp_agent.requests, "get", lambda *a, **kw: (_ for _ in ()).throw(
+        AssertionError("no deberia llamar a la red para texto vacio")
+    ))
+    assert nlp_agent._translate_to_spanish(None) is None
+    assert nlp_agent._translate_to_spanish("") == ""
+
+
+def test_translate_headlines_to_spanish_traduce_title_y_summary(monkeypatch):
+    monkeypatch.undo()
+    translations = {"Hello": "Hola", "World summary": "Resumen del mundo"}
+    monkeypatch.setattr(nlp_agent, "_translate_to_spanish", lambda text: translations.get(text, text))
+
+    out = nlp_agent._translate_headlines_to_spanish([
+        {"title": "Hello", "url": "https://x", "summary": "World summary"},
+    ])
+    assert out[0]["title"] == "Hola"
+    assert out[0]["summary"] == "Resumen del mundo"
+    assert out[0]["url"] == "https://x"  # url nunca se traduce
+
+
+def test_translate_headlines_to_spanish_sin_summary_no_la_inventa(monkeypatch):
+    monkeypatch.undo()
+    monkeypatch.setattr(nlp_agent, "_translate_to_spanish", lambda text: f"[{text}]")
+    out = nlp_agent._translate_headlines_to_spanish([{"title": "Hello", "url": None, "summary": None}])
+    assert out[0]["summary"] is None
+
+
+def test_assess_event_risk_traduce_despues_de_calcular_el_impacto(temp_db, monkeypatch):
+    # El impacto se calcula ANTES de traducir (ver docstring del modulo:
+    # VADER puntua en ingles) -- se fuerza una traduccion que cambiaria el
+    # resultado de VADER si corriera ANTES, para confirmar el orden real.
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [
+        "Company reports record profits and strong growth, beating all estimates",
+    ])
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+    monkeypatch.setattr(nlp_agent, "_translate_to_spanish", lambda text: "noticia neutra sin carga")
+
+    result = nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
+    headline = result["headlines"][0]
+    assert headline["title"] == "noticia neutra sin carga"
+    assert headline["impact_direction"] == "positivo"  # calculado sobre el ingles original, no sobre la traduccion
 
 
 # --- titulares persistidos (ver conversacion: "no hay seccion de noticias") ---
