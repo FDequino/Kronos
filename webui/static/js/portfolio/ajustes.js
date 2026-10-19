@@ -323,6 +323,17 @@ async function loadPreferencesControls() {
     if (config.caucion_reference_tna !== null && config.caucion_reference_tna !== undefined) {
         $('ajustes-caucion-reference-input').value = config.caucion_reference_tna;
     }
+
+    // API keys de IA (ver conversación, "APIs de IA" en Integraciones) --
+    // el input SIEMPRE arranca vacío (nunca se re-llena con la key real ni
+    // con la enmascarada, mismo criterio que broker-connections.js) -- el
+    // label y el placeholder son los únicos que reflejan "ya configurada".
+    $('ajustes-openai-key-label').textContent = config.openai_api_key_set
+        ? `OpenAI API Key (configurada: ${config.openai_api_key})` : 'OpenAI API Key';
+    $('ajustes-openai-key-input').placeholder = config.openai_api_key_set ? 'dejar vacío para no cambiar' : 'sk-...';
+    $('ajustes-anthropic-key-label').textContent = config.anthropic_api_key_set
+        ? `Anthropic API Key (configurada: ${config.anthropic_api_key})` : 'Anthropic API Key';
+    $('ajustes-anthropic-key-input').placeholder = config.anthropic_api_key_set ? 'dejar vacío para no cambiar' : 'sk-ant-...';
 }
 
 function initPreferencesControls() {
@@ -363,6 +374,21 @@ function initPreferencesControls() {
     // Si la moneda/fuente se cambia desde el dropdown de Preferencias (u otra
     // pestaña), esta vista se mantiene sincronizada sin tener que recargar.
     document.addEventListener('currency-changed', () => { loadPreferencesControls(); });
+
+    // Solo se manda al backend la key que el usuario de verdad tipeó --
+    // dejar un campo vacío NUNCA borra una key ya configurada (mismo
+    // criterio que broker-connections.js: "dejar vacío para no cambiar").
+    $('ajustes-save-llm-keys-btn').addEventListener('click', async () => {
+        const openaiKey = $('ajustes-openai-key-input').value.trim();
+        const anthropicKey = $('ajustes-anthropic-key-input').value.trim();
+        const payload = {};
+        if (openaiKey !== '') payload.openai_api_key = openaiKey;
+        if (anthropicKey !== '') payload.anthropic_api_key = anthropicKey;
+        if (!Object.keys(payload).length) return;
+        await api.updateSignalConfig(payload);
+        await loadPreferencesControls();
+        showStatus('status-banner', 'success', 'API keys guardadas.');
+    });
 }
 
 // --- Bloque 4: Reporte PDF ---------------------------------------------------

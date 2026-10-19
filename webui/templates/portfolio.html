@@ -573,6 +573,28 @@
                 </table>
             </div>
         </div>
+
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>APIs de IA</h2>
+                    <p class="panel-subtitle">Opcional — mejora el Agente NLP de Noticias (análisis de sentimiento vía LLM en vez de solo el fallback local VADER). Sin ninguna key configurada, ese motor sigue funcionando igual, solo con el fallback. Se guarda en texto plano en esta instalación local, igual que las cuentas de bróker — nunca se muestra completa.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="field-row" style="align-items: flex-end;">
+                    <div class="field">
+                        <label for="ajustes-openai-key-input" id="ajustes-openai-key-label">OpenAI API Key</label>
+                        <input type="password" id="ajustes-openai-key-input" autocomplete="off" placeholder="sk-...">
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-anthropic-key-input" id="ajustes-anthropic-key-label">Anthropic API Key</label>
+                        <input type="password" id="ajustes-anthropic-key-input" autocomplete="off" placeholder="sk-ant-...">
+                    </div>
+                    <button id="ajustes-save-llm-keys-btn" class="btn btn-secondary" type="button">Guardar</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <div class="subtab-panel" data-subtab-panel="moneda">
