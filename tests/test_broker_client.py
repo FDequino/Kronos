@@ -140,17 +140,41 @@ def test_test_connection_iol_http_error_falla_sin_romper(manager, temp_db, monke
 
 
 def test_test_connection_ppi_ok_con_login_mockeado(manager, temp_db, monkeypatch):
-    monkeypatch.setattr(broker_client.requests, "post", lambda *a, **kw: _fake_response({}))
+    monkeypatch.setattr(
+        broker_client.requests, "post",
+        lambda *a, **kw: _fake_response({"accessToken": "tok-123", "refreshToken": "ref-456"}),
+    )
     account = manager.add_account(temp_db, broker_name="PPI", api_key="k", api_secret="s")
     result = manager.test_connection(temp_db, account["id"])
     assert result["status"] == broker_client.CONNECTION_OK
 
 
-def test_ppi_get_balance_no_implementado_explicito(temp_db, manager):
+def test_test_connection_ppi_sin_access_token_reconocido_falla(manager, temp_db, monkeypatch):
+    monkeypatch.setattr(broker_client.requests, "post", lambda *a, **kw: _fake_response({"algo_inesperado": "x"}))
+    account = manager.add_account(temp_db, broker_name="PPI", api_key="k", api_secret="s")
+    result = manager.test_connection(temp_db, account["id"])
+    assert result["status"] == broker_client.CONNECTION_FAILED
+
+
+def test_ppi_get_balance_sin_account_number_falla_explicito(temp_db, manager):
+    # account_number (numero de cuenta en PPI, no la ApiKey) es obligatorio
+    # para balance/tenencias -- nunca se asume ni se inventa.
     account = manager.add_account(temp_db, broker_name="PPI", api_key="k", api_secret="s")
     adapter = broker_client.PPIAdapter(db.get_broker_account(temp_db, account["id"]))
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ValueError, match="Número de cuenta"):
         adapter.get_balance()
+
+
+def test_ppi_get_balance_ok_con_login_y_balance_mockeados(temp_db, manager, monkeypatch):
+    monkeypatch.setattr(
+        broker_client.requests, "post",
+        lambda *a, **kw: _fake_response({"accessToken": "tok-123", "refreshToken": "ref-456"}),
+    )
+    monkeypatch.setattr(broker_client.requests, "get", lambda *a, **kw: _fake_response({"saldo": 500}))
+    account = manager.add_account(temp_db, broker_name="PPI", api_key="k", api_secret="s", account_number="12345")
+    adapter = broker_client.PPIAdapter(db.get_broker_account(temp_db, account["id"]))
+    assert adapter.get_balance() == {"saldo": 500}
+    assert adapter.get_holdings() == {"saldo": 500}
 
 
 # --- agregacion unificada: resiliencia ante fallos parciales ------------------
@@ -167,7 +191,8 @@ def test_unified_balance_agrega_solo_cuentas_activas(manager, temp_db, monkeypat
 
 
 def test_unified_balance_una_cuenta_rota_no_rompe_la_agregacion(manager, temp_db, monkeypatch):
-    # IOL: ok. PPI: get_balance no implementado -- debe quedar como "error",
+    # IOL: ok. PPI: sin account_number configurado -- debe quedar como
+    # "error" (ver test_ppi_get_balance_sin_account_number_falla_explicito),
     # nunca levantar la excepcion hasta el caller.
     monkeypatch.setattr(broker_client.requests, "post", lambda *a, **kw: _fake_response({"access_token": "tok"}))
     monkeypatch.setattr(broker_client.requests, "get", lambda *a, **kw: _fake_response({"saldo": 1000}))

@@ -13,6 +13,7 @@
 import { $ } from '../shared/dom.js';
 import { fmt, fmtPct, fmtMoney } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
+import { infoTooltipHtml } from '../shared/info-tooltip.js';
 import { api } from './api.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
 import { headerCellHtml, updateSortIndicators, withMobileCardLayout, mobileExpandToggleHtml, wireMobileCardToggle } from '../shared/table-chrome.js';
@@ -170,10 +171,14 @@ function actionsCellHtml(row) {
     return `<td><button type="button" class="btn btn-secondary instrumentos-add-btn" data-symbol="${row.symbol}">Agregar a cartera</button></td>`;
 }
 
-function rowHtml(row) {
+function detailHref(row) {
     const params = new URLSearchParams({ market: row.market || 'byma', assetType: row.type });
     if (row.id) params.set('instrumentId', row.id);
-    const link = `<a href="#detalle/${encodeURIComponent(row.symbol)}?${params.toString()}" class="table-link">${row.symbol}</a>`;
+    return `#detalle/${encodeURIComponent(row.symbol)}?${params.toString()}`;
+}
+
+function rowHtml(row) {
+    const link = `<a href="${detailHref(row)}" class="table-link">${row.symbol}</a>`;
     const cells = withMobileCardLayout([
         `<td>${link}</td>`,
         `<td class="cell-truncate" title="${row.name || ''}">${row.name || '—'}</td>`,
@@ -210,8 +215,17 @@ function topMover(items, dir) {
 
 function moverCellHtml(item, cls) {
     if (!item) return '—';
-    return `<span class="${cls}">${item.symbol} ${fmtPct(item.pct_change, 2, { signed: true })}</span>`;
+    return `<a href="${detailHref(item)}" class="table-link ${cls}">${item.symbol} ${fmtPct(item.pct_change, 2, { signed: true })}</a>`;
 }
+
+// Tooltip compartido por "Mayor suba"/"Mayor baja" (ver conversación: sin
+// esto no quedaba claro que es sobre el bucket/búsqueda ACTUAL, no todo el
+// universo -- y que viene crudo del feed de BYMA, puede ser un dato viejo o
+// mal cargado para un instrumento poco líquido, no un cálculo de Kronos).
+const MOVER_TOOLTIP = infoTooltipHtml(`
+    <div>Mayor variación entre los instrumentos visibles con el filtro/búsqueda actual, no de todo el universo.</div>
+    <div class="hint" style="margin-top:6px;">El % viene directo del feed de BYMA — un instrumento poco líquido puede mostrar una variación irreal si su último precio está viejo o mal cargado.</div>
+`);
 
 function renderSummary(items) {
     const el = $('instrumentos-summary');
@@ -223,8 +237,8 @@ function renderSummary(items) {
     el.innerHTML = `
         <div class="mini-stat"><div class="l">En cartera</div><div class="v num">${enCartera}</div></div>
         <div class="mini-stat"><div class="l">Sin agregar</div><div class="v num">${sinAgregar}</div></div>
-        <div class="mini-stat"><div class="l">Mayor suba</div><div class="v num">${moverCellHtml(up, 'cell-positive')}</div></div>
-        <div class="mini-stat"><div class="l">Mayor baja</div><div class="v num">${moverCellHtml(down, 'cell-negative')}</div></div>
+        <div class="mini-stat"><div class="l">Mayor suba${MOVER_TOOLTIP}</div><div class="v num">${moverCellHtml(up, 'cell-positive')}</div></div>
+        <div class="mini-stat"><div class="l">Mayor baja${MOVER_TOOLTIP}</div><div class="v num">${moverCellHtml(down, 'cell-negative')}</div></div>
     `;
 }
 

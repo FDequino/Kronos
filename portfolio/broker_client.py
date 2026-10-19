@@ -15,13 +15,14 @@ no existe): se investigaron las 4 APIs públicas ANTES de escribir esto
     se tienen) -- declarado en el docstring del adapter, nunca se afirma
     que "funciona de verdad".
   - PPI (Portfolio Personal Inversiones): API REST pública y documentada
-    CONFIRMADA (itatppi.github.io/ppi-official-api-docs), login vía
-    headers AuthorizedClient/ApiKey/ApiSecret. Se implementó SOLO lo que
-    la documentación consultada confirmó con certeza (el login/test de
-    conexión) -- el mecanismo exacto para pasar el token en los requests
-    posteriores (balance/tenencias) NO quedó confirmado en lo que se pudo
-    consultar, así que esos 2 métodos quedan como NotImplementedError
-    explícito en vez de adivinar un header que podría estar mal.
+    CONFIRMADA (itatppi.github.io/ppi-official-api-docs). La documentación
+    pública sola no alcanzaba para confirmar el mecanismo de autenticación
+    de los requests posteriores al login (quedó como NotImplementedError
+    en una ronda anterior) -- se terminó de confirmar leyendo el CÓDIGO
+    FUENTE REAL del SDK oficial (`pip download ppi_client`, paquete de
+    PyPI publicado por PPI mismo, api@portfoliopersonal.com, v1.3.0), no
+    de memoria ni adivinado. Ver docstring de PPIAdapter para el detalle
+    completo del mecanismo.
   - Balanz y Matrix: NO se encontró documentación pública de una API REST
     (búsqueda real, no asumido) -- quedan como stubs honestos que
     devuelven "integración pendiente, sin documentación pública
@@ -147,45 +148,87 @@ class IOLAdapter(BrokerAdapter):
 
 
 class PPIAdapter(BrokerAdapter):
-    """Portfolio Personal Inversiones -- ver HONESTIDAD DECLARADA arriba:
-    SOLO el login/test de conexión está implementado contra documentación
-    pública confirmada. get_balance/get_holdings quedan como
-    NotImplementedError explícito -- el mecanismo real para pasar el token
-    de LoginApi en los requests siguientes no se pudo confirmar con
-    certeza, mejor declarar la limitación que adivinar un header
-    incorrecto."""
+    """Portfolio Personal Inversiones -- mecanismo COMPLETO, confirmado
+    contra el código fuente real del SDK oficial `ppi_client` (PyPI, ver
+    HONESTIDAD DECLARADA arriba del módulo):
+
+    - AuthorizedClient/ClientKey son headers FIJOS que identifican la
+      APLICACIÓN cliente, no la cuenta del usuario -- el SDK oficial usa
+      siempre los mismos 2 valores, para cualquier usuario, en producción
+      (ppi_client/ppi_api_client.py::PPIClient.__init__). Reusarlos acá es
+      tan legítimo como usar el SDK mismo: identifican "una app hablando el
+      protocolo público de PPI", no un secreto por cuenta.
+    - ApiKey/ApiSecret (de ESTA cuenta, broker_accounts.api_key/api_secret)
+      SOLO viajan en el login (POST LoginApi) -- nunca de nuevo después.
+    - La respuesta de LoginApi trae accessToken/refreshToken; todo request
+      posterior lleva Authorization: Bearer <accessToken>, además de
+      AuthorizedClient/ClientKey (nunca ApiKey/ApiSecret de nuevo). Sin
+      cache de token entre requests (cada llamada a este adapter es un
+      objeto nuevo de vida corta, ver _adapter_for) -- un login de más por
+      consulta, mismo costo que ya paga IOLAdapter._get_token().
+    - accountNumber (el número de cuenta de PPI, NO la ApiKey) viaja como
+      query param en balance/tenencias -- es broker_accounts.account_number
+      (columna ya existía en el esquema, UI ya la pedía desde antes).
+    - Base URL de producción: clientapi.portfoliopersonal.com/api (el
+      adapter anterior tenía clientapi_sandbox.portfoliopersonal.com, ni el
+      host ni el path matcheaban el real -- nunca se hubiera conectado)."""
     broker_name = "PPI"
-    BASE_URL = "https://clientapi_sandbox.portfoliopersonal.com"  # unico base URL confirmado en la fuente consultada (sandbox) -- produccion no verificada
+    BASE_URL = "https://clientapi.portfoliopersonal.com/api"
+    AUTHORIZED_CLIENT = "API_CLI_PYTHON"
+    CLIENT_KEY = "pp19PythonApp12"
     TIMEOUT = 15
 
-    def _login_headers(self):
-        return {
-            "AuthorizedClient": self.account.get("alias") or "",
+    def _base_headers(self):
+        return {"AuthorizedClient": self.AUTHORIZED_CLIENT, "ClientKey": self.CLIENT_KEY}
+
+    def _login(self):
+        headers = {
+            **self._base_headers(),
             "ApiKey": self.account.get("api_key") or "",
             "ApiSecret": self.account.get("api_secret") or "",
         }
+        resp = requests.post(f"{self.BASE_URL}/1.0/Account/LoginApi", headers=headers, timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        token = data.get("accessToken")
+        if not token:
+            raise ValueError(f"LoginApi respondió sin accessToken: {list(data.keys())}")
+        return token
+
+    def _auth_headers(self):
+        return {**self._base_headers(), "Authorization": f"Bearer {self._login()}"}
+
+    def _account_number(self):
+        account_number = self.account.get("account_number")
+        if not account_number:
+            raise ValueError(
+                "PPI requiere 'Número de cuenta' (el número de cuenta en PPI, no la ApiKey) -- "
+                "completalo en Integraciones > Cuentas de bróker."
+            )
+        return account_number
 
     def test_connection(self):
         try:
-            resp = requests.post(
-                f"{self.BASE_URL}/api/v1/Account/LoginApi", headers=self._login_headers(), timeout=self.TIMEOUT,
-            )
-            resp.raise_for_status()
+            self._login()
             return {"status": CONNECTION_OK, "detail": "LoginApi respondió correctamente (PPI)"}
         except Exception as e:
             return {"status": CONNECTION_FAILED, "detail": str(e)}
 
     def get_balance(self):
-        raise NotImplementedError(
-            "PPI: el mecanismo de autenticación para requests posteriores al login no quedó "
-            "confirmado contra documentación pública -- ver docstring de la clase."
+        resp = requests.get(
+            f"{self.BASE_URL}/1.0/Account/AvailableBalance",
+            params={"accountNumber": self._account_number()}, headers=self._auth_headers(), timeout=self.TIMEOUT,
         )
+        resp.raise_for_status()
+        return resp.json()
 
     def get_holdings(self):
-        raise NotImplementedError(
-            "PPI: el mecanismo de autenticación para requests posteriores al login no quedó "
-            "confirmado contra documentación pública -- ver docstring de la clase."
+        resp = requests.get(
+            f"{self.BASE_URL}/1.0/Account/BalancesAndPositions",
+            params={"accountNumber": self._account_number()}, headers=self._auth_headers(), timeout=self.TIMEOUT,
         )
+        resp.raise_for_status()
+        return resp.json()
 
 
 class _PendingIntegrationAdapter(BrokerAdapter):

@@ -187,6 +187,13 @@ function opportunityRowHtml(sig, enginePct, isCore, eventRiskNotes) {
     `;
 }
 
+// Link de símbolo a su detalle -- toda otra tarjeta/fila de este archivo ya
+// lo tenía (Core/Satélite/Factor), Pairs era la única excepción (ver
+// conversación, relevamiento de tooltips/links faltantes).
+function symbolLinkHtml(symbol, extraClass = '') {
+    return `<a href="#detalle/${encodeURIComponent(symbol)}" class="table-link ${extraClass}">${symbol}</a>`;
+}
+
 // Pairs Trading (ver conversacion, portfolio/pairs_trading.py) -- esta app
 // no soporta venta en corto real (ver portfolio/backtest.py::summarize),
 // asi que la pata "cara" del par solo es operable de verdad si ya se tiene
@@ -202,9 +209,9 @@ function pairCardHtml(sig) {
             </div>
             <p class="hint">Z-score ${fmt(sig.zscore, 2)} · Cointegración p=${fmt(sig.cointegration_pvalue, 3)} · Hedge ratio ${fmt(sig.hedge_ratio, 3)}</p>
             <div class="opportunity-card-prices">
-                <div><span class="l">Comprar (barata)</span><span class="v cell-positive">${cheap.symbol}</span></div>
+                <div><span class="l">Comprar (barata)</span><span class="v">${symbolLinkHtml(cheap.symbol, 'cell-positive')}</span></div>
                 <div><span class="l">${expensive.actionable ? 'Vender (cara, en cartera)' : 'Cara (informativo)'}</span>
-                     <span class="v ${expensive.actionable ? 'cell-negative' : ''}">${expensive.symbol}${expensive.actionable ? '' : ' ⓘ'}</span></div>
+                     <span class="v">${symbolLinkHtml(expensive.symbol, expensive.actionable ? 'cell-negative' : '')}${expensive.actionable ? '' : ' ⓘ'}</span></div>
                 <div><span class="l">Monto sugerido${infoTooltipHtml('<div>Capital asignado a Pairs Trading (ver Ajustes → Estrategia y Motores), completo para esta oportunidad.</div>')}</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
             </div>
             <p class="hint">${expensive.note}</p>
@@ -220,7 +227,7 @@ function pairRowHtml(sig) {
             <td><span class="tag tag-neutral">📊 Pairs${ENGINE_TOOLTIPS.pairs}</span></td>
             <td>
                 <div class="hint">Z-score ${fmt(sig.zscore, 2)} · Cointegración p=${fmt(sig.cointegration_pvalue, 3)} · Hedge ratio ${fmt(sig.hedge_ratio, 3)}</div>
-                <div><span class="cell-positive">Comprar ${cheap.symbol}</span> · <span class="${expensive.actionable ? 'cell-negative' : ''}">${expensive.actionable ? 'Vender' : 'Cara (informativo)'} ${expensive.symbol}</span></div>
+                <div>Comprar ${symbolLinkHtml(cheap.symbol, 'cell-positive')} · ${expensive.actionable ? 'Vender' : 'Cara (informativo)'} ${symbolLinkHtml(expensive.symbol, expensive.actionable ? 'cell-negative' : '')}</div>
                 <div class="hint">${expensive.note}</div>
             </td>
             <td class="num">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}${infoTooltipHtml('<div>Capital asignado a Pairs Trading (ver Ajustes → Estrategia y Motores), completo para esta oportunidad.</div>')}</td>

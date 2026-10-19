@@ -450,7 +450,7 @@ function vencimientosDetailHtml(events, risk, usdRate) {
             <tbody>${events.map((e) => `
                 <tr>
                     <td class="${e.urgent ? 'cell-negative' : ''}">${e.fechaLabel}</td>
-                    <td>${e.detalleLink || e.detalle}</td>
+                    <td>${e.detalleHref ? `<a href="${e.detalleHref}" class="table-link">${e.detalleLink}</a>` : (e.detalleLink || e.detalle)}</td>
                     <td class="num">${e.monto || '—'}</td>
                 </tr>
             `).join('')}</tbody>
@@ -489,6 +489,7 @@ function buildVencimientosEvents(loans, cauciones, fixedIncomeEvents, usdRate) {
                 urgent: true, sortKey: `0${String(1000 - l.vencido_hace_dias).padStart(5, '0')}`,
                 fechaLabel: `hace ${l.vencido_hace_dias}d`,
                 detalleLink: `Préstamo atrasado — ${l.deudor} (${l.moneda})`,
+                detalleHref: '#prestamos',
                 monto: eventMontoHtml(l.capital_pendiente, l.moneda, usdRate),
             });
         } else if (l.proximo_vencimiento) {
@@ -496,6 +497,7 @@ function buildVencimientosEvents(loans, cauciones, fixedIncomeEvents, usdRate) {
                 urgent: false, sortKey: `1${l.proximo_vencimiento}`,
                 fechaLabel: fmtDate(l.proximo_vencimiento),
                 detalleLink: `Cuota de préstamo — ${l.deudor}`,
+                detalleHref: '#prestamos',
                 monto: eventMontoHtml(l.proximo_monto, l.moneda, usdRate),
             });
         }
@@ -505,6 +507,7 @@ function buildVencimientosEvents(loans, cauciones, fixedIncomeEvents, usdRate) {
             urgent: false, sortKey: `1${c.caucion.fecha_vencimiento}`,
             fechaLabel: fmtDate(c.caucion.fecha_vencimiento),
             detalleLink: `Vencimiento de caución ${c.caucion.numero_boleto}`,
+            detalleHref: '#plazos-fijos/cauciones',
             monto: eventMontoHtml(c.valor_actual, c.caucion.moneda, usdRate),
         });
     });
@@ -513,6 +516,7 @@ function buildVencimientosEvents(loans, cauciones, fixedIncomeEvents, usdRate) {
             urgent: false, sortKey: `1${e.date}`,
             fechaLabel: fmtDate(e.date),
             detalleLink: `${e.kind === 'vencimiento' ? 'Vencimiento' : 'Cupón'} de ${e.symbol}`,
+            detalleHref: `#detalle/${encodeURIComponent(e.symbol)}`,
             monto: null,
         });
     });
