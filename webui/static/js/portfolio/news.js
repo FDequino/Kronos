@@ -6,7 +6,7 @@
 // Oportunidades/Propuestas -- acá se ve completo (titulares reales, no
 // solo el badge). GET /api/portfolio/news-today.
 import { $ } from '../shared/dom.js';
-import { fmt, fmtDate } from '../shared/format.js';
+import { fmtDate } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
 import { api } from './api.js';
 
@@ -15,8 +15,15 @@ const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 
 function entryHtml(entry) {
     const riskTag = `<span class="tag ${NEWS_RISK_TAG_CLASS[entry.risk_level] || 'tag-neutral'}">${entry.risk_level}</span>`;
     const detailHref = `#detalle/${encodeURIComponent(entry.ticker)}`;
+    // Sin "en Xhs" acá (a diferencia del panel de instrumento, ver
+    // instrument-detail.js::newsHtml) -- este dato viene de
+    // db.list_today_sentiment, una fila cruda de news_sentiment_log, que
+    // nunca persiste hours_until_event (es un valor que depende del
+    // momento exacto en que se mira, no algo que tenga sentido guardar
+    // fijo) -- el detalle de horas ya está adentro de `summary`, calculado
+    // en el momento real de la corrida.
     const eventLine = entry.event_date
-        ? `<p class="hint">Próximo balance: ${fmtDate(entry.event_date)} (en ${fmt(entry.hours_until_event, 0)}hs)</p>`
+        ? `<p class="hint">Próximo balance: ${fmtDate(entry.event_date)}</p>`
         : '';
     const headlinesHtml = entry.headlines.length
         ? `<ul class="detail-news-list">${entry.headlines.slice(0, 5).map((h) => `<li>${h}</li>`).join('')}</ul>`
