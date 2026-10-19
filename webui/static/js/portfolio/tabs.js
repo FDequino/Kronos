@@ -12,7 +12,7 @@ const DETAIL_PREFIX = 'detalle/';
 // ver setPageMeta más abajo.
 const VIEW_META = {
     resumen: { title: 'Resumen', subtitle: 'Patrimonio, evolución y proyección de tu cartera' },
-    decisiones: { title: 'Decisiones', subtitle: 'Oportunidades del día, configuración del motor y seguimiento de propuestas' },
+    decisiones: { title: 'Decisiones', subtitle: 'Oportunidades del día y seguimiento de propuestas' },
     instrumentos: { title: 'Instrumentos', subtitle: 'Catálogo completo y comparador de activos' },
     transacciones: { title: 'Transacciones', subtitle: 'Historial de operaciones, dividendos y rentas' },
     'plazos-fijos': { title: 'Plazos Fijos', subtitle: 'Plazos fijos y cauciones' },
@@ -71,8 +71,9 @@ function applyScrollAfterMutation(hash, isDetail) {
 // Fase 18: Propuestas y Señales son subtabs propios de vuelta (dejaron de
 // convivir en "Bandeja" -- eran dos cosas distintas, mezclarlas confundía).
 // Pase de limpieza de UI (ver conversacion): Decisiones es ahora un layout
-// PLANO de 5 pestañas hermanas (Oportunidades del Día / Configuración del
-// Motor / Propuestas / Paper Trading / Rendimiento Histórico) -- se eliminó
+// PLANO de 4 pestañas hermanas (Oportunidades del Día / Propuestas / Paper
+// Trading / Rendimiento Histórico -- "Configuración del Motor" se retiró
+// del todo más tarde, ver LEGACY_SUBTAB_REDIRECTS) -- se eliminó
 // la barra de subtabs anidada que existía antes, así que todos estos
 // redirects son de 2 niveles [vista, subtab] (nunca una subtab anidada
 // dentro de otra). "senales" y "alertas" (vistas globales retiradas -- ese
@@ -94,6 +95,18 @@ const LEGACY_HASH_REDIRECTS = {
     comparar: ['instrumentos', 'comparar'],
 };
 
+// "Motor" dejó de ser una subtab propia de Decisiones (ver portfolio.html,
+// pase de UX/UI) -- a diferencia de LEGACY_HASH_REDIRECTS de arriba (que
+// redirige por VISTA, primer segmento del hash), esto es un redirect de
+// SUBTAB dentro de una vista que sigue existiendo tal cual -- por eso es un
+// mapa aparte, keyeado por "vista/subtab". Un bookmark viejo a
+// #decisiones/motor ya caía en la subtab default (oportunidades, activa en
+// el markup) porque activateSubtab() no hace nada si el botón no existe --
+// pero no depender de esa casualidad: dejarlo explícito.
+const LEGACY_SUBTAB_REDIRECTS = {
+    'decisiones/motor': 'oportunidades',
+};
+
 function activateView(hash) {
     const isDetail = hash.startsWith(DETAIL_PREFIX);
     let viewName;
@@ -112,6 +125,9 @@ function activateView(hash) {
         [viewName, topSubtab, nestedSubtab] = LEGACY_HASH_REDIRECTS[viewName];
     }
     const target = isDetail ? 'detalle' : (VIEWS.includes(viewName) ? viewName : VIEWS[0]);
+    if (!isDetail && LEGACY_SUBTAB_REDIRECTS[`${target}/${topSubtab}`]) {
+        topSubtab = LEGACY_SUBTAB_REDIRECTS[`${target}/${topSubtab}`];
+    }
     captureScrollBeforeMutation(hash, isDetail);
     document.querySelectorAll('.view').forEach((el) => {
         el.classList.toggle('active', el.id === `view-${target}`);

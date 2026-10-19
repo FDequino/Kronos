@@ -56,14 +56,18 @@
 <section class="view" id="view-decisiones">
     <!-- Layout PLANO (ver conversacion, pase de UX/UI) -- se eliminó la
          "muñeca rusa" de subtabs anidadas (una barra de pestañas dentro de
-         otra). Las 5 pestañas son todas hermanas, mismo nivel, sin anidar.
+         otra). Las 4 pestañas son todas hermanas, mismo nivel, sin anidar.
          Señales (tabla técnica/fundamental de TODAS las tenencias) y Alertas
          SL/TP (listado global) se retiraron de Decisiones -- ese mismo dato
          (RSI, fundamentales, alertas) ya vive en el detalle de cada
-         instrumento y en el catálogo unificado de Instrumentos. -->
+         instrumento y en el catálogo unificado de Instrumentos. "Motor"
+         (config de solo lectura, Fase 6) también se retiró como pestaña
+         propia -- era solo 2 líneas de texto (% Core/Satélite + TP/SL), no
+         ameritaba una pestaña entera; ahora es un tooltip (?) junto a "Monto
+         sugerido" en cada tarjeta de Oportunidades (ver core-satellite.js),
+         la edición real siempre vivió en Ajustes. -->
     <div class="subtabs" data-subtabs="decisiones">
         <button class="subtab-btn active" type="button" data-subtab-target="oportunidades">Oportunidades</button>
-        <button class="subtab-btn" type="button" data-subtab-target="motor">Motor</button>
         <button class="subtab-btn" type="button" data-subtab-target="propuestas">Propuestas</button>
         <button class="subtab-btn" type="button" data-subtab-target="paper-trading">Paper Trading</button>
         <button class="subtab-btn" type="button" data-subtab-target="rendimiento">Backtest</button>
@@ -93,18 +97,6 @@
                 </div>
             </div>
             <div class="panel-body" id="dual-engine-signals-container">{{ skeleton_chart(220) }}</div>
-        </div>
-    </div>
-
-    <div class="subtab-panel" data-subtab-panel="motor">
-        <div class="panel">
-            <div class="panel-header">
-                <div class="panel-header-text">
-                    <h2>Configuración del Motor</h2>
-                    <p class="panel-subtitle">Asignación de capital entre el Fondo de Mediano Plazo (Core) y la Estrategia Corto Plazo (Satélite), y los parámetros de salida de esta última — de solo lectura acá, se edita desde Ajustes.</p>
-                </div>
-            </div>
-            <div class="panel-body" id="core-satellite-allocation"></div>
         </div>
     </div>
 

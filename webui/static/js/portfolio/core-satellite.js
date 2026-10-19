@@ -1,10 +1,12 @@
-// Arquitectura Dual CORE/SATELITE (ver conversacion): dos pestañas PLANAS de
-// Decisiones (sin anidar, ver pase de UX/UI) -- "Oportunidades del Día"
-// (tarjetas de compra/venta, este archivo) y "Configuración del Motor"
-// (asignación de capital + salida del Satélite, también este archivo) --
-// más "Rendimiento Histórico" (backtest global, misma data, otra pestaña).
-// GET /api/signals, GET/POST /api/config/allocation, PUT /satellite-exit-params,
-// GET /api/backtest/summary.
+// Arquitectura Dual CORE/SATELITE (ver conversacion): "Oportunidades del
+// Día" (tarjetas de compra/venta, este archivo) es la pestaña PLANA default
+// de Decisiones, + "Rendimiento Histórico" (backtest global, misma data,
+// otra pestaña). "Configuración del Motor" era una tercera pestaña propia
+// de solo lectura (Fase 6) -- se retiró del todo (ver conversacion, pase de
+// UX/UI): ahora es un tooltip (?) junto a "Monto sugerido" en cada tarjeta
+// (ver suggestedAmountTooltip más abajo) -- la asignación Core/Satélite se
+// sigue pidiendo igual, ahora solo para calcular ese monto y ese tooltip.
+// GET /api/signals, GET/POST /api/config/allocation, GET /api/backtest/summary.
 import { $ } from '../shared/dom.js';
 import { fmt, fmtPct, fmtMoney, fmtDate } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
@@ -49,12 +51,31 @@ export const INDICATOR_TOOLTIPS = {
 let loaded = false;
 let lastSignals = null; // respuesta cruda de /api/signals, para recalcular montos sin re-pedir al servidor
 let allocation = { core_pct: 70, satellite_pct: 30 };
-let exitParams = { take_profit_pct: 4.0, stop_loss_pct: 9.0 };
-let coreThreshold = null; // min_efficiency_score, ver ajustes.js (Umbral del Core)
 
 function suggestedAmount(positionWeight, enginePct) {
     if (!lastSignals?.account_value_ars) return null;
     return lastSignals.account_value_ars * (enginePct / 100) * positionWeight;
+}
+
+// Reemplaza a la pestaña "Motor" (ver conversacion, pase de UX/UI) -- esa
+// pestaña entera solo decia esto: el % de patrimonio asignado al motor que
+// generó la señal. El resto (TP/SL, umbral del Core) no hace falta para
+// entender el monto sugerido, por eso no se trae de vuelta acá (serían 2
+// fetches más solo para texto que no responde "de dónde sale este número").
+function suggestedAmountTooltip(isCore) {
+    const enginePct = isCore ? allocation.core_pct : allocation.satellite_pct;
+    return infoTooltipHtml(`
+        <div>El ${fmt(enginePct, 0)}% del patrimonio asignado al Motor ${isCore ? 'Core' : 'Satélite'} (asignación vigente: Core ${fmt(allocation.core_pct, 0)}% / Satélite ${fmt(allocation.satellite_pct, 0)}%), multiplicado por el peso de esta señal.</div>
+        <a href="#ajustes/estrategia" class="hint" style="display:inline-block;margin-top:6px;">Editar en Ajustes → Estrategia y Motores</a>
+    `);
+}
+
+// Permite a proposals.js (otra subtab de Decisiones, mismo riesgo de evento
+// por símbolo) marcar una propuesta sin tener que volver a pedirle al
+// servidor algo que esta vista ya tiene en memoria -- null hasta que
+// loadSignals() resuelva la primera vez.
+export function getEventRiskNotes() {
+    return lastSignals?.event_risk_notes || {};
 }
 
 // Refactorizacion financiera en USD CCL (ver conversacion): el analisis y la
@@ -64,40 +85,22 @@ function dualPrice(usd, ars) {
     return `${fmtMoney(usd, 'USD')} <span class="hint">(≈${fmtMoney(ars)})</span>`;
 }
 
-// --- Configuración del Motor -------------------------------------------------
-// Fase 6 (ver conversación): esto ANTES era un editor completo (slider +
-// inputs de TP/SL + guardar), un duplicado exacto del bloque "Motor
-// Cuantitativo y Estrategia" de Ajustes -- mismos endpoints
-// (capitalAllocation/satelliteExitParams), dos lugares para cambiar el mismo
-// valor. Ahora es de solo lectura acá -- un link lleva a Ajustes, la única
-// fuente editable. `allocation`/`exitParams` se siguen pidiendo igual (la
-// fila de Oportunidades del Día los necesita para el "Monto sugerido" de
-// cada tarjeta).
-function renderAllocationControls() {
-    const el = $('core-satellite-allocation');
-    if (!el) return;
-    el.innerHTML = `
-        <p class="hint">
-            Core <b>${fmt(allocation.core_pct, 0)}%</b> / Satélite <b>${fmt(allocation.satellite_pct, 0)}%</b>
-            · Take Profit Satélite <b>+${fmt(exitParams.take_profit_pct, 1)}%</b>
-            · Stop Loss Satélite hasta <b>-${fmt(exitParams.stop_loss_pct, 1)}%</b>
-            ${coreThreshold !== null ? `· Umbral del Core <b>${fmt(coreThreshold, 0)}</b>` : ''}
-        </p>
-        <a href="#ajustes/estrategia" class="btn btn-secondary">Editar en Ajustes</a>
-    `;
-}
-
 // --- Oportunidades del Día (tarjetas, ver conversación: reemplaza la tabla
 // con conmutador Core/Satélite que había antes -- ahora las señales de los
 // 2 motores conviven en una sola grilla de tarjetas, cada una badgeada por
 // motor) ----------------------------------------------------------------
 
-function opportunityCardHtml(sig, enginePct, isCore) {
+function opportunityCardHtml(sig, enginePct, isCore, eventRiskNotes) {
     const amount = suggestedAmount(sig.position_weight, enginePct);
     const subtitle = isCore
         ? `Score ${fmt(sig.efficiency_score, 1)} · Dispersión ${fmt(sig.dispersion_ratio, 3)}`
         : (sig.tactics || []).join(', ');
     const detailHref = `#detalle/${encodeURIComponent(sig.symbol)}`;
+    // event_risk_notes (ver portfolio/nlp_agent.py, portfolio/live_signals.py)
+    // -- SOLO existe entrada para un symbol si el riesgo es MEDIO/ALTO (earnings
+    // cerca o sentimiento de noticias marcado), la mayoría de los días no hay
+    // nada que mostrar acá -- nunca un placeholder vacío.
+    const eventNote = eventRiskNotes?.[sig.symbol];
     return `
         <div class="opportunity-card">
             <div class="opportunity-card-head">
@@ -105,11 +108,12 @@ function opportunityCardHtml(sig, enginePct, isCore) {
                 <span class="tag ${isCore ? 'tag-neutral' : 'tag-positive'}">${isCore ? '🛡️ Core' : '⚡ Satélite'}</span>
             </div>
             <p class="hint">${subtitle}</p>
+            ${eventNote ? `<p class="hint cell-warning">${eventNote}</p>` : ''}
             <div class="opportunity-card-prices">
                 <div><span class="l">Entrada</span><span class="v">${dualPrice(sig.entry_price_usd, sig.entry_price_ars)}</span></div>
                 <div><span class="l">Take Profit</span><span class="v cell-positive">${dualPrice(sig.take_profit_price_usd, sig.take_profit_price_ars)} (+${fmt(sig.take_profit_pct, 1)}%)</span></div>
                 <div><span class="l">Stop</span><span class="v cell-negative">${dualPrice(sig.initial_stop_price_usd, sig.initial_stop_price_ars)} (-${fmt(sig.initial_stop_pct, 1)}%)</span></div>
-                <div><span class="l">Monto sugerido</span><span class="v">${amount !== null ? fmtMoney(amount) : '—'}</span></div>
+                <div><span class="l">Monto sugerido${suggestedAmountTooltip(isCore)}</span><span class="v">${amount !== null ? fmtMoney(amount) : '—'}</span></div>
             </div>
             <div class="opportunity-card-actions">
                 <a href="${detailHref}" class="btn btn-secondary">Ver Gráfico</a>
@@ -228,8 +232,9 @@ function renderOpportunityCards() {
         container.innerHTML = '<p class="table-empty">Todavía no se consultaron las señales de hoy.</p>';
         return;
     }
-    const coreCards = lastSignals.core_signals.map((s) => opportunityCardHtml(s, allocation.core_pct, true));
-    const satelliteCards = lastSignals.satellite_signals.map((s) => opportunityCardHtml(s, allocation.satellite_pct, false));
+    const eventRiskNotes = lastSignals.event_risk_notes || {};
+    const coreCards = lastSignals.core_signals.map((s) => opportunityCardHtml(s, allocation.core_pct, true, eventRiskNotes));
+    const satelliteCards = lastSignals.satellite_signals.map((s) => opportunityCardHtml(s, allocation.satellite_pct, false, eventRiskNotes));
     const pairCards = (lastSignals.pairs_signals || []).map((s) => pairCardHtml(s));
     const factorCards = (lastSignals.factor_signals || []).map((s) => factorCardHtml(s));
     const arbitrageCards = (lastSignals.arbitrage_signals || []).map((s) => arbitrageCardHtml(s));
@@ -290,26 +295,22 @@ async function loadSignals(force = false) {
     }
 }
 
-async function loadAllocationAndRender() {
+// Fase 6 (ver conversación): antes esto también pedía satellite-exit-params
+// y core-params para pintarlos en la pestaña "Motor" -- esa pestaña se
+// retiró del todo (ver tooltip "Monto sugerido" más arriba), así que ya no
+// hace falta pedir TP/SL/umbral acá, solo la asignación de capital que SÍ
+// sigue haciendo falta para calcular los montos sugeridos de cada tarjeta.
+async function loadAllocation() {
     try {
         const { data } = await api.capitalAllocation();
         allocation = data;
     } catch { /* se queda con el default 70/30 si el endpoint falla */ }
-    try {
-        const { data } = await api.satelliteExitParams();
-        exitParams = data;
-    } catch { /* se queda con el default 4.0/9.0 si el endpoint falla */ }
-    try {
-        const { data } = await api.coreParams();
-        coreThreshold = data.min_efficiency_score;
-    } catch { /* se omite del resumen si el endpoint falla, nunca se inventa un valor */ }
-    renderAllocationControls();
 }
 
 async function loadCoreSatelliteIfNeeded() {
     if (loaded) return;
     loaded = true;
-    await loadAllocationAndRender();
+    await loadAllocation();
     await loadSignals();
 }
 

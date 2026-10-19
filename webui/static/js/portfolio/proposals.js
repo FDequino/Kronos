@@ -10,6 +10,7 @@ import { openTransactionModal, instrumentBySymbol, detailLinkHtml } from './tran
 import { createSearchBar, applySearchState, wireGroupToggles } from '../shared/search-bar.js';
 import { glossaryTerm } from '../shared/glossary.js';
 import { infoTooltipHtml } from '../shared/info-tooltip.js';
+import { getEventRiskNotes } from './core-satellite.js';
 
 const ORIGEN_LABEL = { sl_tp: 'Stop-loss/Take-profit', evento: 'Evento', rebalanceo: 'Rebalanceo', senal: 'Señal validada' };
 // Cada origen tiene su propia entrada en el glosario -- "Origen" por sí solo
@@ -139,19 +140,27 @@ function actionsHtml(p) {
 
 function proposalCardHtml(p) {
     // Rebalanceo no apunta a un ticker real (p.symbol es una etiqueta de
-    // clase, ej. "Bonos") -- no hay detalle de instrumento al que linkear ahí.
+    // clase, ej. "Bonos") -- no hay detalle de instrumento al que linkear ahí,
+    // y tampoco tiene sentido buscarlo en event_risk_notes (ese dict está
+    // keyeado por símbolo real, ver portfolio/live_signals.py).
     const activo = p.origen === 'rebalanceo' ? p.symbol : detailLinkHtml(instrumentBySymbol.get(p.symbol), p.symbol);
     // tag-signal-buy/sell (acento), nunca tag-positive/tag-negative -- es una
     // señal sugerida, no P&L real (ver DESIGN_SYSTEM.md).
     const tipoTag = p.tipo_sugerido
         ? ` <span class="tag ${p.tipo_sugerido === 'compra' ? 'tag-signal-buy' : 'tag-signal-sell'}">${p.tipo_sugerido === 'compra' ? 'Comprar' : 'Vender'}</span>`
         : '';
+    // Mismas notas de riesgo de evento que Oportunidades del Día (ver
+    // core-satellite.js::getEventRiskNotes) -- reusa lo que esa vista ya pidió
+    // en vez de otro fetch acá, igual que `eventRiskNotes` y el signalConfig
+    // de más arriba.
+    const eventNote = p.origen !== 'rebalanceo' ? getEventRiskNotes()[p.symbol] : null;
     return `
         <div class="proposal-card${p.estado === 'nueva' ? ' proposal-card-new' : ''}" data-id="${p.id}">
             <div class="proposal-card-head">
                 <div class="proposal-card-head-left">
                     <span class="row-inline-tag">${activo}${tipoTag}</span>
                     <span class="proposal-card-origen">${glossaryTerm(ORIGEN_GLOSSARY_KEY[p.origen], ORIGEN_LABEL[p.origen] || p.origen)}</span>
+                    ${eventNote ? `<span class="cell-warning">${eventNote}</span>` : ''}
                 </div>
                 <div class="proposal-card-actions">${actionsHtml(p)}</div>
             </div>
