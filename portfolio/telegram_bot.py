@@ -41,7 +41,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from model.client import ChronosServiceClient
 from portfolio import accuracy, db, fetchers, fixed_income, loans as loans_module, pdf_report, risk, routes
 from portfolio import config as capital_config
-from portfolio import live_signals, monitor, paper_trading, proposals, regime
+from portfolio import live_signals, monitor, paper_trading, proposals, regime, scanner
 from portfolio.formatting import fmt_es
 from portfolio.tz import ART_TZ, now_ar, today_ar
 
@@ -164,7 +164,9 @@ def _fetch_signals_text():
     conn = db.get_connection()
     try:
         account_value = live_signals.total_portfolio_value_ars(conn)
-        result = live_signals.compute_today_signals(conn, _dual_engine_client, account_value=account_value)
+        result = live_signals.compute_today_signals(
+            conn, _dual_engine_client, universe=scanner.get_scanner_universe(conn), account_value=account_value,
+        )
         return _format_dual_engine_signals(result)
     finally:
         conn.close()
@@ -998,7 +1000,7 @@ async def _paper_trading_scan_job(context: ContextTypes.DEFAULT_TYPE):
         if not allowed_users:
             return
         try:
-            result = monitor.scan_once(conn, _dual_engine_client)
+            result = monitor.scan_once(conn, _dual_engine_client, universe=scanner.get_scanner_universe(conn))
         except Exception:
             logger.exception("Fallo el scan intradia de Paper Trading")
             return

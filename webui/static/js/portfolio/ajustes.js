@@ -73,6 +73,51 @@ function initQuantControls() {
     });
 }
 
+// --- Escaner de liquidez / "aduana de liquidez" (ver conversacion: "que los
+// parametros del escaner... sean 100% configurables") -- mismo patron de
+// carga + boton "Guardar" que el bloque de arriba (Controles de
+// configuracion), ver portfolio/scanner.py para la logica real.
+
+let scannerMode = 'curated';
+
+function setScannerModeActive(mode) {
+    scannerMode = mode;
+    document.querySelectorAll('#ajustes-scanner-mode-toggle .segmented-toggle-option').forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.value === mode);
+    });
+}
+
+async function loadScannerControls() {
+    try {
+        const { data } = await api.signalConfig();
+        setScannerModeActive(data.scanner_mode || 'curated');
+        $('ajustes-scanner-volume-input').value = data.min_daily_volume_usd;
+        $('ajustes-scanner-spread-input').value = data.max_bid_ask_spread_pct;
+        $('ajustes-scanner-operating-days-input').value = data.min_operating_days_month;
+    } catch { /* deja los inputs vacios si falla -- nunca inventa un valor */ }
+}
+
+function initScannerControls() {
+    document.querySelectorAll('#ajustes-scanner-mode-toggle .segmented-toggle-option').forEach((btn) => {
+        btn.addEventListener('click', () => setScannerModeActive(btn.dataset.value));
+    });
+
+    $('ajustes-save-scanner-btn').addEventListener('click', async () => {
+        const payload = {
+            scanner_mode: scannerMode,
+            min_daily_volume_usd: Number($('ajustes-scanner-volume-input').value),
+            max_bid_ask_spread_pct: Number($('ajustes-scanner-spread-input').value),
+            min_operating_days_month: Number($('ajustes-scanner-operating-days-input').value),
+        };
+        try {
+            await api.updateSignalConfig(payload);
+            showStatus('status-banner', 'success', 'Configuración del escáner actualizada');
+        } catch (error) {
+            showStatus('status-banner', 'error', error.response?.data?.error || error.message);
+        }
+    });
+}
+
 // --- Perfiles de Inversion (ver conversacion) -------------------------------
 //
 // "Activo" se deriva en el backend de los parametros REALES (ver
@@ -568,6 +613,8 @@ function initPdfReportControls() {
 export function initAjustesView() {
     initQuantControls();
     loadQuantControls();
+    initScannerControls();
+    loadScannerControls();
     loadRiskProfiles();
 
     const addUserBtn = $('new-telegram-user-btn');

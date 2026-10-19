@@ -155,6 +155,25 @@ def _migrate(conn):
         # signals.py sigue declarando CORE_MIN_EFFICIENCY_SCORE=80.0 como
         # default de referencia, nunca el valor real que opera.
         "core_min_efficiency_score": "REAL NOT NULL DEFAULT 80.0",
+        # Escaner de liquidez / "aduana de liquidez" (ver conversacion: "que
+        # los parametros del escaner... sean 100% configurables", ver
+        # portfolio/scanner.py) -- 'curated' (default) es CERO cambio de
+        # comportamiento (el universo fijo de siempre, backtest.UNIVERSE);
+        # 'global_filtered' expande a todo BYMA filtrado por estos 3
+        # umbrales, nunca el default (instrumentos que pasan el filtro de
+        # liquidez no pasaron por ningun backtest de Core/Satelite). Sin
+        # CHECK constraint a proposito (a diferencia de app_settings.scanner_mode-
+        # like columns definidas en el CREATE TABLE original): SQLite no
+        # permite agregar una columna con CHECK via ALTER TABLE a una tabla
+        # que ya tiene filas (signal_config siempre tiene la fila id=1) --
+        # falla con "NOT NULL constraint failed" aun con DEFAULT valido
+        # (confirmado). get_scanner_universe ya trata cualquier valor
+        # distinto de 'global_filtered' como 'curated' (fail-safe), asi que
+        # la validacion real sigue existiendo, solo que en el consumidor.
+        "scanner_mode": "TEXT NOT NULL DEFAULT 'curated'",
+        "min_daily_volume_usd": "REAL NOT NULL DEFAULT 20000.0",
+        "max_bid_ask_spread_pct": "REAL NOT NULL DEFAULT 1.5",
+        "min_operating_days_month": "INTEGER NOT NULL DEFAULT 15",
     }
     for col, ddl in new_signal_cols.items():
         if col not in signal_cols:

@@ -534,6 +534,56 @@
                 </div>
             </div>
         </div>
+
+        <!-- Escaner de liquidez / "aduana de liquidez" (ver conversación: "que
+             los parámetros del escáner... sean 100% configurables") -- Core/
+             Satélite/Pairs/Factor etc. solo consideran un universo FIJO de
+             tickers (ver portfolio/backtest.py::UNIVERSE); este panel es la
+             única forma de ampliarlo sin tocar código, activando el modo
+             "Filtro Global" y bajando el piso de liquidez que corresponda
+             (ver portfolio/scanner.py). -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Filtros de Mercado y Escáner</h2>
+                    <p class="panel-subtitle">Por defecto, Core/Satélite solo evalúan un universo fijo y backtesteado de instrumentos. "Filtro Global" lo amplía a todo BYMA (acciones, CEDEARs y bonos) que pase estos 3 filtros de liquidez — un instrumento que entra por acá nunca pasó por ningún backtest, es una ampliación deliberada del riesgo, no una recomendación validada.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="field-row">
+                    <div class="field">
+                        <label>Modo del escáner</label>
+                        <div class="segmented-toggle" id="ajustes-scanner-mode-toggle">
+                            <button class="segmented-toggle-option" data-value="curated" type="button">Universo curado</button>
+                            <button class="segmented-toggle-option" data-value="global_filtered" type="button">Filtro global (BYMA)</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="field-row" style="margin-top: 18px; align-items: flex-start;">
+                    <div class="field">
+                        <label for="ajustes-scanner-volume-input">
+                            <span class="glossary-term" tabindex="0">Volumen diario mínimo (USD)<span class="glossary-term-panel">Monto operado ese día (precio × volumen, convertido a USD vía CCL) por debajo del cual un instrumento se descarta — evita activos sin suficiente mercado como para entrar/salir sin mover el precio vos mismo.</span></span>
+                        </label>
+                        <input type="number" id="ajustes-scanner-volume-input" min="0" step="1000">
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-scanner-spread-input">
+                            <span class="glossary-term" tabindex="0">Spread bid/ask máximo (%)<span class="glossary-term-panel">Diferencia entre precio de compra y venta, como % del precio medio. Un spread ancho significa que comprar y vender de inmediato ya te hace perder plata, sin que se mueva el precio.</span></span>
+                        </label>
+                        <input type="number" id="ajustes-scanner-spread-input" min="0" step="0.1">
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-scanner-operating-days-input">
+                            <span class="glossary-term" tabindex="0">Días operados mínimos (último mes)<span class="glossary-term-panel">Cuántas de las últimas ruedas (~30 días corridos) tuvieron que haber tenido operaciones reales. Un instrumento que solo opera 2-3 días al mes puede dejarte con una posición abierta sin poder salir cuando quieras.</span></span>
+                        </label>
+                        <input type="number" id="ajustes-scanner-operating-days-input" min="0" max="30" step="1">
+                    </div>
+                </div>
+                <div class="view-toolbar-actions" style="margin-top: 18px;">
+                    <button id="ajustes-save-scanner-btn" class="btn btn-primary" type="button">Guardar Configuración</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <!-- Integraciones (ver conversacion): fusion de "Telegram y Accesos" +

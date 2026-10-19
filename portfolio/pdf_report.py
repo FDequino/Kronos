@@ -39,7 +39,7 @@ from reportlab.lib.utils import ImageReader
 from reportlab.platypus import Image, KeepTogether, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 from model.client import ChronosServiceClient
-from portfolio import db, fetchers, live_signals, monitor, paper_trading, risk
+from portfolio import db, fetchers, live_signals, monitor, paper_trading, risk, scanner
 from portfolio.tz import now_ar, today_ar
 
 PDF_CURRENCY_USD = "USD"
@@ -207,7 +207,9 @@ def _opportunities_section(conn):
     try:
         client = ChronosServiceClient()
         account_value = live_signals.total_portfolio_value_ars(conn)
-        result = live_signals.compute_today_signals(conn, client, account_value=account_value)
+        result = live_signals.compute_today_signals(
+            conn, client, universe=scanner.get_scanner_universe(conn), account_value=account_value,
+        )
         return {
             "title": "Señales y Oportunidades del Día", "kind": "oportunidades_dia",
             "data": {

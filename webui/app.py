@@ -25,8 +25,7 @@ except ImportError:
 from portfolio.routes import bp as portfolio_bp
 from portfolio import auth, config as capital_config
 from portfolio import db as portfolio_db
-from portfolio import live_signals, quote_worker, telegram_bot
-from portfolio.backtest import UNIVERSE as DUAL_ENGINE_UNIVERSE
+from portfolio import live_signals, quote_worker, scanner, telegram_bot
 from portfolio.tz import now_ar, today_ar
 from nav import NAV_ITEMS
 from model import runtime as model_runtime
@@ -451,7 +450,7 @@ def api_signals():
                 return jsonify({**cached['result'], 'run_at': cached['run_at'], 'cached': True})
         account_value = live_signals.total_portfolio_value_ars(conn)
         result = live_signals.compute_today_signals(
-            conn, _dual_engine_client, universe=DUAL_ENGINE_UNIVERSE, account_value=account_value,
+            conn, _dual_engine_client, universe=scanner.get_scanner_universe(conn), account_value=account_value,
         )
         run_at = now_ar().isoformat()
         portfolio_db.save_dual_engine_signals_cache(conn, run_at=run_at, result=result)
