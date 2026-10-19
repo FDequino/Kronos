@@ -79,6 +79,15 @@ def _migrate(conn):
         "coupon_frequency": "INTEGER",
         "rate_type": "TEXT",
         "cuenta": "TEXT",
+        # Ver conversacion, portfolio/history.py::_ensure_history -- bug real
+        # encontrado al perfilar el dashboard en la VPS: algunos instrumentos
+        # (LETRAS/bonos de muy corto plazo, ej. S16O6/TZX27/TZXY7) nunca
+        # tuvieron historial en data912 -- _ensure_history reintentaba el
+        # fetch de red (timeout=20s) en CADA carga del dashboard porque
+        # get_price_history seguia vacio despues de cada intento fallido, sin
+        # ningun lugar donde recordar "esto ya se probo y no existe". Con 3-5
+        # instrumentos asi, eso solo explicaba +60-100s por carga.
+        "history_backfill_failed_at": "TEXT",
     }
     for col, ddl in new_instrument_cols.items():
         if col not in instrument_cols:

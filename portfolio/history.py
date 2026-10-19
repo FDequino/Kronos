@@ -40,16 +40,38 @@ _reconstruct_cache = {"data": None, "fetched_at": 0.0}
 
 HISTORICAL_TYPES = ("accion", "cedear", "bono")
 
+# Ver conversacion -- bug real encontrado perfilando el dashboard en la VPS:
+# instrumentos sin historico en data912 (LETRAS/bonos de muy corto plazo,
+# ej. S16O6/TZX27/TZXY7 -- confirmado, data912 nunca los cubrio) reintentaban
+# el fetch de red (fetchers.py, timeout=20s) en CADA carga de pagina, porque
+# get_price_history seguia vacio despues de cada intento fallido y no habia
+# donde recordar "esto ya se probo y no existe". Con 3-5 instrumentos asi,
+# eso solo ya explicaba +60-100s por carga. 7 dias: ni "nunca mas" (data912
+# podria sumar cobertura mas adelante) ni un reintento tan seguido como para
+# seguir pagando el mismo costo de red a cada rato.
+HISTORY_BACKFILL_RETRY_DAYS = 7
+
 
 def _ensure_history(conn, instrument):
     if instrument["price_source"] != "data912" or instrument["type"] not in HISTORICAL_TYPES:
         return
     if db.get_price_history(conn, instrument["id"], limit=1):
         return
+    failed_at = instrument.get("history_backfill_failed_at")
+    if failed_at:
+        age_days = (datetime.utcnow() - datetime.fromisoformat(failed_at)).total_seconds() / 86400
+        if age_days < HISTORY_BACKFILL_RETRY_DAYS:
+            return
     try:
         fetchers.backfill_history(conn, instrument)
+        if db.get_price_history(conn, instrument["id"], limit=1):
+            db.update_instrument(conn, instrument["id"], history_backfill_failed_at=None)
+        else:
+            db.update_instrument(conn, instrument["id"], history_backfill_failed_at=datetime.utcnow().isoformat())
     except Exception:
-        pass  # sin historico disponible para este instrumento -- se omite, nunca se inventa
+        # sin historico disponible para este instrumento -- se omite, nunca
+        # se inventa, pero SI se recuerda el intento (ver comentario arriba).
+        db.update_instrument(conn, instrument["id"], history_backfill_failed_at=datetime.utcnow().isoformat())
 
 
 def _date_range(start, end):
