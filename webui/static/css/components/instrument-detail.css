@@ -243,6 +243,37 @@
     border-bottom: none;
 }
 
+/* Titular en texto plano (legible, no azul/subrayado) + link corto "Fuente"
+   aparte (ver conversación: "quiero que estén escritas ahí y que el link
+   sea de fuente nada más") -- una sola línea con elipsis en vez de dejar
+   que el titular completo haga wrap en 2-3 líneas, que es lo que agrandaba
+   la tarjeta de más (título completo disponible como title="" al pasar el
+   mouse). */
+.detail-news-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+}
+
+.detail-news-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.detail-news-source-link {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.detail-news-source-link:hover {
+    color: var(--text-primary);
+}
+
 .detail-fundamental-note {
     margin-top: 2px;
 }

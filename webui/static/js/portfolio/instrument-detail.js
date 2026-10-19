@@ -718,15 +718,20 @@ function fundamentalsHtml(data, config) {
 const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 'tag-negative' };
 
 // Cada titular es {"title", "url"} desde el backend (ver conversación:
-// "debo poder entrar a las mismas") -- se linkea a la fuente real cuando
-// hay url, texto plano si no (headlines viejos ya persistidos como string
-// antes de este cambio, o un titular sin url por lo que sea).
+// "debo poder entrar a las mismas"). El titular se muestra como texto
+// (no como link) y el link queda aparte, como "Fuente" corto (ver
+// conversación: "quiero que estén escritas ahí y que el link sea de fuente
+// nada más") -- headlines viejos ya persistidos como string antes de este
+// cambio, o sin url, se muestran sin el link de fuente.
 function headlineItemHtml(h) {
     const title = typeof h === 'object' && h !== null ? h.title : h;
     const url = typeof h === 'object' && h !== null ? h.url : null;
-    return url
-        ? `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a></li>`
-        : `<li>${title}</li>`;
+    return `
+        <li class="detail-news-item">
+            <span class="detail-news-title" title="${title}">${title}</span>
+            ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="detail-news-source-link">Fuente ↗</a>` : ''}
+        </li>
+    `;
 }
 
 function newsHtml(data) {
