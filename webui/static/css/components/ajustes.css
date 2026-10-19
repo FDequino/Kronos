@@ -1,0 +1,91 @@
+/* Vista "Ajustes" (ver conversacion) -- reestructurada a 3 paneles anchos,
+   apilados, en el MISMO lenguaje visual que Prestamos/Decisiones (.panel
+   completo). La version anterior angostaba y centraba el panel (.ajustes-panel
+   con max-width) y quedaba como una tarjeta aislada, desconectada del resto
+   de la app -- esa regla se elimino, aca solo quedan los estilos puntuales
+   que SI son propios de esta vista. */
+
+.ajustes-role-badge {
+    display: inline-block;
+    font-size: var(--step--2);
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 999px;
+    text-transform: uppercase;
+    letter-spacing: .02em;
+}
+
+.ajustes-role-admin {
+    background: var(--accent-soft, rgba(99, 102, 241, .15));
+    color: var(--accent, var(--text-primary));
+}
+
+.ajustes-role-viewer {
+    background: var(--bg-elevated-hover);
+    color: var(--text-secondary);
+}
+
+/* Tarjetas explicativas de cada motor (tab "Estrategia y Motores", ver
+   conversacion) -- mismo peso visual que .mini-stat (fondo var(--bg-content),
+   radio chico) pero con mas aire para un parrafo, no solo un numero. */
+.ajustes-engine-card {
+    background: var(--bg-content);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+}
+
+.ajustes-engine-card h3 {
+    margin: 0 0 8px;
+    font-size: var(--step-0);
+}
+
+.ajustes-engine-card p {
+    margin: 0;
+    font-size: var(--step--1);
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+/* Tarjetas de Perfiles de Inversion (ver conversacion) -- mismo .panel que
+   el resto de la app, con un borde de acento cuando es el perfil ACTIVO
+   (derivado de los parametros reales, ver portfolio/config.py::get_active_risk_profile,
+   nunca un flag aparte). */
+.ajustes-profile-card.active {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
+.ajustes-profile-card .mini-stat-grid {
+    margin-bottom: 14px;
+}
+
+.ajustes-test-message-result {
+    font-size: var(--step--1);
+    padding: 0 4px;
+}
+
+.ajustes-test-message-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.ajustes-test-message-row.ok { color: var(--positive); }
+.ajustes-test-message-row.fail { color: var(--negative); }
+
+/* Subtab "Conexiones" (Multi-Broker, ver conversacion) -- badge de
+   activa/inactiva reusa el MISMO look que ajustes-role-badge (admin/viewer),
+   solo cambia el color base. */
+.ajustes-role-badge.badge-success {
+    background: var(--positive-soft, rgba(34, 197, 94, .15));
+    color: var(--positive);
+}
+
+.ajustes-role-badge.badge-muted {
+    background: var(--bg-elevated-hover);
+    color: var(--text-secondary);
+}
+
+.broker-account-test-result .ok { color: var(--positive); }
+.broker-account-test-result .fail { color: var(--negative); }

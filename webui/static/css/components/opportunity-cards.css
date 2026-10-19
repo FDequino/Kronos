@@ -1,0 +1,77 @@
+/* Tarjetas de "Oportunidades del Día" (ver conversación, pase de UX/UI) --
+   reemplaza la tabla con conmutador Core/Satélite por una grilla de
+   tarjetas, cada una con su propio badge de motor, para que "comprar/vender"
+   se lea de un vistazo sin tener que escanear una fila de tabla densa. */
+.opportunity-cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 12px;
+}
+
+.opportunity-card {
+    background: var(--bg-content);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: border-color 150ms ease, transform 150ms ease;
+}
+
+.opportunity-card:hover {
+    border-color: var(--border-strong);
+    transform: translateY(-1px);
+}
+
+.opportunity-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.opportunity-card-symbol {
+    font-family: var(--font-sans);
+    font-size: var(--step-1);
+    font-weight: 700;
+}
+
+.opportunity-card-prices {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 12px;
+}
+
+.opportunity-card-prices > div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.opportunity-card-prices .l {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    font-weight: 700;
+}
+
+.opportunity-card-prices .v {
+    font-size: var(--step--1);
+    font-weight: 600;
+}
+
+.opportunity-card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.opportunity-card-actions .btn {
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+}

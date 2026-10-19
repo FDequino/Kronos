@@ -1,0 +1,49 @@
+.kronos-forecast-row {
+    cursor: pointer;
+}
+
+.kronos-forecast-row.selected {
+    background: var(--accent-dim);
+}
+
+.kronos-forecast-row td.num {
+    font-variant-numeric: tabular-nums;
+}
+
+.kronos-calibration-tiles {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+@media (max-width: 860px) {
+    .kronos-calibration-tiles { grid-template-columns: 1fr; }
+}
+
+/* Instrumentos "sin calibrar todavía" (ver conversación, pase de UX/UI) --
+   lista compacta aparte de la tabla principal, cada fila con su propio
+   atajo [Calibrar] en vez de dejar una fila llena de guiones en la tabla. */
+.kronos-pending-list {
+    display: flex;
+    flex-direction: column;
+}
+
+.kronos-pending-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.kronos-pending-row:last-child {
+    border-bottom: none;
+}
+
+.kronos-pending-row .hint {
+    flex: 1;
+}
+
+.kronos-calibrar-btn {
+    flex-shrink: 0;
+}

@@ -1,5 +1,14 @@
 # Portfolio data (local, personal)
 portfolio/*.db
+portfolio/loan_documents/
+data/
+datos_broker/
+webui/prediction_results/
+*.xls
+*.pdf
+
+# Secretos (tokens de API, nunca al repo)
+.env
 
 # Python
 __pycache__/
