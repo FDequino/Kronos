@@ -29,14 +29,32 @@ from portfolio import db, fetchers
 from portfolio.tz import today_ar
 
 # reconstruct_portfolio_value/compute_twr reconstruyen la serie dia-por-dia
-# desde el historial completo de precios/transacciones -- caro (varios
-# segundos), y dashboard-bundle (Fase 7+) termina llamando variantes de esto
-# 3 veces en una sola request (benchmarks con currency="native", risk.py con
-# currency="usd", y el historial crudo). TTL corto: no hace falta recalcular
-# en cada carga de pagina, el TWR de meses de historial no cambia en 60s.
-_TWR_CACHE_TTL = 60
+# desde el historial completo de precios/transacciones -- caro (medido en la
+# VPS con datos reales: ~16s, el cuello de botella real de dashboard-bundle/
+# Resumen, un loop puro Python de O(dias x instrumentos tenidos) sin
+# vectorizar), y dashboard-bundle (Fase 7+) termina llamando variantes de
+# esto 3 veces en una sola request (benchmarks con currency="native", risk.py
+# con currency="usd", y el historial crudo).
+#
+# TTL de 30 minutos (antes 60s -- demasiado corto para un costo de ~16s: con
+# varias cargas de Resumen por sesion, casi SIEMPRE caia en frio) + invalida-
+# cion explicita en cuanto se crea/edita/borra una transaccion (ver
+# invalidate_reconstruction_cache, llamado desde portfolio/routes.py) -- asi
+# un cambio real se refleja al toque en vez de esperar el TTL completo, pero
+# una carga de pagina de rutina (nada cambio) no vuelve a pagar los 16s.
+_TWR_CACHE_TTL = 1800
 _twr_cache = {}
 _reconstruct_cache = {"data": None, "fetched_at": 0.0}
+
+
+def invalidate_reconstruction_cache():
+    """Llamar despues de cualquier alta/edicion/baja de transaccion (ver
+    portfolio/routes.py) -- esos son los unicos datos que reconstruct_portfolio_value/
+    compute_twr reconstruyen ademas de price_history (que solo cambia por job
+    de backfill, no por accion del usuario en esta sesion)."""
+    _reconstruct_cache["data"] = None
+    _reconstruct_cache["fetched_at"] = 0.0
+    _twr_cache.clear()
 
 HISTORICAL_TYPES = ("accion", "cedear", "bono")
 

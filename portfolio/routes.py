@@ -116,6 +116,7 @@ def portfolio_transactions():
                 )
             except Exception as e:
                 return jsonify({'error': str(e)}), 400
+            history.invalidate_reconstruction_cache()
             return jsonify({'success': True, 'id': tx_id})
 
         instrument_id = request.args.get('instrument_id', type=int)
@@ -134,6 +135,7 @@ def transaction_detail_route(transaction_id):
 
         if request.method == 'DELETE':
             db.delete_transaction(conn, transaction_id)
+            history.invalidate_reconstruction_cache()
             return jsonify({'success': True})
 
         data = request.get_json()
@@ -150,6 +152,7 @@ def transaction_detail_route(transaction_id):
             updated = db.update_transaction(conn, transaction_id, **fields)
         except Exception as e:
             return jsonify({'error': str(e)}), 400
+        history.invalidate_reconstruction_cache()
         return jsonify(updated)
     finally:
         conn.close()
