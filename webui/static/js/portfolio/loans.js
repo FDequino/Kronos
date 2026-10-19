@@ -248,7 +248,13 @@ function columnsWithAggregates(baseColumns) {
 function estadoHtml(r) {
     if (r.estado === 'pagado') return '<span class="tag tag-neutral">Pagado</span>';
     if (r.estado === 'incobrable') return '<span class="tag tag-negative">Incobrable</span>';
-    if (r.vencido_hace_dias) return `<span class="tag tag-negative">Atrasado ${r.vencido_hace_dias}d</span>`;
+    // cuotas_atrasadas (ver conversación, Fase 7): antes esto solo mostraba
+    // la cuota impaga más vieja, ocultando en silencio si había más de una
+    // (ej. Sep Y Oct impagas del mismo préstamo contaban igual que solo Sep).
+    if (r.vencido_hace_dias) {
+        const cuotas = r.cuotas_atrasadas > 1 ? ` (${r.cuotas_atrasadas} cuotas)` : '';
+        return `<span class="tag tag-negative">Atrasado ${r.vencido_hace_dias}d${cuotas}</span>`;
+    }
     return '<span class="tag tag-positive">Al día</span>';
 }
 

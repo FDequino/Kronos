@@ -248,7 +248,16 @@ function renderOpportunityCards() {
         note += '<p class="panel-note">Régimen de alta volatilidad (VIX disparado) — el Motor Satélite no abre posiciones nuevas hoy.</p>';
     }
 
+    // run_at (ver conversación, Fase 7): ahora que esto viene de una caché
+    // por día hábil (dual_engine_signals_cache), nunca más "recién
+    // calculado" por default -- sin este timestamp no había forma de saber
+    // si lo que se ve es de hace 2 minutos o de la mañana.
+    const runAtHint = lastSignals.run_at
+        ? `<p class="hint">Última actualización: ${new Date(lastSignals.run_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${lastSignals.cached ? '' : ' (recién calculado)'}</p>`
+        : '';
+
     container.innerHTML = `
+        ${runAtHint}
         <div class="mini-stat-grid row">
             <div class="mini-stat"><div class="l">Capital Core</div><div class="v">${fmtMoney(lastSignals.core_capital_ars)}</div></div>
             <div class="mini-stat"><div class="l">Capital Satélite</div><div class="v">${fmtMoney(lastSignals.satellite_capital_ars)}</div></div>
@@ -263,11 +272,17 @@ function renderOpportunityCards() {
     `;
 }
 
-async function loadSignals() {
+// force (ver conversación, Fase 7): el backend cachea el resultado por día
+// hábil ART (schema.sql::dual_engine_signals_cache) -- la entrada normal a
+// la pestaña usa esa caché (rápida, sin molestar a Chronos-Bolt de nuevo),
+// "Actualizar señales de hoy" es el único que pide force=1 y recalcula.
+async function loadSignals(force = false) {
     const container = $('dual-engine-signals-container');
-    container.innerHTML = loadingHtml('Evaluando señales de hoy (puede tardar si el Motor Core consulta al Motor Cuantitativo Kronos)&hellip;');
+    container.innerHTML = loadingHtml(force
+        ? 'Evaluando señales de hoy (puede tardar si el Motor Core consulta al Motor Cuantitativo Kronos)&hellip;'
+        : 'Cargando señales de hoy&hellip;');
     try {
-        const { data } = await api.dualEngineSignals();
+        const { data } = await api.dualEngineSignals(force);
         lastSignals = data;
         renderOpportunityCards();
     } catch (error) {
@@ -382,7 +397,7 @@ export function initCoreSatelliteView() {
     if (location.hash.slice(1).split('?')[0].split('/')[0] === 'decisiones') loadCoreSatelliteIfNeeded();
 
     const refreshBtn = $('refresh-dual-engine-signals-btn');
-    if (refreshBtn) refreshBtn.addEventListener('click', loadSignals);
+    if (refreshBtn) refreshBtn.addEventListener('click', () => loadSignals(true));
 
     const signalsContainer = $('dual-engine-signals-container');
     if (signalsContainer) {

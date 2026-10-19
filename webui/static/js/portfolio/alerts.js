@@ -37,15 +37,25 @@ function caucionAlerts(resumen) {
         }));
 }
 
+// href a #prestamos (ver conversación, Fase 7) -- no hay una URL propia por
+// préstamo individual ("Ver detalle" abre un modal, no una ruta), así que el
+// mejor destino disponible es la vista que lista todos. cuotas_atrasadas
+// (ver portfolio/loans.py::compute_loan_status) se menciona en el texto
+// cuando hay más de una impaga -- antes esto se reportaba igual con 1 o con
+// varias cuotas vencidas del mismo préstamo.
 function prestamoAlerts(loans) {
     const vigentes = loans.filter((l) => l.estado === 'vigente');
     const atrasados = vigentes
         .filter((l) => l.vencido_hace_dias != null)
-        .map((l) => ({
-            id: `prestamo-mora:${l.id}`,
-            kind: 'vencido',
-            text: `Préstamo ${l.direccion === 'recibido' ? 'de' : 'a'} ${l.deudor} atrasado hace ${l.vencido_hace_dias} día${l.vencido_hace_dias === 1 ? '' : 's'}.`,
-        }));
+        .map((l) => {
+            const cuotasTxt = l.cuotas_atrasadas > 1 ? ` (${l.cuotas_atrasadas} cuotas impagas)` : '';
+            return {
+                id: `prestamo-mora:${l.id}`,
+                kind: 'vencido',
+                href: '#prestamos',
+                text: `Préstamo ${l.direccion === 'recibido' ? 'de' : 'a'} ${l.deudor} atrasado hace ${l.vencido_hace_dias} día${l.vencido_hace_dias === 1 ? '' : 's'}${cuotasTxt}.`,
+            };
+        });
     const proximos = vigentes
         .filter((l) => l.vencido_hace_dias == null && l.proximo_vencimiento)
         .map((l) => ({ ...l, dias: daysUntil(l.proximo_vencimiento) }))
@@ -54,6 +64,7 @@ function prestamoAlerts(loans) {
         .map((l) => ({
             id: `prestamo:${l.id}`,
             kind: 'vencimiento',
+            href: '#prestamos',
             text: `Cuota de préstamo ${l.direccion === 'recibido' ? 'de' : 'a'} ${l.deudor} por ${fmt(l.proximo_monto)} ${l.moneda} vence en ${l.dias} día${l.dias === 1 ? '' : 's'}.`,
         }));
     return [...atrasados, ...proximos];

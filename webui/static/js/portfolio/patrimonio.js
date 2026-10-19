@@ -695,12 +695,21 @@ function heroDeltaHtml(benchmarks, period) {
     return `<span class="hero-delta" id="patrimonio-hero-delta">${fmtPct(twr, 2, { signed: true })} en ${noun}</span>`;
 }
 
-function headerHtml(exposure, usdMepRate, benchmarks) {
+// cashSummary (ver conversación, Fase 7): antes este cálculo sumaba
+// solamente holdings+cauciones-préstamos (vía currency_exposure), dejando
+// afuera la caja disponible -- "¿Cuánto gané?" (_compute_ganancia, backend)
+// sí la suma, así que los dos patrimonios del mismo bundle daban distinto
+// sin ningún motivo real (confirmado: no es un problema de timing, los dos
+// salen de la misma respuesta). La caja es tan tuya como un holding, así que
+// se agrega acá para que coincidan siempre.
+function headerHtml(exposure, usdMepRate, benchmarks, cashSummary) {
     const rate = usdMepRate?.rate;
+    const cashArs = cashSummary?.saldo?.ARS || 0;
+    const cashUsd = cashSummary?.saldo?.USD || 0;
     let patrimonioUsd = null;
     let patrimonioArs = null;
     if (exposure && rate) {
-        patrimonioUsd = (exposure.ars_fija.valor + exposure.ars_cer.valor) / rate + exposure.usd.valor;
+        patrimonioUsd = (exposure.ars_fija.valor + exposure.ars_cer.valor + cashArs) / rate + exposure.usd.valor + cashUsd;
         patrimonioArs = patrimonioUsd * rate;
     }
     const heroValue = patrimonioUsd === null ? '—' : (patrimonioCcy === 'ARS' ? fmtMoney(patrimonioArs, 'ARS') : fmtMoney(patrimonioUsd, 'USD'));
@@ -1054,7 +1063,7 @@ export async function renderPatrimonio(bundle, { forceRefresh = false } = {}) {
     container.innerHTML = `
         <div id="patrimonio-hero-sentinel"></div>
         <div class="page-sticky-head">
-            ${headerHtml(exposure, usdMepRate, benchmarks)}
+            ${headerHtml(exposure, usdMepRate, benchmarks, cashSummary)}
             ${tilesRowHtml({
                 twrPct, activosTotal: cuentaTotal, claseCount: claseSegments.length,
                 pasivosTotal, cashSummary, risk, vencimientos, usdRate,

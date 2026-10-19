@@ -3,7 +3,7 @@
 // cualquier pantalla -- antes el Dashboard tenía 0 tooltips y cada pantalla
 // explicaba (o no) sus propios términos de forma inconsistente (plan Fase 4).
 const TERMS = {
-    patrimonio_mep: 'Valor total de la cartera convertido a dólares al tipo de cambio MEP (bolsa), sin importar la fuente de USD elegida en Preferencias para el resto de la cartera.',
+    patrimonio_mep: 'Valor total de la cartera (holdings + cauciones + caja disponible, menos préstamos recibidos) convertido a dólares al tipo de cambio MEP (bolsa), sin importar la fuente de USD elegida en Preferencias para el resto de la cartera.',
     dolar_mep: 'Dólar MEP (o "bolsa"): surge de comprar un bono en pesos y venderlo simultáneamente en dólares en el mercado local. Distinto del oficial y del CCL.',
     twr: 'Rendimiento ponderado por tiempo: mide solo la performance de las inversiones, excluyendo el efecto de cuándo depositaste o retiraste dinero.',
     xirr: 'Tasa interna de retorno con fechas reales: a diferencia del TWR, sí tiene en cuenta el momento y el tamaño de cada aporte/retiro real — mide el rendimiento de tu bolsillo, no de la decisión de inversión en sí.',

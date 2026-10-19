@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import pandas as pd
 import numpy as np
 import json
@@ -21,8 +23,14 @@ except ImportError:
     LIVE_FETCH_AVAILABLE = False
 
 from portfolio.routes import bp as portfolio_bp
+from portfolio import config as capital_config
+from portfolio import db as portfolio_db
+from portfolio import live_signals, quote_worker, telegram_bot
+from portfolio.backtest import UNIVERSE as DUAL_ENGINE_UNIVERSE
+from portfolio.tz import now_ar, today_ar
 from nav import NAV_ITEMS
 from model import runtime as model_runtime
+from model.client import ChronosServiceClient
 
 MODEL_AVAILABLE = model_runtime.MODEL_AVAILABLE
 if not MODEL_AVAILABLE:
@@ -31,6 +39,12 @@ if not MODEL_AVAILABLE:
 app = Flask(__name__)
 CORS(app)
 app.register_blueprint(portfolio_bp)
+
+# Cliente unico reusado entre requests (mismo patron que
+# portfolio/forecasting.py::_predictor_client) -- no abre conexion hasta el
+# primer request a Chronos-Bolt, asi que importar este modulo nunca falla
+# aunque el microservicio todavia no este arriba.
+_dual_engine_client = ChronosServiceClient()
 
 
 @app.context_processor
@@ -316,6 +330,83 @@ def index():
 def portfolio_page():
     """Portfolio management page"""
     return render_template('portfolio.html')
+
+
+@app.route('/api/signals')
+def api_signals():
+    """GET /api/signals -- señales de HOY de ambos motores (Core y Satelite,
+    ver portfolio/live_signals.py), con montos sugeridos segun el patrimonio
+    real de la cuenta y la asignacion de capital vigente (portfolio/config.py).
+    Core consulta a Chronos-Bolt solo si el filtro de regimen (SPY>EMA50)
+    pasa -- puede tardar varios segundos cuando hay candidatos que evaluar.
+
+    Cacheado por dia habil ART (ver schema.sql::dual_engine_signals_cache,
+    Fase 7) -- antes se recalculaba entero en CADA entrada a la pestaña
+    Decisiones, aunque nada hubiera cambiado desde la ultima vez en el mismo
+    dia. ?force=1 (el boton "Actualizar señales de hoy") salta el cache y
+    corre de nuevo, mismo criterio que ya usa /api/backtest/summary para no
+    inventar un resultado viejo como si fuera nuevo."""
+    conn = portfolio_db.get_connection()
+    try:
+        force = request.args.get('force') == '1'
+        if not force:
+            cached = portfolio_db.get_dual_engine_signals_cache(conn)
+            if cached and cached['run_at'][:10] == today_ar().isoformat():
+                return jsonify({**cached['result'], 'run_at': cached['run_at'], 'cached': True})
+        account_value = live_signals.total_portfolio_value_ars(conn)
+        result = live_signals.compute_today_signals(
+            conn, _dual_engine_client, universe=DUAL_ENGINE_UNIVERSE, account_value=account_value,
+        )
+        run_at = now_ar().isoformat()
+        portfolio_db.save_dual_engine_signals_cache(conn, run_at=run_at, result=result)
+        return jsonify({**result, 'run_at': run_at, 'cached': False})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        conn.close()
+
+
+@app.route('/api/config/allocation', methods=['GET', 'POST'])
+def api_config_allocation():
+    """GET/POST /api/config/allocation -- consulta o ajusta dinamicamente
+    core_pct/satellite_pct (ver portfolio/config.py -- satellite_pct nunca se
+    guarda aparte, siempre es 100 - core_pct)."""
+    conn = portfolio_db.get_connection()
+    try:
+        if request.method == 'POST':
+            data = request.get_json(silent=True) or {}
+            if 'core_pct' not in data:
+                return jsonify({'error': "falta 'core_pct' en el body"}), 400
+            try:
+                allocation = capital_config.set_core_allocation_pct(conn, data['core_pct'])
+            except ValueError as e:
+                return jsonify({'error': str(e)}), 400
+        else:
+            allocation = capital_config.get_capital_allocation(conn)
+        return jsonify(allocation)
+    finally:
+        conn.close()
+
+
+@app.route('/api/backtest/summary')
+def api_backtest_summary():
+    """GET /api/backtest/summary -- ultimo resultado consolidado de
+    `python3 -m portfolio.backtest dual` (Core/Satelite/Global, ver
+    schema.sql::dual_engine_backtest_summary). No vuelve a correr el
+    backtest en el request (tarda minutos y llama a Chronos-Bolt) -- sirve
+    el ultimo snapshot persistido, o available=False si todavia no corrio
+    nunca (nunca se inventa un resultado)."""
+    conn = portfolio_db.get_connection()
+    try:
+        summary = portfolio_db.get_dual_engine_backtest_summary(conn)
+        if summary is None:
+            return jsonify({
+                'available': False,
+                'message': 'Todavia no se corrio el backtest comparativo (python3 -m portfolio.backtest dual).',
+            })
+        return jsonify({'available': True, **summary})
+    finally:
+        conn.close()
 
 
 @app.route('/api/data-files')
@@ -701,5 +792,20 @@ if __name__ == '__main__':
         print("Tip: You can load Kronos model through /api/load-model endpoint")
     else:
         print("Tip: Will use simulated data for demonstration")
-    
+
+    # QuoteWorker (Fase 7) arranca aca, no al importar portfolio.quote_worker
+    # (a diferencia de forecast_worker.py) -- con debug=True el reloader de
+    # Werkzeug re-ejecuta este script COMPLETO como subproceso hijo con
+    # WERKZEUG_RUN_MAIN=true ya seteado desde antes de que Python arranque, y
+    # el proceso original (donde esa variable todavia no existe en este punto)
+    # queda vivo solo para vigilar cambios de archivo y relanzar el hijo --
+    # nunca sirve requests de verdad. Arrancar el poller con un simple
+    # "al importar" (como forecast_worker.py) lo arrancaria en los DOS
+    # procesos, duplicando las llamadas a data912. Arrancar solo cuando la
+    # variable YA vale "true" asegura que corra una unica vez, en el hijo que
+    # si sirve trafico -- confirmado empiricamente (ver nota en quote_worker.py).
+    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+        quote_worker.start()
+        telegram_bot.start()
+
     app.run(debug=True, host='0.0.0.0', port=7070, threaded=True)

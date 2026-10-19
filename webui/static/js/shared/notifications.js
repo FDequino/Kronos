@@ -31,8 +31,13 @@ function saveSeen(seen) {
 let currentItems = [];
 let seen = loadSeen();
 
+// href explícito (ver conversación, Fase 7) en vez de inferirlo siempre de
+// `symbol` -- las alertas de préstamos no tienen un instrumento al que
+// linkear (#detalle/SYMBOL no existe para un préstamo), pero sí tienen una
+// vista propia (#prestamos) a la que antes no llevaban a ningún lado.
 function alertRowHtml(a) {
-    const text = a.symbol ? `<a href="#detalle/${a.symbol}" class="table-link">${a.text}</a>` : a.text;
+    const href = a.href || (a.symbol ? `#detalle/${a.symbol}` : null);
+    const text = href ? `<a href="${href}" class="table-link">${a.text}</a>` : a.text;
     const isSeen = seen.has(a.id);
     return `<div class="alert-row${isSeen ? ' alert-row-seen' : ''}" data-alert-id="${a.id}">
         <span class="tag ${KIND_TAG[a.kind]}" title="${glossaryText(KIND_TERM[a.kind])}">${KIND_LABEL[a.kind]}</span>

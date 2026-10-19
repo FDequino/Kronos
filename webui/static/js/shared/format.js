@@ -54,3 +54,14 @@ export function fmtDate(iso) {
     const mm = String(d.getMonth() + 1).padStart(2, '0');
     return `${dd}-${mm}-${d.getFullYear()}`;
 }
+
+// Fecha+hora completa (ver conversación, Fase 7: "toda visualización de
+// precio debe mostrar el timestamp de sus datos") -- a diferencia de
+// fmtDate, acá SÍ importa la hora (una cotización es "de hace 2 minutos" o
+// "de ayer a las 17hs", no solo "de hoy").
+export function fmtDateTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return iso;
+    return d.toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}

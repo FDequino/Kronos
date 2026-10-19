@@ -783,6 +783,18 @@ def instrument_chart(instrument_id):
         signal, explanation = indicators.latest_technical_signal(payload['indicators'], config)
         payload['technical_signal'] = signal
         payload['technical_explanation'] = explanation
+        # current_quote (ver conversación, Fase 7): el precio+variación del
+        # encabezado usaba el último close de price_history -- la MISMA
+        # fuente que el gráfico, que se backfillea perezoso solo al correr un
+        # pronóstico y puede quedar días atrás de la cotización real (bug
+        # investigado: GOOGL mostraba un precio viejo acá mientras
+        # Instrumentos/Tenencias, que sí usan quotes_latest, mostraban el
+        # correcto). El gráfico se queda en price_history a propósito (es su
+        # fuente histórica real) -- solo el encabezado pasa a usar
+        # quotes_latest, igual que el resto de la app. None si todavía no se
+        # cargó ninguna cotización para este instrumento (nunca se inventa un
+        # precio).
+        payload['current_quote'] = db.get_quote(conn, instrument_id)
         return jsonify(payload)
     finally:
         conn.close()

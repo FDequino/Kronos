@@ -1,5 +1,5 @@
 import { $ } from '../shared/dom.js';
-import { fmt, fmtPct, fmtMoney } from '../shared/format.js';
+import { fmt, fmtPct, fmtMoney, fmtDateTime } from '../shared/format.js';
 import { showStatus } from '../shared/status.js';
 import { goBack } from '../shared/nav-history.js';
 import { api } from './api.js';
@@ -125,6 +125,7 @@ function shellHtml(symbol, tabs) {
                         <div class="detail-price-row">
                             <span class="detail-price-value num" id="detail-price-value">—</span>
                             <span class="detail-price-change num" id="detail-price-change"></span>
+                            <span class="hint" id="detail-price-timestamp"></span>
                         </div>
                     </div>
                     <div class="detail-badges">
@@ -468,30 +469,46 @@ async function loadPriceAlertsPanel(instrumentId) {
     wirePriceAlertsPanel(el, refreshAlertsAndChart);
 }
 
-function updatePriceHeader(historical, currency) {
+// quote (ver conversación, Fase 7): el precio+variación grandes del
+// encabezado ahora usan quotes_latest (igual que Instrumentos/Tenencias),
+// no el último close de price_history -- ese puede quedar días atrás (solo
+// se backfillea al correr un pronóstico) y antes de este fix mostraba un
+// precio viejo mientras el resto de la app ya mostraba el correcto. El
+// gráfico de abajo se sigue pintando con `historical` tal cual (su fuente
+// real, sin tocar). "prev" para la variación sigue siendo el último close de
+// price_history (la referencia de "cierre anterior" más reciente que
+// tenemos) -- lo nuevo es que "last" ya no viene de ahí mismo.
+// Devuelve siempre el último CLOSE de price_history (nunca el precio en
+// vivo) -- lo siguen usando los niveles sugeridos de TP/SL ("aplicado sobre
+// el último cierre", ver loadSuggestedLevels), que son una cuenta aparte del
+// precio en vivo que se muestra en el encabezado.
+function updatePriceHeader(historical, currency, quote) {
     const priceEl = $('detail-price-value');
     const changeEl = $('detail-price-change');
-    if (!historical || historical.length < 1) {
+    const tsEl = $('detail-price-timestamp');
+    const prevClose = historical && historical.length >= 1 ? historical[historical.length - 1].close : null;
+    const displayPrice = quote?.price ?? prevClose;
+    if (displayPrice === null || displayPrice === undefined) {
         priceEl.textContent = '—';
         changeEl.textContent = '';
-        return null;
+        tsEl.textContent = '';
+        return prevClose;
     }
-    const last = historical[historical.length - 1].close;
-    priceEl.textContent = fmtMoney(last, currency);
-    if (historical.length < 2) {
+    priceEl.textContent = fmtMoney(displayPrice, currency);
+    tsEl.textContent = quote?.fetched_at ? `al ${fmtDateTime(quote.fetched_at)}` : '';
+    // Variación solo si hay quote en vivo (distinto en el tiempo de
+    // prevClose) -- sin quote, displayPrice === prevClose y mostrar "0,00%"
+    // sería engañoso (parece que no se movió, en realidad no hay con qué
+    // compararlo).
+    if (!quote?.price || !prevClose) {
         changeEl.textContent = '';
-        return last;
+        return prevClose;
     }
-    const prev = historical[historical.length - 2].close;
-    if (!prev) {
-        changeEl.textContent = '';
-        return last;
-    }
-    const diffPct = ((last - prev) / prev) * 100;
+    const diffPct = ((displayPrice - prevClose) / prevClose) * 100;
     changeEl.textContent = `${diffPct >= 0 ? '▲' : '▼'} ${fmtPct(Math.abs(diffPct))}`;
     changeEl.classList.toggle('cell-positive', diffPct >= 0);
     changeEl.classList.toggle('cell-negative', diffPct < 0);
-    return last;
+    return prevClose;
 }
 
 // RSI (14) actual + niveles sugeridos de Take Profit / Stop Loss -- parte de
@@ -600,7 +617,7 @@ async function loadChartFast(instrumentId, currency = 'ARS') {
     try {
         ({ data } = await api.instrumentChart(instrumentId));
         updateTechnicalBadge(data.technical_signal, data.technical_explanation);
-        const lastClose = updatePriceHeader(data.historical, currency);
+        const lastClose = updatePriceHeader(data.historical, currency, data.current_quote);
         revealChartContent();
         const chartData = { ...data, predicted: [] };
         paintChartAndWireAlerts(instrumentId, chartData, false);

@@ -114,7 +114,7 @@ export const api = {
 
     // Arquitectura Dual CORE/SATELITE -- fuera de /api/portfolio a propósito
     // (ver webui/app.py, pedido explícito de estas rutas top-level).
-    dualEngineSignals: () => axios.get('/api/signals'),
+    dualEngineSignals: (force = false) => axios.get('/api/signals', { params: force ? { force: 1 } : {} }),
     capitalAllocation: () => axios.get('/api/config/allocation'),
     setCapitalAllocation: (corePct) => axios.post('/api/config/allocation', { core_pct: corePct }),
     dualEngineBacktestSummary: () => axios.get('/api/backtest/summary'),
