@@ -625,11 +625,15 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>APIs de IA</h2>
-                    <p class="panel-subtitle">Opcional — mejora el Agente NLP de Noticias (análisis de sentimiento vía LLM en vez de solo el fallback local VADER). Sin ninguna key configurada, ese motor sigue funcionando igual, solo con el fallback. Se guarda en texto plano en esta instalación local, igual que las cuentas de bróker — nunca se muestra completa.</p>
+                    <p class="panel-subtitle">Opcional — Finnhub le da titulares reales al Agente NLP de Noticias (yfinance no los devuelve más en esta cuenta); OpenAI/Anthropic mejoran el análisis de sentimiento de esos titulares vía LLM en vez de solo el fallback local VADER. Sin ninguna key configurada, el agente sigue funcionando igual, solo con el fallback. Se guarda en texto plano en esta instalación local, igual que las cuentas de bróker — nunca se muestra completa.</p>
                 </div>
             </div>
             <div class="panel-body">
                 <div class="field-row" style="align-items: flex-end;">
+                    <div class="field">
+                        <label for="ajustes-finnhub-key-input" id="ajustes-finnhub-key-label">Finnhub API Key</label>
+                        <input type="password" id="ajustes-finnhub-key-input" autocomplete="off" placeholder="sin costo en finnhub.io">
+                    </div>
                     <div class="field">
                         <label for="ajustes-openai-key-input" id="ajustes-openai-key-label">OpenAI API Key</label>
                         <input type="password" id="ajustes-openai-key-input" autocomplete="off" placeholder="sk-...">

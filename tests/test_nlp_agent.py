@@ -5,6 +5,7 @@ de este suite, ver docstrings de los demas tests/test_*.py)."""
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -103,10 +104,79 @@ def test_list_recent_sentiment_filtra_por_ticker(temp_db):
     assert rows[0]["ticker"] == "AAPL"
 
 
+# --- _fetch_news_headlines: Finnhub si hay key, yfinance si no (ver conversacion) --
+
+def _fake_response(json_data, status_ok=True):
+    def _raise():
+        if not status_ok:
+            raise RuntimeError("HTTP error simulado")
+    return SimpleNamespace(json=lambda: json_data, raise_for_status=_raise)
+
+
+def test_fetch_news_headlines_usa_finnhub_si_hay_key(temp_db, monkeypatch):
+    db.update_signal_config(temp_db, finnhub_api_key="fake-finnhub-key")
+    captured = {}
+
+    def fake_get(url, params=None, timeout=None):
+        captured["url"] = url
+        captured["params"] = params
+        return _fake_response([
+            {"headline": "GGAL sube tras balance trimestral", "datetime": 1, "summary": "...", "source": "x"},
+            {"headline": "Analistas elevan precio objetivo de GGAL", "datetime": 2},
+        ])
+
+    monkeypatch.setattr(nlp_agent.requests, "get", fake_get)
+    monkeypatch.setattr(nlp_agent, "_fetch_yfinance_headlines", lambda symbol: (_ for _ in ()).throw(
+        AssertionError("no deberia llamar a yfinance si Finnhub esta configurado")
+    ))
+
+    headlines = nlp_agent._fetch_news_headlines(temp_db, "GGAL")
+
+    assert headlines == ["GGAL sube tras balance trimestral", "Analistas elevan precio objetivo de GGAL"]
+    assert captured["url"] == f"{nlp_agent.FINNHUB_BASE}/company-news"
+    assert captured["params"]["symbol"] == "GGAL"
+    assert captured["params"]["token"] == "fake-finnhub-key"
+
+
+def test_fetch_news_headlines_sin_key_cae_a_yfinance(temp_db, monkeypatch):
+    # signal_config nunca tiene finnhub_api_key configurada en una DB temporal nueva.
+    called = {"yfinance": False}
+    def fake_yfinance(symbol):
+        called["yfinance"] = True
+        return ["titular de yfinance"]
+    monkeypatch.setattr(nlp_agent, "_fetch_yfinance_headlines", fake_yfinance)
+    monkeypatch.setattr(nlp_agent.requests, "get", lambda *a, **kw: (_ for _ in ()).throw(
+        AssertionError("no deberia pegarle a Finnhub sin key configurada")
+    ))
+
+    headlines = nlp_agent._fetch_news_headlines(temp_db, "GGAL")
+
+    assert headlines == ["titular de yfinance"]
+    assert called["yfinance"] is True
+
+
+def test_fetch_finnhub_headlines_error_de_api_degrada_a_lista_vacia(temp_db, monkeypatch):
+    # Finnhub responde {"error": "..."} (no una lista) con una key invalida.
+    monkeypatch.setattr(nlp_agent.requests, "get", lambda *a, **kw: _fake_response({"error": "Invalid API key."}))
+    assert nlp_agent._fetch_finnhub_headlines("GGAL", "key-mala") == []
+
+
+def test_fetch_finnhub_headlines_falla_de_red_degrada_a_lista_vacia(monkeypatch):
+    def fake_get(*a, **kw):
+        raise ConnectionError("simulado")
+    monkeypatch.setattr(nlp_agent.requests, "get", fake_get)
+    assert nlp_agent._fetch_finnhub_headlines("GGAL", "cualquier-key") == []
+
+
+def test_fetch_finnhub_headlines_http_error_degrada_a_lista_vacia(monkeypatch):
+    monkeypatch.setattr(nlp_agent.requests, "get", lambda *a, **kw: _fake_response({}, status_ok=False))
+    assert nlp_agent._fetch_finnhub_headlines("GGAL", "cualquier-key") == []
+
+
 # --- assess_event_risk (mockeando yfinance/LLM, nunca red real) ---------------
 
 def test_assess_event_risk_sin_titulares_ni_earnings_es_bajo(temp_db, monkeypatch):
-    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda symbol: [])
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [])
     monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
     result = nlp_agent.assess_event_risk(temp_db, "GGAL", use_cache=False)
     assert result["risk_level"] == nlp_agent.RISK_BAJO
@@ -118,7 +188,7 @@ def test_assess_event_risk_sin_titulares_ni_earnings_es_bajo(temp_db, monkeypatc
 
 def test_assess_event_risk_earnings_en_24hs_es_alto(temp_db, monkeypatch):
     manana = (datetime.now(timezone.utc) + timedelta(hours=24)).date()
-    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda symbol: [])
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [])
     monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: manana)
     result = nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
     assert result["risk_level"] == nlp_agent.RISK_ALTO
@@ -128,7 +198,7 @@ def test_assess_event_risk_earnings_en_24hs_es_alto(temp_db, monkeypatch):
 def test_assess_event_risk_usa_cache_reciente(temp_db, monkeypatch):
     calls = {"n": 0}
 
-    def _fake_headlines(symbol):
+    def _fake_headlines(conn, symbol):
         calls["n"] += 1
         return []
 
@@ -143,7 +213,7 @@ def test_assess_event_risk_usa_cache_reciente(temp_db, monkeypatch):
 def test_assess_event_risk_use_cache_false_fuerza_corrida_nueva(temp_db, monkeypatch):
     calls = {"n": 0}
 
-    def _fake_headlines(symbol):
+    def _fake_headlines(conn, symbol):
         calls["n"] += 1
         return []
 
@@ -192,13 +262,13 @@ def test_event_risk_note_sentimiento_extremo_sin_evento():
 
 def test_satellite_entry_blocked_by_event_true_si_riesgo_alto(temp_db, monkeypatch):
     manana = (datetime.now(timezone.utc) + timedelta(hours=10)).date()
-    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda symbol: [])
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [])
     monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: manana)
     assert nlp_agent.satellite_entry_blocked_by_event(temp_db, "AAPL", use_cache=False) is True
 
 
 def test_satellite_entry_blocked_by_event_false_si_riesgo_bajo(temp_db, monkeypatch):
-    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda symbol: [])
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [])
     monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
     assert nlp_agent.satellite_entry_blocked_by_event(temp_db, "GGAL", use_cache=False) is False
 
@@ -214,7 +284,7 @@ def test_compute_satellite_signals_salta_ticker_con_evento_de_riesgo(temp_db, mo
     devuelve True para ese caso, que es exactamente lo que
     compute_satellite_signals consulta antes de construir una señal."""
     manana = (datetime.now(timezone.utc) + timedelta(hours=5)).date()
-    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda symbol: [])
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [])
     monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: manana if symbol == "AAPL" else None)
     assert nlp_agent.satellite_entry_blocked_by_event(temp_db, "AAPL", use_cache=False) is True
     assert nlp_agent.satellite_entry_blocked_by_event(temp_db, "GGAL", use_cache=False) is False

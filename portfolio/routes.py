@@ -1533,14 +1533,15 @@ def signal_config():
             config = db.update_signal_config(conn, **request.get_json())
         else:
             config = db.get_signal_config(conn)
-        # openai_api_key/anthropic_api_key NUNCA en texto plano en la
-        # respuesta (ver conversación, "APIs de IA" en Integraciones) --
-        # este endpoint lo piden core-satellite.js/proposals.js/ajustes.js
-        # solo por la asignación Core/Satélite, así que la key viajaría de
-        # más en cada una de esas cargas si no se enmascarara acá. Mismo
-        # criterio que broker_client.mask_account para las cuentas de bróker.
+        # openai_api_key/anthropic_api_key/finnhub_api_key NUNCA en texto
+        # plano en la respuesta (ver conversación, "APIs de IA" en
+        # Integraciones) -- este endpoint lo piden core-satellite.js/
+        # proposals.js/ajustes.js solo por la asignación Core/Satélite, así
+        # que la key viajaría de más en cada una de esas cargas si no se
+        # enmascarara acá. Mismo criterio que broker_client.mask_account
+        # para las cuentas de bróker.
         config = dict(config)
-        for field in ('openai_api_key', 'anthropic_api_key'):
+        for field in ('openai_api_key', 'anthropic_api_key', 'finnhub_api_key'):
             config[f'{field}_set'] = bool(config.get(field))
             config[field] = broker_client._mask_secret(config.get(field))
         return jsonify(config)

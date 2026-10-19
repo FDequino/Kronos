@@ -332,6 +332,9 @@ def _migrate(conn):
     if "anthropic_api_key" not in signal_config_cols:
         conn.execute("ALTER TABLE signal_config ADD COLUMN anthropic_api_key TEXT")
         conn.commit()
+    if "finnhub_api_key" not in signal_config_cols:
+        conn.execute("ALTER TABLE signal_config ADD COLUMN finnhub_api_key TEXT")
+        conn.commit()
 
     # Interruptor maestro de ejecucion real de ordenes (ver conversacion,
     # portfolio/broker_client.py::ensure_auto_trading_enabled) -- arranca

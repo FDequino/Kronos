@@ -422,6 +422,9 @@ async function loadPreferencesControls() {
     // el input SIEMPRE arranca vacío (nunca se re-llena con la key real ni
     // con la enmascarada, mismo criterio que broker-connections.js) -- el
     // label y el placeholder son los únicos que reflejan "ya configurada".
+    $('ajustes-finnhub-key-label').textContent = config.finnhub_api_key_set
+        ? `Finnhub API Key (configurada: ${config.finnhub_api_key})` : 'Finnhub API Key';
+    $('ajustes-finnhub-key-input').placeholder = config.finnhub_api_key_set ? 'dejar vacío para no cambiar' : 'sin costo en finnhub.io';
     $('ajustes-openai-key-label').textContent = config.openai_api_key_set
         ? `OpenAI API Key (configurada: ${config.openai_api_key})` : 'OpenAI API Key';
     $('ajustes-openai-key-input').placeholder = config.openai_api_key_set ? 'dejar vacío para no cambiar' : 'sk-...';
@@ -473,9 +476,11 @@ function initPreferencesControls() {
     // dejar un campo vacío NUNCA borra una key ya configurada (mismo
     // criterio que broker-connections.js: "dejar vacío para no cambiar").
     $('ajustes-save-llm-keys-btn').addEventListener('click', async () => {
+        const finnhubKey = $('ajustes-finnhub-key-input').value.trim();
         const openaiKey = $('ajustes-openai-key-input').value.trim();
         const anthropicKey = $('ajustes-anthropic-key-input').value.trim();
         const payload = {};
+        if (finnhubKey !== '') payload.finnhub_api_key = finnhubKey;
         if (openaiKey !== '') payload.openai_api_key = openaiKey;
         if (anthropicKey !== '') payload.anthropic_api_key = anthropicKey;
         if (!Object.keys(payload).length) return;

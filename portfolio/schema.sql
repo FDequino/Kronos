@@ -290,6 +290,15 @@ CREATE TABLE IF NOT EXISTS signal_config (
     -- version con LLM.
     openai_api_key TEXT,
     anthropic_api_key TEXT,
+    -- API key OPCIONAL para titulares de noticias via Finnhub (ver
+    -- portfolio/nlp_agent.py::_fetch_news_headlines) -- yfinance.Ticker().news
+    -- devuelve SIEMPRE una lista vacia en esta cuenta/version (confirmado
+    -- repetidas veces), asi que sin esta key el agente de sentimiento nunca
+    -- tiene titulares que analizar (ni VADER ni el LLM opcional de arriba
+    -- llegan a correr). NULL = sigue intentando yfinance primero (mismo
+    -- comportamiento de siempre, nunca una regresion para quien no cargue
+    -- la key).
+    finnhub_api_key TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO signal_config (id) VALUES (1);

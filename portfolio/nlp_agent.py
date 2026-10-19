@@ -27,10 +27,23 @@ risk_level igual puede ser ALTO si hay un earnings dentro de las proximas 48hs
 
 Cero look-ahead: assess_event_risk siempre mira "HOY hacia adelante" (la
 proxima fecha de earnings, titulares YA publicados) -- nunca usa un desenlace
-que todavia no paso, consistente con el resto del proyecto."""
-from datetime import datetime, timezone
+que todavia no paso, consistente con el resto del proyecto.
+
+Finnhub (ver conversacion, "busca fuentes de noticias gratuitas"): reemplaza
+a yfinance como fuente de titulares CUANDO signal_config.finnhub_api_key
+esta configurada -- plan gratuito confirmado (sin tarjeta, 60 llamadas/min),
+endpoint GET /api/v1/company-news?symbol=...&from=...&to=...&token=...
+confirmado contra la API real esta sesion (una request sin token valido
+responde {"error": "Invalid API key."}, confirmando la forma del endpoint).
+Sin la key configurada, sigue intentando yfinance primero (comportamiento
+de siempre, nunca una regresion)."""
+from datetime import datetime, timedelta, timezone
+
+import requests
 
 from portfolio import db
+
+FINNHUB_BASE = "https://finnhub.io/api/v1"
 
 EARNINGS_WARNING_HOURS = 48  # "dentro de las proximas 48hs" pedido explicitamente
 EARNINGS_WATCH_HOURS = 24 * 7  # mas alla de 48hs pero dentro de la semana -> MEDIO, no BAJO (hay un evento acercandose)
@@ -55,7 +68,31 @@ EVENT_RISK_NOTE_NEWS = "⚠️ Riesgo Evento: noticia de alto impacto"
 _CACHE_FRESHNESS_HOURS = 6
 
 
-def _fetch_news_headlines(symbol):
+def _fetch_finnhub_headlines(symbol, api_key):
+    """Titulares via Finnhub /company-news -- SIEMPRE envuelto en
+    try/except, [] en cualquier falla (red caida, simbolo no cubierto,
+    respuesta inesperada). Ultimos 7 dias, mismo criterio de "noticias
+    recientes" que ya tenia el intento de yfinance. "headline" es el campo
+    de titulo en el esquema publico de Finnhub -- nunca se asume otro
+    nombre de campo sin chequear."""
+    today = datetime.now(timezone.utc).date()
+    week_ago = today - timedelta(days=7)
+    try:
+        resp = requests.get(
+            f"{FINNHUB_BASE}/company-news",
+            params={"symbol": symbol, "from": week_ago.isoformat(), "to": today.isoformat(), "token": api_key},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        news = resp.json()
+    except Exception:
+        return []
+    if not isinstance(news, list):
+        return []  # Finnhub devuelve {"error": "..."} (no una lista) si la key es invalida -- nunca se inventa un titular de ahi
+    return [str(item["headline"]) for item in news if isinstance(item, dict) and item.get("headline")]
+
+
+def _fetch_yfinance_headlines(symbol):
     """Titulares recientes via yfinance -- SIEMPRE envuelto en try/except,
     [] en cualquier falla (incluida la ya verificada: .news vacio en esta
     version/cuenta, ver docstring del modulo). Nunca se inventa un titular."""
@@ -74,6 +111,18 @@ def _fetch_news_headlines(symbol):
         if title:
             headlines.append(str(title))
     return headlines
+
+
+def _fetch_news_headlines(conn, symbol):
+    """Finnhub primero SI hay finnhub_api_key configurada (ver
+    signal_config) -- yfinance.Ticker().news devuelve siempre [] en esta
+    cuenta/version (ver docstring del modulo), asi que sin la key esto
+    sigue cayendo en yfinance exactamente como antes (nunca una regresion
+    para quien no cargue una key)."""
+    api_key = db.get_signal_config(conn).get("finnhub_api_key")
+    if api_key:
+        return _fetch_finnhub_headlines(symbol, api_key)
+    return _fetch_yfinance_headlines(symbol)
 
 
 def _fetch_next_earnings_date(symbol):
@@ -211,7 +260,7 @@ def assess_event_risk(conn, symbol, use_cache=True):
                 ),
             }
 
-    headlines = _fetch_news_headlines(symbol)
+    headlines = _fetch_news_headlines(conn, symbol)
     earnings_date = _fetch_next_earnings_date(symbol)
     hours_until_event = _hours_until(earnings_date)
 
