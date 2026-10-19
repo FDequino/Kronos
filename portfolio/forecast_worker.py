@@ -1,23 +1,61 @@
-"""Un unico worker en background para correr forecasts de Kronos sin bloquear Flask.
+"""Un unico worker en background para correr forecasts sin bloquear Flask.
 
 Nada de Celery/Redis: el predictor es una sola instancia de modelo sobre un
 device -- dos inferencias en paralelo no serian mas rapidas, y esto es una app
 local de un solo usuario. Un thread + una cola alcanza.
-"""
+
+Revisado al migrar el motor de Kronos (in-process) a Chronos-Bolt (servido
+por services/predictor/, vía model/client.py): este archivo no necesitó
+ningún cambio -- ya estaba desacoplado del modelo concreto, solo llama a
+forecasting.run_forecast_job(conn, forecast_id) y no sabe (ni le importa) qué
+hay detrás. La única diferencia real es que ahora esa llamada termina
+haciendo un POST HTTP en vez de una inferencia in-process; la cola de este
+módulo sigue sirviendo para lo mismo de siempre: procesar los forecasts de a
+uno, nunca dos al mismo tiempo (el microservicio además tiene su propio
+asyncio.Lock del lado servidor, como segunda red de seguridad si algún día
+algo más le pega directo por HTTP)."""
 import logging
 import queue
 import threading
 from datetime import datetime, timedelta
 
 from portfolio import db, forecasting
+from portfolio.tz import today_ar
 
 logger = logging.getLogger(__name__)
 
 _queue = queue.Queue()
 
+# Para que un instrumento llegue a "validado" (accuracy.py exige >=30
+# pronosticos NO SUPERPUESTOS, signal_config.min_non_overlapping_forecasts)
+# hacen falta al menos 30*BACKTEST_PRED_LEN dias de ventana -- con
+# BACKTEST_PRED_LEN=35 eso es ~1050 dias. 180 dias (el valor viejo) era un
+# techo duro que nunca iba a poder llegar a 30 sin importar cuantas veces se
+# corriera el backtest, aunque el price_history disponible fuera de anios
+# (GGAL/YPFD desde 2001, KO desde 2012, etc.) -- confirmado reproduciendo el
+# backtest real antes de este cambio.
 BACKTEST_ANCHOR_SPACING_DAYS = 7
 BACKTEST_PRED_LEN = 35
-BACKTEST_DEFAULT_WINDOW_DAYS = 180
+BACKTEST_DEFAULT_WINDOW_DAYS = 1500
+
+
+def _cap_pred_len_to_maturity(conn, instrument_id, pred_len, as_of_date):
+    """Un bono/ON no puede predecirse mas alla de su propio vencimiento --
+    acota el horizonte en vez de pronosticar precio sobre un instrumento que
+    ya dejo de existir (bug real reportado: Kronos corria 15-120 dias sobre
+    TO26 cuando venia venciendo en menos de eso, prediciendo valores sin
+    sentido despues del pago a la par)."""
+    if instrument_id is None:
+        return pred_len
+    instrument = db.get_instrument(conn, instrument_id)
+    if not instrument or instrument["type"] not in ("bono", "on") or not instrument.get("maturity_date"):
+        return pred_len
+    reference = datetime.fromisoformat(as_of_date).date() if as_of_date else today_ar()
+    maturity = datetime.fromisoformat(instrument["maturity_date"]).date()
+    dias_restantes = (maturity - reference).days
+    if dias_restantes > 0:
+        return min(pred_len, dias_restantes)
+    return pred_len  # ya vencido o vence hoy -- caso raro, se deja el default en vez de bloquear la corrida
 
 
 def submit_forecast(*, instrument_id=None, symbol, market, asset_type, sample_count=None,
@@ -27,6 +65,7 @@ def submit_forecast(*, instrument_id=None, symbol, market, asset_type, sample_co
         config = db.get_signal_config(conn)
         sample_count = sample_count or config["default_sample_count"]
         pred_len = pred_len or config["default_pred_len"]
+        pred_len = _cap_pred_len_to_maturity(conn, instrument_id, pred_len, as_of_date)
         expected = config["benchmark_seconds_per_step"] * pred_len * sample_count
         forecast_id = db.insert_forecast_job(
             conn, instrument_id=instrument_id, symbol=symbol, market=market, asset_type=asset_type,
@@ -52,7 +91,7 @@ def enqueue_all_holdings(force=False):
     conn = db.get_connection()
     try:
         config = db.get_signal_config(conn)
-        holdings = [h for h in db.get_holdings(conn) if h["instrument"]["type"] != "fondo"]
+        holdings = [h for h in db.get_holdings(conn) if h["instrument"]["type"] not in ("fondo", "cripto")]
         targets = [
             h["instrument"] for h in holdings
             if force or not _is_fresh(conn, h["instrument"]["id"], config["freshness_hours"])
@@ -79,7 +118,7 @@ def _backtest_anchors(conn, instrument, config, start_date=None):
     earliest_with_lookback = (
         datetime.fromisoformat(price_rows[config["default_lookback"] - 1]["timestamp"].split("T")[0]).date()
     )
-    today = datetime.utcnow().date()
+    today = today_ar()
     window_start = today - timedelta(days=BACKTEST_DEFAULT_WINDOW_DAYS)
     start = max(earliest_with_lookback, window_start)
     if start_date:
@@ -87,7 +126,7 @@ def _backtest_anchors(conn, instrument, config, start_date=None):
         start = max(start, earliest_with_lookback)
     end = today - timedelta(days=BACKTEST_PRED_LEN)
 
-    already = db.list_backtest_anchors(conn, instrument["id"])
+    already = db.list_backtest_anchors(conn, instrument["id"], model_key=config["default_model_key"])
     anchors = []
     cursor = start
     while cursor <= end:
@@ -127,7 +166,7 @@ def enqueue_portfolio_backtest():
     empezo a tener la posicion, ya que la cartera reconstruida no la usa antes."""
     conn = db.get_connection()
     try:
-        holdings = [h for h in db.get_holdings(conn) if h["instrument"]["type"] != "fondo"]
+        holdings = [h for h in db.get_holdings(conn) if h["instrument"]["type"] not in ("fondo", "cripto")]
         starts = {}
         for h in holdings:
             txs = db.list_transactions(conn, h["instrument"]["id"])

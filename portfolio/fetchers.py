@@ -6,15 +6,18 @@ price_source_params (ver schema.sql). Nada de tickers ni endpoints
 hardcodeados en codigo: todo sale de esos campos.
 
 Fuentes:
-  - data912  -> acciones/CEDEARs/bonos/ON de BYMA (gratis, sin auth)
-  - dolarapi -> cotizaciones de USD en Argentina (gratis, sin auth)
-  - binance  -> precio spot de criptomonedas (publico, sin auth)
+  - data912       -> acciones/CEDEARs/bonos/ON de BYMA (gratis, sin auth)
+  - dolarapi      -> cotizaciones de USD en Argentina (gratis, sin auth)
+  - binance       -> precio spot de criptomonedas (publico, sin auth)
+  - argentinadatos -> serie historica diaria de dolar (CCL/MEP/etc, gratis, sin auth)
 """
 import json
 import time
+from datetime import datetime, timezone
 
 import pandas as pd
 import requests
+import yfinance as yf
 from bs4 import BeautifulSoup
 
 from portfolio import db
@@ -23,9 +26,15 @@ DATA912_BASE = "https://data912.com"
 DOLARAPI_BASE = "https://dolarapi.com"
 BINANCE_BASE = "https://api.binance.com"
 BNA_URL = "https://www.bna.com.ar/Personas"
+ARGENTINADATOS_BASE = "https://api.argentinadatos.com"
 
 _BNA_CACHE_TTL = 300
 _bna_cache = {"rates": None, "fetched_at": 0.0}
+
+# "casa" de CCL en argentinadatos, usada para convertir series ARS a USD antes
+# de alimentarlas a Kronos (ver portfolio/forecasting.py).
+CCL_CASA = "contadoconliqui"
+CCL_FRESHNESS_HOURS = 12
 
 # tipo de instrumento -> endpoint live de data912
 DATA912_LIVE_ENDPOINT_BY_TYPE = {
@@ -102,9 +111,13 @@ def fetch_data912_historical(symbol, asset_type):
     df = pd.DataFrame(raw)
     df["timestamps"] = pd.to_datetime(df["date"])
     df = df.rename(columns={"o": "open", "h": "high", "l": "low", "c": "close", "v": "volume"})
-    df["amount"] = 0
     if asset_type in ("bono", "on"):
         df[["open", "high", "low", "close"]] /= 100
+    # Monto operado real (no un cero fantasma): aproximado como volumen * precio
+    # promedio del dia -- mismo fallback que usa KronosPredictor._prepare_inputs
+    # cuando no recibe esta columna, calculado aca (con el precio ya normalizado
+    # "por 1 unidad") para que quede disponible tambien para indicadores/chart.
+    df["amount"] = df["volume"] * df[["open", "high", "low", "close"]].mean(axis=1)
     return df[["timestamps", "open", "high", "low", "close", "volume", "amount"]]
 
 
@@ -143,14 +156,174 @@ def fetch_bna_rates():
     return rates
 
 
+# --- argentinadatos (historico de dolar) ---------------------------------------
+
+def fetch_fx_historical(casa=CCL_CASA):
+    """Serie diaria completa (no admite rango de fechas, la API devuelve todo
+    el historico junto -- ~5000 puntos desde 2013, una sola request)."""
+    resp = requests.get(f"{ARGENTINADATOS_BASE}/v1/cotizaciones/dolares/{casa}", timeout=30)
+    resp.raise_for_status()
+    raw = resp.json()
+    return [{"fecha": r["fecha"], "compra": r.get("compra"), "venta": r.get("venta")} for r in raw]
+
+
+def ensure_ccl_history(conn, casa=CCL_CASA):
+    """Refresca la serie historica de CCL si la ultima fecha guardada no es de
+    hoy (mismo criterio de frescura que quotes_latest/fundamentals_latest: no
+    pegarle a la fuente externa en cada carga)."""
+    latest = db.get_fx_rate_latest_fetched_date(conn, casa)
+    today = datetime.now(timezone.utc).date().isoformat()
+    if latest == today:
+        return
+    try:
+        rows = fetch_fx_historical(casa)
+    except Exception:
+        return  # sin conexion o la fuente esta caida -- se usa lo que ya hay guardado
+    if rows:
+        db.upsert_fx_rates(conn, casa, rows)
+
+
+INFLATION_URL = f"{ARGENTINADATOS_BASE}/v1/finanzas/indices/inflacion"
+
+
+def fetch_inflation_history():
+    """IPC mensual (% variacion mes a mes), serie completa en una sola request."""
+    resp = requests.get(INFLATION_URL, timeout=30)
+    resp.raise_for_status()
+    raw = resp.json()
+    return [{"fecha": r["fecha"], "valor_mensual_pct": r["valor"]} for r in raw]
+
+
+def ensure_inflation_history(conn):
+    latest = db.get_inflation_latest_fetched_date(conn)
+    today = datetime.now(timezone.utc).date().isoformat()
+    if latest == today:
+        return
+    try:
+        rows = fetch_inflation_history()
+    except Exception:
+        return
+    if rows:
+        db.upsert_inflation_rates(conn, rows)
+
+
+# --- yfinance (benchmarks, ej. SPY) ---------------------------------------------
+
+def fetch_benchmark_history(symbol):
+    """Historico diario de cierre de un simbolo via yfinance -- usado para
+    comparar la cartera contra un indice en USD (SPY)."""
+    hist = yf.Ticker(symbol).history(period="max")
+    if hist.empty:
+        raise ValueError(f"yfinance no devolvio historico para {symbol}")
+    hist = hist.reset_index()
+    return [
+        {"fecha": pd.Timestamp(row.Date).strftime("%Y-%m-%d"), "close": float(row.Close)}
+        for row in hist.itertuples()
+        if pd.notna(row.Close)  # yfinance a veces devuelve el dia en curso sin cierre todavia (NaN) -- se saltea, nunca se inserta un cierre inventado
+    ]
+
+
+def ensure_benchmark_history(conn, symbol="SPY"):
+    latest = db.get_benchmark_latest_fetched_date(conn, symbol)
+    today = datetime.now(timezone.utc).date().isoformat()
+    if latest == today:
+        return
+    try:
+        rows = fetch_benchmark_history(symbol)
+    except Exception:
+        return
+    if rows:
+        db.upsert_benchmark_prices(conn, symbol, rows)
+
+
+def fetch_underlying_ohlcv_history(symbol):
+    """OHLCV completo (no solo cierre) de un ticker de Wall Street via
+    yfinance -- ver schema.sql::underlying_price_history. Usado por
+    portfolio/features.py para calcular indicadores tecnicos de un CEDEAR
+    sobre su activo subyacente REAL, no sobre la serie sintetica ARS/CCL."""
+    hist = yf.Ticker(symbol).history(period="max")
+    if hist.empty:
+        raise ValueError(f"yfinance no devolvio historico para {symbol}")
+    hist = hist.reset_index()
+    return [
+        {
+            "fecha": pd.Timestamp(row.Date).strftime("%Y-%m-%d"),
+            "open": float(row.Open), "high": float(row.High), "low": float(row.Low),
+            "close": float(row.Close), "volume": float(row.Volume) if pd.notna(row.Volume) else None,
+        }
+        for row in hist.itertuples()
+        if pd.notna(row.Close)  # mismo criterio que fetch_benchmark_history: nunca un cierre inventado
+    ]
+
+
+def ensure_underlying_ohlcv_history(conn, symbol):
+    """Mismo patron de frescura diaria que ensure_benchmark_history --
+    no pega a yfinance mas de una vez por dia por simbolo."""
+    latest = db.get_underlying_latest_fetched_date(conn, symbol)
+    today = datetime.now(timezone.utc).date().isoformat()
+    if latest == today:
+        return
+    try:
+        rows = fetch_underlying_ohlcv_history(symbol)
+    except Exception:
+        return
+    if rows:
+        db.upsert_underlying_ohlcv(conn, symbol, rows)
+
+
+def get_underlying_ohlcv_df(conn, symbol):
+    """DataFrame timestamps/open/high/low/close/volume ordenado
+    cronologicamente, mismas columnas que fetch_data912_historical, para
+    poder reusar portfolio/indicators.py sin distinguir el origen del dato.
+    No fetchea -- el caller debe llamar ensure_underlying_ohlcv_history
+    antes (mismo criterio que el resto de este modulo)."""
+    rows = db.get_underlying_ohlcv_history(conn, symbol)
+    if not rows:
+        return pd.DataFrame(columns=["timestamps", "open", "high", "low", "close", "volume"])
+    df = pd.DataFrame(rows)
+    df["timestamps"] = pd.to_datetime(df["fecha"])
+    return df[["timestamps", "open", "high", "low", "close", "volume"]].sort_values("timestamps").reset_index(drop=True)
+
+
 # --- dolarapi ------------------------------------------------------------------
 
-def fetch_dolarapi_quote(instrument):
-    casa = _params(instrument).get("casa", "oficial")
+_DOLARAPI_CACHE_TTL = 60
+_dolarapi_cache = {}
+
+
+def fetch_dolarapi_casa(casa):
+    """Cacheado (Fase 10): dashboard-bundle llama esto hasta 4 veces en una
+    sola request (currency-exposure, risk, ganancia, usd_mep_rate) -- sin
+    cache, cada llamada es un HTTP real (~5s con esta API en particular),
+    volviendo el bundle completo lentísimo (~20s, reportado por el usuario)."""
+    cached = _dolarapi_cache.get(casa)
+    if cached and time.time() - cached["fetched_at"] < _DOLARAPI_CACHE_TTL:
+        return cached["data"]
     resp = requests.get(f"{DOLARAPI_BASE}/v1/dolares/{casa}", timeout=15)
     resp.raise_for_status()
     data = resp.json()
+    _dolarapi_cache[casa] = {"data": data, "fetched_at": time.time()}
+    return data
+
+
+def fetch_dolarapi_quote(instrument):
+    casa = _params(instrument).get("casa", "oficial")
+    data = fetch_dolarapi_casa(casa)
     return {"price": data["venta"], "bid": data["compra"], "ask": data["venta"]}
+
+
+# "casa" de dolarapi por fuente de USD elegida en Preferencias (ver app_settings.usd_rate_source).
+_DOLARAPI_CASA_BY_SOURCE = {"mep": "bolsa", "ccl": "contadoconliqui"}
+
+
+def resolve_usd_rate(settings):
+    """Centraliza de donde sale "la" cotizacion USD/ARS usada para convertir
+    la cartera -- antes estaba hardcodeada a BNA por separado en routes.py e
+    history.py; ahora ambos la piden aca segun app_settings.usd_rate_source."""
+    source = settings.get("usd_rate_source") or "bna"
+    if source in _DOLARAPI_CASA_BY_SOURCE:
+        return fetch_dolarapi_casa(_DOLARAPI_CASA_BY_SOURCE[source])["venta"]
+    return fetch_bna_rates()[settings["bna_rate_variant"]]
 
 
 # --- binance ---------------------------------------------------------------------
