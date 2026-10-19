@@ -1047,18 +1047,26 @@ def _format_closing_report(report):
 
 async def _paper_trading_closing_report_job(context: ContextTypes.DEFAULT_TYPE):
     """Reporte de Cierre de Rueda (ver conversacion), 17:05 ART -- se salta
-    fines de semana (no hubo rueda que cerrar)."""
+    fines de semana (no hubo rueda que cerrar).
+
+    build_closing_report (y el snapshot diario de equity que graba, la unica
+    fuente para medir el track record real de Paper Trading) se corre SIEMPRE,
+    independiente de si hay usuarios de Telegram -- antes quedaba atado a
+    `if not allowed_users: return`, asi que vaciar la lista de usuarios (o no
+    haber cargado ninguno todavia) dejaba de grabar el snapshot PARA SIEMPRE,
+    en silencio, sin ningun error que lo avisara (bug real, encontrado
+    auditando por que el snapshot no parecia registrar todos los dias)."""
     if not monitor.is_trading_day():
         return
     conn = db.get_connection()
     try:
-        allowed_users = db.list_telegram_allowed_users(conn)
-        if not allowed_users:
-            return
         try:
             report = monitor.build_closing_report(conn)
         except Exception:
             logger.exception("Fallo el reporte de cierre de Paper Trading")
+            return
+        allowed_users = db.list_telegram_allowed_users(conn)
+        if not allowed_users:
             return
         text = _format_closing_report(report)
         for user in allowed_users:

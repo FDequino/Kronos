@@ -395,40 +395,6 @@ td.num, th.num {
     display: none;
 }
 
-/* Columna de acciones fija a la derecha (ver conversación, Fase 3) -- opt-in
-   (.table-scroll-sticky-actions en el wrapper) para tablas donde se confirmó
-   que la columna de acciones queda cortada por el scroll horizontal (ej.
-   Préstamos: Dirección...Estado ya ocupa más que el ancho del panel). El
-   fondo de la celda fija tiene que replicar a mano el de la fila que pisa
-   (par/impar/hover/grupo/total) -- position:sticky no hereda eso solo, y sin
-   un fondo sólido el contenido de abajo se transparentaría al scrollear. */
-.table-scroll-sticky-actions thead th:last-child {
-    position: sticky;
-    right: 0;
-    z-index: 2;
-}
-
-.table-scroll-sticky-actions tbody td.row-actions,
-.table-scroll-sticky-actions tfoot td:last-child {
-    position: sticky;
-    right: 0;
-    z-index: 1;
-    background: var(--bg-elevated);
-    box-shadow: -4px 0 6px -4px rgba(0, 0, 0, 0.4);
-}
-
-.table-scroll-sticky-actions tbody tr:nth-child(even) td.row-actions {
-    background: var(--bg-content);
-}
-
-.table-scroll-sticky-actions tbody tr:hover td.row-actions {
-    background: var(--bg-elevated-hover);
-}
-
-.table-scroll-sticky-actions .table-group-header td.row-actions {
-    background: var(--bg-content);
-}
-
 /* "Mostrar más" (ver conversación, Fase 3): paginación simple en vez de
    virtualizar -- preferencia explícita por sobre una ventana virtual para
    una tabla que, en la práctica, la mayoría nunca scrollea hasta el final. */

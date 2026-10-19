@@ -300,7 +300,7 @@ function renderTable() {
     const bodyRows = tableBodyRowsHtml(result, columns, (r) => rowHtml(r, columns), { collapsedGroups: loansCollapsedGroups, colspan });
 
     container.innerHTML = `
-        <div class="table-scroll table-scroll-sticky-actions">
+        <div class="table-scroll">
             <table>
                 <thead><tr>${columns.map((c) => headerCellHtml(c)).join('')}<th></th></tr></thead>
                 <tbody>${bodyRows}</tbody>

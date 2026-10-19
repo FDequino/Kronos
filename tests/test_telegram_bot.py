@@ -386,3 +386,51 @@ def test_reply_boton_ajustes_viewer_es_rechazado(temp_db, viewer_update):
 
     text, _ = message.texts[-1]
     assert "solo los puede tocar el administrador" in text or "reservados para administradores" in text
+
+
+# --- Reporte de Cierre de Rueda: el snapshot nunca puede depender de Telegram -----
+
+_FAKE_CLOSING_REPORT = {
+    "date": "2026-10-19", "equity_usd": 10050.0, "resultado_dia_usd": 50.0, "resultado_dia_pct": 0.5,
+    "trades_closed_today": [], "trades_closed_today_count": 0,
+    "open_positions": [], "open_positions_count": 0,
+}
+
+
+def test_closing_report_graba_snapshot_sin_usuarios_de_telegram(temp_db, monkeypatch):
+    # Lista de usuarios VACIA a proposito -- antes esto hacia que el job
+    # entero (incluido el guardado del snapshot) ni se ejecutara.
+    assert db.list_telegram_allowed_users(temp_db) == []
+    monkeypatch.setattr(telegram_bot.monitor, "is_trading_day", lambda: True)
+    calls = []
+    def fake_build_closing_report(conn):
+        calls.append(conn)
+        return _FAKE_CLOSING_REPORT
+    monkeypatch.setattr(telegram_bot.monitor, "build_closing_report", fake_build_closing_report)
+
+    run(telegram_bot._paper_trading_closing_report_job(FakeContext()))
+
+    assert len(calls) == 1  # se llamo igual, aunque no haya a quien avisarle
+
+
+def test_closing_report_no_corre_fin_de_semana(temp_db, monkeypatch):
+    monkeypatch.setattr(telegram_bot.monitor, "is_trading_day", lambda: False)
+    calls = []
+    monkeypatch.setattr(telegram_bot.monitor, "build_closing_report", lambda conn: calls.append(conn))
+
+    run(telegram_bot._paper_trading_closing_report_job(FakeContext()))
+
+    assert calls == []
+
+
+def test_closing_report_manda_mensaje_si_hay_usuarios(temp_db, admin_update, monkeypatch):
+    monkeypatch.setattr(telegram_bot.monitor, "is_trading_day", lambda: True)
+    monkeypatch.setattr(telegram_bot.monitor, "build_closing_report", lambda conn: _FAKE_CLOSING_REPORT)
+    context = FakeContext()
+
+    run(telegram_bot._paper_trading_closing_report_job(context))
+
+    assert len(context.bot.sent) == 1
+    chat_id, text, _ = context.bot.sent[0]
+    assert chat_id == admin_update
+    assert "Reporte de Cierre de Rueda" in text
