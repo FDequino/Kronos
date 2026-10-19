@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+torch
+chronos-forecasting
+pandas
+numpy
+pydantic
