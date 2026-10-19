@@ -808,4 +808,16 @@ if __name__ == '__main__':
         quote_worker.start()
         telegram_bot.start()
 
-    app.run(debug=True, host='0.0.0.0', port=7070, threaded=True)
+    # Host/puerto configurables por env (default sin cambios: 0.0.0.0:7070,
+    # el de siempre en dev local) -- el deploy de la VPS los pisa a
+    # 127.0.0.1:8090 via /opt/kronos/app/.env, mismo criterio "nunca
+    # expuesto directo" que ya usan el resto de los servicios de ese server
+    # (Caddy hace de unico frente publico). debug=True se deja intacto a
+    # proposito: el truco de WERKZEUG_RUN_MAIN de arriba depende exactamente
+    # de ese reloader.
+    app.run(
+        debug=True,
+        host=os.environ.get('KRONOS_HOST', '0.0.0.0'),
+        port=int(os.environ.get('KRONOS_PORT', 7070)),
+        threaded=True,
+    )
