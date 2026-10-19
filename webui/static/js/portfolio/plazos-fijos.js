@@ -4,7 +4,7 @@ import { fmt, fmtPct, fmtMoney, fmtDate, todayLocalISO } from '../shared/format.
 import { api } from './api.js';
 import { infoTooltipHtml } from '../shared/info-tooltip.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
-import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag } from '../shared/table-chrome.js';
+import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag, withMobileCardLayout, mobileExpandToggleHtml, wireMobileCardToggle } from '../shared/table-chrome.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { createColumnManager } from '../shared/column-manager.js';
 import { rowActionsHtml, wireRowActions } from '../shared/row-actions.js';
@@ -180,7 +180,8 @@ function rowHtml(r, columns) {
             default: return '<td></td>';
         }
     });
-    return `<tr>${cells.join('')}${rowActionsHtml(pf.id)}</tr>`;
+    const mobileCells = withMobileCardLayout(cells, columns, 1);
+    return `<tr>${mobileCells.join('')}${mobileExpandToggleHtml(columns, 1)}${rowActionsHtml(pf.id)}</tr>`;
 }
 
 function renderTable() {
@@ -265,7 +266,8 @@ function caucionRowHtml(r, columns) {
             default: return '<td></td>';
         }
     });
-    return `<tr>${cells.join('')}${rowActionsHtml(c.id)}</tr>`;
+    const mobileCells = withMobileCardLayout(cells, columns, 1);
+    return `<tr>${mobileCells.join('')}${mobileExpandToggleHtml(columns, 1)}${rowActionsHtml(c.id)}</tr>`;
 }
 
 function renderCaucionesTable() {
@@ -456,4 +458,6 @@ export function initPlazosFijosView() {
         onEdit: (id) => openCaucionModal(currentCauciones.find((r) => String(r.caucion.id) === String(id))?.caucion),
         onDelete: deleteCaucion,
     });
+    wireMobileCardToggle($('pf-table-container'));
+    wireMobileCardToggle($('cauciones-table-container'));
 }

@@ -8,7 +8,7 @@ import { fmt, fmtMoney, fmtDate, todayLocalISO } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
 import { api } from './api.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
-import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag } from '../shared/table-chrome.js';
+import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag, withMobileCardLayout, mobileExpandToggleHtml, wireMobileCardToggle } from '../shared/table-chrome.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { createColumnManager } from '../shared/column-manager.js';
 import { openModal, closeModal } from '../shared/modal.js';
@@ -273,7 +273,8 @@ function rowHtml(r, columns) {
             default: return '<td></td>';
         }
     });
-    return `<tr data-loan-id="${r.id}">${cells.join('')}
+    const mobileCells = withMobileCardLayout(cells, columns, 2);
+    return `<tr data-loan-id="${r.id}">${mobileCells.join('')}${mobileExpandToggleHtml(columns, 2)}
         <td class="row-actions">
             <button type="button" class="btn btn-secondary loan-detail-btn" data-id="${r.id}">Ver detalle</button>
             <button type="button" class="btn btn-secondary loan-pago-btn" data-id="${r.id}">Registrar pago</button>
@@ -570,4 +571,5 @@ export function initLoansView() {
         onChange: (state) => { loansSearchState = state; renderTable(); },
     });
     $('new-loan-btn').addEventListener('click', () => openLoanModal());
+    wireMobileCardToggle($('loans-table-container'));
 }

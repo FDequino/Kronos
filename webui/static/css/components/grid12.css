@@ -198,6 +198,17 @@
    acá se anula, la tarjeta ocupa 1 columna como cualquier otra. */
 .mini-stat-grid.row .span2 { grid-column: auto; }
 
+/* 2 columnas fijas en mobile (ver conversación, Fase 8) -- auto-fill con
+   minmax(150px, 1fr) caía a 1 sola columna en ~320px de ancho útil (150×2 +
+   gap no entraba), dejando cada tarjeta como una fila angosta y larga. Acá
+   se fuerza el 2x2 explícito en vez de perseguir el breakpoint exacto donde
+   auto-fill decide sumar una columna más. */
+@media (max-width: 480px) {
+    .mini-stat-grid.row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 .mini-stat {
     background: var(--bg-content);
     border-radius: var(--radius-sm);

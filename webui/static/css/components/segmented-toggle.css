@@ -1,10 +1,18 @@
 .segmented-toggle {
     display: inline-flex;
+    max-width: 100%;
     background: var(--bg-content);
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     padding: 2px;
     gap: 2px;
+    /* Ver conversación, Fase 8: con 5 opciones (ej. el filtro de bucket de
+       Instrumentos: Todos/En Cartera/CEDEARs/Acciones/Bonos) el contenido no
+       entra en 375px -- antes esto desbordaba la página entera en vez de
+       scrollear solo el propio control, mismo bug/mismo fix ya aplicado a
+       .subtabs en Fase 1. */
+    overflow-x: auto;
+    scrollbar-gutter: stable;
 }
 
 .segmented-toggle-option {
@@ -17,6 +25,8 @@
     font-weight: 600;
     border-radius: calc(var(--radius-sm) - 1px);
     cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
     transition: background-color 150ms ease, color 150ms ease;
 }
 

@@ -6,7 +6,7 @@ import { instrumentRiskFormulaLines } from '../charts/risk-gauge.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { createColumnManager } from '../shared/column-manager.js';
 import { createSearchBar, applySearchState, wireGroupToggles, tableBodyRowsHtml } from '../shared/search-bar.js';
-import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag, totalRowHtml } from '../shared/table-chrome.js';
+import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag, totalRowHtml, withMobileCardLayout, mobileExpandToggleHtml, wireMobileCardToggle } from '../shared/table-chrome.js';
 import { infoTooltipHtml, riskTooltipContentHtml } from '../shared/info-tooltip.js';
 import { renderPatrimonio } from './patrimonio.js';
 import { onQuoteUpdate } from './quote-stream.js';
@@ -211,7 +211,8 @@ function cellHtml(h, key) {
 }
 
 function rowHtml(h, columns) {
-    return `<tr data-instrument-id="${h.instrument.id}">${columns.map((c) => cellHtml(h, c.key)).join('')}</tr>`;
+    const cells = withMobileCardLayout(columns.map((c) => cellHtml(h, c.key)), columns, 1);
+    return `<tr data-instrument-id="${h.instrument.id}">${cells.join('')}${mobileExpandToggleHtml(columns, 1)}</tr>`;
 }
 
 // Fase 7: cuando llega un evento SSE de cotizacion, no alcanza con pintar el
@@ -231,9 +232,15 @@ function patchHoldingsRow(instrumentId) {
     const row = container?.querySelector(`tr[data-instrument-id="${instrumentId}"]`);
     const h = lastHoldings.find((x) => x.instrument.id === instrumentId);
     if (!row || !h || h.instrument.price_source === 'manual') return;
+    // withMobileCardLayout(..., 0) (ver conversación, Fase 8) -- un patch
+    // puntual de celda con outerHTML normal perdía el data-label que la hace
+    // legible en modo tarjeta mobile (ninguna de estas 4 es la columna
+    // primary, siempre va con label).
     ['precio_actual', 'valor_actual', 'pnl', 'pnl_pct'].forEach((key) => {
         const cell = row.querySelector(`[data-cell="${key}"]`);
-        if (cell) cell.outerHTML = cellHtml(h, key);
+        if (!cell) return;
+        const col = TENENCIAS_COLUMNS.find((c) => c.key === key);
+        cell.outerHTML = col ? withMobileCardLayout([cellHtml(h, key)], [col], 0)[0] : cellHtml(h, key);
     });
     const freshRow = container.querySelector(`tr[data-instrument-id="${instrumentId}"]`);
     if (!freshRow) return;
@@ -306,6 +313,7 @@ export function initHoldingsView() {
     $('holdings-groups').addEventListener('change', (e) => {
         if (e.target.classList.contains('manual-price-input')) saveManualPrice(e.target);
     });
+    wireMobileCardToggle($('holdings-groups'));
     document.addEventListener('currency-changed', loadHoldings);
     document.addEventListener('theme-changed', loadHoldings);
 }

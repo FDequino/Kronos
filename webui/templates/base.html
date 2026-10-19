@@ -46,6 +46,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/kronos-history.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/opportunity-cards.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/components/proposal-cards.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/bottom-nav.css') }}">
     {% block extra_styles %}{% endblock %}
 </head>
 <body>
@@ -152,6 +153,36 @@
             </div>
         </div>
     </div>
+    <!-- Navegacion inferior mobile (ver conversación, Fase 8) -- 4 items mas
+         usados del workflow de Cartera + "Más" para el resto (Plazos Fijos,
+         Préstamos, Ajustes, Predictor). Reusa la clase .nav-item para que
+         shared/nav.js::syncActiveNav() la marque activa sin tocar ese
+         archivo -- esa función ya busca CUALQUIER .nav-item[href] en toda la
+         página, no solo dentro de .sidebar. Solo visible por CSS en mobile
+         (ver bottom-nav.css), siempre en el DOM. -->
+    <nav class="bottom-nav" id="bottom-nav">
+        {% for item in nav_items[:4] %}
+        <a class="nav-item bottom-nav-item" data-nav-id="{{ item.id }}" href="{{ item.href }}">
+            {{ icon(item.icon) }}
+            <span class="bottom-nav-label">{{ item.label }}</span>
+        </a>
+        {% endfor %}
+        <button type="button" class="nav-item bottom-nav-item" id="bottom-nav-more-btn" aria-haspopup="true" aria-expanded="false">
+            {{ icon('menu') }}
+            <span class="bottom-nav-label">Más</span>
+        </button>
+    </nav>
+    <div class="bottom-nav-sheet" id="bottom-nav-sheet" hidden>
+        <div class="bottom-nav-sheet-backdrop" id="bottom-nav-sheet-backdrop"></div>
+        <div class="bottom-nav-sheet-panel">
+            {% for item in nav_items[4:] %}
+            <a class="nav-item bottom-nav-sheet-item" data-nav-id="{{ item.id }}" href="{{ item.href }}">
+                {{ icon(item.icon) }}
+                <span>{{ item.label }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
     <div id="modal-root" hidden></div>
     <div id="command-palette-root" hidden></div>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
@@ -162,12 +193,14 @@
         import { initNotifications } from "{{ url_for('static', filename='js/shared/notifications.js') }}";
         import { initSidebarCollapse } from "{{ url_for('static', filename='js/shared/sidebar-collapse.js') }}";
         import { initCommandPalette } from "{{ url_for('static', filename='js/shared/command-palette.js') }}";
+        import { initBottomNav } from "{{ url_for('static', filename='js/shared/bottom-nav.js') }}";
         document.addEventListener('DOMContentLoaded', () => {
             initThemeToggle('theme-toggle-switch');
             initUserMenu();
             initNotifications();
             initSidebarCollapse('sidebar', 'sidebar-collapse-toggle');
             initCommandPalette();
+            initBottomNav();
         });
     </script>
     {% block extra_scripts %}{% endblock %}

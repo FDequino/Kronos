@@ -15,7 +15,7 @@ import { fmt, fmtPct, fmtMoney } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
 import { api } from './api.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
-import { headerCellHtml, updateSortIndicators } from '../shared/table-chrome.js';
+import { headerCellHtml, updateSortIndicators, withMobileCardLayout, mobileExpandToggleHtml, wireMobileCardToggle } from '../shared/table-chrome.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { rowActionsHtml, wireRowActions } from '../shared/row-actions.js';
 import { openInstrumentModal, fetchInstrumentsList, deleteInstrument } from './instruments.js';
@@ -174,16 +174,20 @@ function rowHtml(row) {
     const params = new URLSearchParams({ market: row.market || 'byma', assetType: row.type });
     if (row.id) params.set('instrumentId', row.id);
     const link = `<a href="#detalle/${encodeURIComponent(row.symbol)}?${params.toString()}" class="table-link">${row.symbol}</a>`;
+    const cells = withMobileCardLayout([
+        `<td>${link}</td>`,
+        `<td class="cell-truncate" title="${row.name || ''}">${row.name || '—'}</td>`,
+        `<td>${claseDotHtml({ type: row.type })}${row.clase}</td>`,
+        `<td>${row.isCartera ? '✓' : ''}</td>`,
+        `<td class="num">${row.price !== null && row.price !== undefined ? fmt(row.price) : '—'}</td>`,
+        `<td class="num ${pctClass(row.pct_change)}">${row.pct_change !== null && row.pct_change !== undefined ? fmtPct(row.pct_change) : '—'}</td>`,
+        `<td class="num">${row.valorActual !== null && row.valorActual !== undefined ? fmtMoney(row.valorActual, displayCurrency) : '—'}</td>`,
+        `<td>${row.cuenta || '<span class="hint">Sin agregar</span>'}</td>`,
+    ], COLUMNS, 1);
     return `
         <tr>
-            <td>${link}</td>
-            <td class="cell-truncate" title="${row.name || ''}">${row.name || '—'}</td>
-            <td>${claseDotHtml({ type: row.type })}${row.clase}</td>
-            <td>${row.isCartera ? '✓' : ''}</td>
-            <td class="num">${row.price !== null && row.price !== undefined ? fmt(row.price) : '—'}</td>
-            <td class="num ${pctClass(row.pct_change)}">${row.pct_change !== null && row.pct_change !== undefined ? fmtPct(row.pct_change) : '—'}</td>
-            <td class="num">${row.valorActual !== null && row.valorActual !== undefined ? fmtMoney(row.valorActual, displayCurrency) : '—'}</td>
-            <td>${row.cuenta || '<span class="hint">Sin agregar</span>'}</td>
+            ${cells.join('')}
+            ${mobileExpandToggleHtml(COLUMNS, 1)}
             ${actionsCellHtml(row)}
         </tr>
     `;
@@ -308,6 +312,7 @@ export function initInstrumentosView() {
     });
 
     $('new-instrument-btn').addEventListener('click', () => openInstrumentModal());
+    wireMobileCardToggle($('instrumentos-table-container'));
 
     $('instrumentos-bucket-bar').querySelectorAll('.segmented-toggle-option').forEach((btn) => {
         btn.addEventListener('click', () => {

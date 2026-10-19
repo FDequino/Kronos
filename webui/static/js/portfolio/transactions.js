@@ -5,7 +5,7 @@ import { api } from './api.js';
 import { fetchInstrumentsList } from './instruments.js';
 import { loadHoldings } from './holdings.js';
 import { createSearchBar, applySearchState, wireGroupToggles, tableBodyRowsHtml } from '../shared/search-bar.js';
-import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag } from '../shared/table-chrome.js';
+import { mountColumnToggle, headerCellHtml, updateSortIndicators, wireColumnDrag, withMobileCardLayout, mobileExpandToggleHtml, wireMobileCardToggle } from '../shared/table-chrome.js';
 import { benchmarkPeriodControlsHtml, wireBenchmarkPeriodControls } from '../charts/benchmark-comparison-chart.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { createColumnManager } from '../shared/column-manager.js';
@@ -198,7 +198,8 @@ function txRowHtml(tx, columns) {
             default: return '<td></td>';
         }
     });
-    return `<tr>${cells.join('')}${rowActionsHtml(tx.id)}</tr>`;
+    const mobileCells = withMobileCardLayout(cells, columns, 2);
+    return `<tr>${mobileCells.join('')}${mobileExpandToggleHtml(columns, 2)}${rowActionsHtml(tx.id)}</tr>`;
 }
 
 // Fase 15: panel "Resumen" al costado -- sobre lo filtrado (período/búsqueda),
@@ -280,7 +281,8 @@ function rentaRowHtml(r, columns) {
             default: return '<td></td>';
         }
     });
-    return `<tr>${cells.join('')}</tr>`;
+    const mobileCells = withMobileCardLayout(cells, columns, 2);
+    return `<tr>${mobileCells.join('')}${mobileExpandToggleHtml(columns, 2)}</tr>`;
 }
 
 function renderRentasDividendos() {
@@ -391,6 +393,8 @@ export function initTransactionsView() {
         searchPlaceholder: 'Buscar por símbolo...',
         onChange: (state) => { rentaSearchState = state; renderRentasDividendos(); },
     });
+    wireMobileCardToggle($('transactions-table-container'));
+    wireMobileCardToggle($('rentas-table-container'));
     const periodControls = $('tx-period-controls');
     periodControls.innerHTML = benchmarkPeriodControlsHtml('inicio');
     wireBenchmarkPeriodControls(periodControls, (period) => {

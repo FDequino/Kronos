@@ -1,0 +1,142 @@
+/* Navegación inferior mobile (ver conversación, Fase 8) -- reemplaza la fila
+   de .nav-item que en mobile vivía arriba, horizontal y scrolleable (solo se
+   veían 2-3 ítems sin tocar nada): 4 accesos directos siempre visibles +
+   "Más" para el resto, en la zona que el pulgar alcanza sin estirarse.
+   Oculto por completo en desktop -- en mobile es .sidebar la que colapsa a
+   una barra superior de utilidades (Buscar/Notificaciones/Preferencias), no
+   esto. */
+.bottom-nav {
+    display: none;
+}
+
+.bottom-nav-sheet[hidden] {
+    display: none;
+}
+
+@media (max-width: 860px) {
+    /* La fila de .nav-item de la barra superior (Resumen/Decisiones/...)
+       queda redundante -- la navegación entre secciones ahora la hace esta
+       barra de abajo. El trigger de Buscar (misma fila, pero NO tiene
+       data-nav-id) se queda arriba. */
+    .sidebar-nav a.nav-item[data-nav-id] {
+        display: none;
+    }
+
+    /* Deja lugar abajo para que la barra fija no tape el final de la
+       página -- mismo criterio que .panel-sticky-head arriba, pero fijo en
+       vez de medido (la barra siempre mide lo mismo en mobile). */
+    .main {
+        padding-bottom: 64px;
+    }
+
+    .bottom-nav {
+        display: flex;
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 50;
+        background: var(--bg-sidebar);
+        border-top: 1px solid var(--border);
+        padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    .bottom-nav-item {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        /* 56px de alto (por encima del mínimo de 44px pedido) -- el target
+           táctil más importante de toda la vista mobile, es el que se toca
+           para moverse de sección. */
+        min-height: 56px;
+        padding: 6px 4px;
+        border: none;
+        background: transparent;
+        color: var(--text-tertiary);
+        text-decoration: none;
+        font: inherit;
+        cursor: pointer;
+    }
+
+    .bottom-nav-item svg {
+        width: 20px;
+        height: 20px;
+    }
+
+    .bottom-nav-item.active {
+        color: var(--accent-strong);
+    }
+
+    .bottom-nav-label {
+        font-size: 0.65rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
+
+    .bottom-nav-sheet {
+        position: fixed;
+        inset: 0;
+        z-index: 60;
+    }
+
+    .bottom-nav-sheet-backdrop {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.55);
+        animation: modal-backdrop-in 160ms ease-out;
+    }
+
+    .bottom-nav-sheet-panel {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        background: var(--bg-elevated);
+        border: 1px solid var(--border);
+        border-bottom: none;
+        border-radius: var(--radius) var(--radius) 0 0;
+        padding: 10px;
+        padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+        box-shadow: 0 -16px 48px rgba(0, 0, 0, 0.4);
+        animation: modal-box-in 180ms cubic-bezier(.2, .8, .2, 1);
+    }
+
+    .bottom-nav-sheet-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 48px;
+        padding: 10px 12px;
+        border-radius: var(--radius-sm);
+        color: var(--text-primary);
+        text-decoration: none;
+        font-size: var(--step--1);
+        font-weight: 500;
+    }
+
+    .bottom-nav-sheet-item svg {
+        width: 18px;
+        height: 18px;
+        color: var(--text-tertiary);
+        flex-shrink: 0;
+    }
+
+    .bottom-nav-sheet-item:hover {
+        background: var(--bg-elevated-hover);
+    }
+
+    .bottom-nav-sheet-item.active {
+        background: var(--accent-dim);
+        color: var(--text-primary);
+    }
+
+    .bottom-nav-sheet-item.active svg {
+        color: var(--accent-strong);
+    }
+}

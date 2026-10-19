@@ -37,6 +37,13 @@ table {
     white-space: nowrap;
 }
 
+/* Celda "Ver más/menos": solo tiene sentido en el layout de tarjeta mobile
+   (la tabla de escritorio ya muestra todas las columnas) -- oculta acá,
+   .row-expand-toggle dentro del media query de abajo la muestra de vuelta. */
+.row-expand-toggle {
+    display: none;
+}
+
 .row-action-btn {
     display: inline-flex;
     align-items: center;
@@ -485,6 +492,105 @@ td.num, th.num {
 .inline-icon svg {
     width: 14px;
     height: 14px;
+}
+
+/* Tablas como tarjetas expandibles en mobile (ver conversación, Fase 8) --
+   aplica a CUALQUIER tabla dentro de .table-scroll (las 7 tablas de la app
+   que usan esta chrome), no hace falta una clase nueva por tabla. Las
+   celdas llegan ya marcadas desde JS (ver shared/table-chrome.js::
+   withMobileCardLayout): data-primary = "título" de la tarjeta (sin
+   prefijo, siempre visible), data-label = fila secundaria "Etiqueta: valor"
+   (oculta hasta expandir). Una celda SIN ninguno de los dos atributos (ej.
+   la columna de acciones, que no pasa por withMobileCardLayout) queda
+   visible siempre, nunca hay que marcarla a mano para que no desaparezca. */
+@media (max-width: 640px) {
+    .table-scroll thead {
+        display: none;
+    }
+
+    /* Fila de grupo y fila de total (tfoot): layout de tabla normal, no
+       tarjeta -- son un subtotal/encabezado, no un registro individual, y
+       sus celdas nunca pasan por withMobileCardLayout (no tienen
+       data-label que las haga legibles apiladas). */
+    .table-scroll tbody tr:not(.table-group-header) {
+        display: block;
+        background: var(--bg-content);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        margin: 10px;
+    }
+
+    .table-scroll tbody tr:not(.table-group-header):first-child {
+        margin-top: 10px;
+    }
+
+    .table-scroll tbody tr:not(.table-group-header) td {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        width: auto;
+        padding: 7px 12px;
+        border: none;
+        text-align: left;
+    }
+
+    .table-scroll tbody tr:not(.table-group-header) td[data-label]::before {
+        content: attr(data-label);
+        font-size: 0.65rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--text-tertiary);
+        flex-shrink: 0;
+    }
+
+    /* data-primary: el "título" de la tarjeta -- sin prefijo de etiqueta.
+       El borde separador va en la ÚLTIMA celda primary (la que tiene una
+       celda secundaria justo después), no en todas -- con 2+ columnas
+       primary, ponerlo en cada una dejaba una línea doble entre ellas. */
+    .table-scroll tbody tr:not(.table-group-header) td[data-primary] {
+        font-weight: 600;
+    }
+
+    .table-scroll tbody tr:not(.table-group-header) td[data-primary]:has(+ td:not([data-primary])) {
+        padding-bottom: 10px;
+        border-bottom: 1px solid var(--border);
+        margin-bottom: 2px;
+    }
+
+    .table-scroll tbody tr:not(.row-expanded) td[data-label] {
+        display: none;
+    }
+
+    .row-expand-toggle {
+        justify-content: center !important;
+        color: var(--accent-strong);
+        font-weight: 600;
+        font-size: var(--step--1);
+        cursor: pointer;
+    }
+
+    /* Acciones (editar/eliminar, Ver detalle/Registrar pago): varios
+       botones en fila, nunca "Etiqueta: botón" -- justify-content:center en
+       vez de space-between, que quedaría con un hueco vacío a la izquierda. */
+    .table-scroll tbody tr:not(.table-group-header) td.row-actions,
+    .table-scroll tbody tr:not(.table-group-header) td:has(.btn) {
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+
+    /* 44px es el mínimo táctil recomendado (WCAG 2.5.5) -- en desktop estos
+       íconos son más chicos (26px, pensados para mouse), pero en mobile hay
+       que agrandar el área de toque sin agrandar el ícono en sí. */
+    .table-scroll tbody tr:not(.table-group-header) .row-action-btn {
+        width: 44px;
+        height: 44px;
+    }
+
+    .table-scroll tbody tr:not(.table-group-header) .row-expand-toggle {
+        min-height: 44px;
+    }
 }
 
 /* Señales predictivas (comprar/vender) e indicadores tecnicos -- ver nota en

@@ -119,6 +119,58 @@ document.addEventListener('click', (e) => {
     });
 });
 
+// --- Tablas como tarjetas expandibles en mobile (ver conversación, Fase 8) --
+// CSS-driven (ver table.css, @media max-width:640px): data-primary queda
+// siempre visible arriba de la tarjeta (sin label, hace de "título" de la
+// fila), data-label en el resto arma el típico "Etiqueta: valor" apilado, y
+// ese resto queda oculto hasta tocar "Ver más" (el toggle que agrega
+// withMobileCardLayout al final de la fila). Pensado para reusarse en las 7
+// tablas de la app sin reimplementar el layout en cada una -- cada archivo
+// solo envuelve sus celdas ya armadas con esta función antes de unirlas.
+
+function escapeAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+}
+
+// `cellsHtml`: array de strings "<td ...>...</td>" YA armados, en el mismo
+// orden que `columns` -- se les inyecta data-primary/data-label en la etiqueta
+// de apertura sin tocar el resto del markup (atributos existentes como
+// class="num" o data-cell="pnl" se conservan). `primaryCount` son las
+// columnas que quedan SIEMPRE visibles (el "título" de la tarjeta, ej.
+// símbolo + un monto clave) -- 2 por defecto, ajustable por tabla.
+export function withMobileCardLayout(cellsHtml, columns, primaryCount = 2) {
+    return cellsHtml.map((html, i) => {
+        const col = columns[i];
+        if (!col) return html;
+        const isPrimary = i < primaryCount;
+        const attrs = isPrimary ? ' data-primary' : ` data-label="${escapeAttr(col.label)}"`;
+        return html.replace(/^<td([^>]*)>/, `<td$1${attrs}>`);
+    });
+}
+
+// Celda extra al final de la fila -- el "Ver más ▾" que revela las columnas
+// secundarias. Sin esto (tablas de 2 columnas o menos, ej. ninguna hoy) no
+// hay nada que ocultar, así que no hace falta el toggle.
+export function mobileExpandToggleHtml(columns, primaryCount = 2) {
+    if (columns.length <= primaryCount) return '';
+    return '<td class="row-expand-toggle" data-mobile-toggle>Ver más ▾</td>';
+}
+
+// UN listener delegado por tabla, pedido UNA sola vez en initXxxView() (el
+// contenedor en sí nunca se reemplaza, solo su innerHTML en cada render) --
+// mismo patrón que wireRowActions.
+export function wireMobileCardToggle(container) {
+    if (!container) return;
+    container.addEventListener('click', (e) => {
+        const toggle = e.target.closest('[data-mobile-toggle]');
+        if (!toggle) return;
+        const row = toggle.closest('tr');
+        if (!row) return;
+        const expanded = row.classList.toggle('row-expanded');
+        toggle.textContent = expanded ? 'Ver menos ▴' : 'Ver más ▾';
+    });
+}
+
 export function wireColumnDrag(theadRow, columnManager, onChange) {
     let dragKey = null;
     theadRow.querySelectorAll('th').forEach((th) => {
