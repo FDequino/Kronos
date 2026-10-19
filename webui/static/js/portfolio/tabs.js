@@ -1,9 +1,14 @@
 import { renderInstrumentDetail, parseDetailRoute } from './instrument-detail.js';
+import { renderNewsDetailView, parseNewsDetailRoute } from './news.js';
 import { activateSubtab } from '../shared/subtabs.js';
 import { recordNavigation } from '../shared/nav-history.js';
 
 const VIEWS = ['resumen', 'decisiones', 'instrumentos', 'transacciones', 'plazos-fijos', 'prestamos', 'ajustes'];
 const DETAIL_PREFIX = 'detalle/';
+// Detalle de UNA noticia, pantalla completa (ver conversación: "no quiero un
+// popup... debe ser una pantalla de la noticia") -- mismo patrón de ruta
+// especial que DETAIL_PREFIX, ver news.js::renderNewsDetailView.
+const NEWS_DETAIL_PREFIX = 'noticia/';
 
 // Fase 1 (ver conversacion, "título por sección"): título + subtítulo de
 // #page-title/#page-subtitle (base.html) y de <title> por vista -- antes
@@ -20,7 +25,7 @@ const VIEW_META = {
     ajustes: { title: 'Ajustes', subtitle: 'Estrategia, reporte PDF, conexiones y preferencias' },
 };
 
-function setPageMeta(target, hash, isDetail) {
+function setPageMeta(target, hash, isDetail, isNewsDetail) {
     const titleEl = document.getElementById('page-title');
     const subtitleEl = document.getElementById('page-subtitle');
     if (isDetail) {
@@ -28,6 +33,13 @@ function setPageMeta(target, hash, isDetail) {
         if (titleEl) titleEl.textContent = symbol;
         if (subtitleEl) subtitleEl.textContent = 'Detalle del instrumento';
         document.title = `${symbol} · Kronos`;
+        return;
+    }
+    if (isNewsDetail) {
+        const { ticker } = parseNewsDetailRoute(hash);
+        if (titleEl) titleEl.textContent = ticker;
+        if (subtitleEl) subtitleEl.textContent = 'Noticia';
+        document.title = `${ticker} — noticia · Kronos`;
         return;
     }
     const meta = VIEW_META[target] || VIEW_META[VIEWS[0]];
@@ -50,14 +62,18 @@ let savedScroll = null; // { hash, y }
 // clampeado window.scrollY a la nueva altura (más corta) del contenido
 // recién insertado, perdiendo el valor real (bug real encontrado armando
 // este fix: siempre daba 0 al volver).
-function captureScrollBeforeMutation(hash, isDetail) {
-    if (isDetail && currentHash !== null && !currentHash.startsWith(DETAIL_PREFIX)) {
+function isDetailLikeHash(hash) {
+    return hash.startsWith(DETAIL_PREFIX) || hash.startsWith(NEWS_DETAIL_PREFIX);
+}
+
+function captureScrollBeforeMutation(hash, isDetailLike) {
+    if (isDetailLike && currentHash !== null && !isDetailLikeHash(currentHash)) {
         savedScroll = { hash: currentHash, y: window.scrollY };
     }
 }
 
-function applyScrollAfterMutation(hash, isDetail) {
-    if (!isDetail && savedScroll && savedScroll.hash === hash) {
+function applyScrollAfterMutation(hash, isDetailLike) {
+    if (!isDetailLike && savedScroll && savedScroll.hash === hash) {
         window.scrollTo(0, savedScroll.y);
         savedScroll = null;
     } else {
@@ -111,6 +127,7 @@ const LEGACY_SUBTAB_REDIRECTS = {
 
 function activateView(hash) {
     const isDetail = hash.startsWith(DETAIL_PREFIX);
+    const isNewsDetail = hash.startsWith(NEWS_DETAIL_PREFIX);
     let viewName;
     let topSubtab;
     if (isDetail) {
@@ -119,6 +136,11 @@ function activateView(hash) {
         // es quien de verdad lo interpreta); nunca lo partimos por "/" aca.
         viewName = 'detalle';
         topSubtab = null;
+    } else if (isNewsDetail) {
+        // noticia/TICKER/IDX -- mismo criterio, parseNewsDetailRoute de
+        // news.js es quien interpreta el resto.
+        viewName = 'noticia';
+        topSubtab = null;
     } else {
         [viewName, topSubtab] = hash.split('?')[0].split('/');
     }
@@ -126,22 +148,25 @@ function activateView(hash) {
     if (LEGACY_HASH_REDIRECTS[viewName]) {
         [viewName, topSubtab, nestedSubtab] = LEGACY_HASH_REDIRECTS[viewName];
     }
-    const target = isDetail ? 'detalle' : (VIEWS.includes(viewName) ? viewName : VIEWS[0]);
-    if (!isDetail && LEGACY_SUBTAB_REDIRECTS[`${target}/${topSubtab}`]) {
+    const target = isDetail ? 'detalle' : (isNewsDetail ? 'noticia' : (VIEWS.includes(viewName) ? viewName : VIEWS[0]));
+    if (!isDetail && !isNewsDetail && LEGACY_SUBTAB_REDIRECTS[`${target}/${topSubtab}`]) {
         topSubtab = LEGACY_SUBTAB_REDIRECTS[`${target}/${topSubtab}`];
     }
-    captureScrollBeforeMutation(hash, isDetail);
+    const isDetailLike = isDetail || isNewsDetail;
+    captureScrollBeforeMutation(hash, isDetailLike);
     document.querySelectorAll('.view').forEach((el) => {
         el.classList.toggle('active', el.id === `view-${target}`);
     });
     if (isDetail) {
         renderInstrumentDetail(hash);
+    } else if (isNewsDetail) {
+        renderNewsDetailView(hash);
     } else {
         if (topSubtab) activateSubtab(target, topSubtab);
         if (nestedSubtab) activateSubtab(topSubtab, nestedSubtab);
     }
-    setPageMeta(target, hash, isDetail);
-    applyScrollAfterMutation(hash, isDetail);
+    setPageMeta(target, hash, isDetail, isNewsDetail);
+    applyScrollAfterMutation(hash, isDetailLike);
     currentHash = hash;
     recordNavigation();
 }

@@ -819,6 +819,15 @@
 <section class="view" id="view-detalle">
     <div id="instrument-detail-root"></div>
 </section>
+<!-- Detalle de UNA noticia, pantalla completa (ver conversación: "no quiero
+     un popup... debe ser una pantalla de la noticia") -- mismo patrón de
+     ruta especial que #detalle/SIMBOLO (ver tabs.js), pero para
+     #noticia/TICKER/IDX. El popup (news.js::openNewsDetailModal) se
+     mantiene SOLO para mantener apretado (long-press), como resumen rápido
+     sin salir de la lista. -->
+<section class="view" id="view-noticia">
+    <div id="news-detail-root"></div>
+</section>
 {% endblock %}
 
 {% block extra_scripts %}
