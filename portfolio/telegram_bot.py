@@ -1185,8 +1185,10 @@ PROPOSALS_SYNC_INTERVAL_SECONDS = 15 * 60
 
 def _format_new_proposal(p):
     origen_label = {
-        "sl_tp": "Stop-loss/Take-profit", "evento": "Evento",
-        "rebalanceo": "Rebalanceo", "senal": "Señal validada",
+        "sl_tp": "Stop-loss/Take-profit", "evento": "Evento", "rebalanceo": "Rebalanceo",
+        # senal_kronos/senal_tecnica (ver auditoria 19/10/2026, hallazgo 1.3)
+        # -- "senal" queda de fallback para propuestas viejas, ya no se genera.
+        "senal_kronos": "Señal Kronos", "senal_tecnica": "Señal técnica (RSI)", "senal": "Señal validada",
     }.get(p["origen"], p["origen"])
     activo = p["symbol"] if p["origen"] == "rebalanceo" else f"*{p['symbol']}*"
     return f"💡 *Nueva propuesta* ({origen_label})\n{activo}: {p['texto']}"

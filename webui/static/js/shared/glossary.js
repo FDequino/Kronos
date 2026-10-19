@@ -29,6 +29,12 @@ const TERMS = {
     origen_sl_tp: 'Se disparó porque el precio tocó un nivel de Stop-loss/Take-profit que vos mismo cargaste en el gráfico del instrumento.',
     origen_evento: 'Un vencimiento (bono, caución, plazo fijo) está por llegar — es un hecho que ya pasó o va a pasar, no una predicción.',
     origen_rebalanceo: 'La composición actual de la cartera se alejó del objetivo que configuraste en Preferencias más allá del umbral permitido.',
+    // senal_kronos/senal_tecnica (ver auditoria 19/10/2026, hallazgo 1.3):
+    // son 2 fuentes independientes que pueden validarse para el mismo
+    // activo apuntando a direcciones opuestas -- origen_senal queda de
+    // fallback para propuestas viejas, ya no se genera.
+    origen_senal_kronos: 'El pronóstico de Kronos para este activo ya tiene suficiente historial propio acertando como para confiar en la dirección que sugiere — nunca se muestra sin validar acá.',
+    origen_senal_tecnica: 'El RSI (independiente de Kronos) ya tiene suficiente historial propio de edge en este patrón como para confiar en la dirección que sugiere — nunca se muestra sin validar acá.',
     origen_senal: 'Kronos o el técnico (RSI) ya tienen suficiente historial propio acertando en este activo como para confiar en la señal — nunca se muestra sin validar acá.',
     peso_posicion: 'Qué % del valor total de la cartera (incluye cauciones) representa esta posición.',
     rango_p10_p90: 'Rango donde Kronos ubica el 80% de sus simulaciones. Cuanto más ancho, menos preciso es el pronóstico.',

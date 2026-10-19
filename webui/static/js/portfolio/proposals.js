@@ -12,10 +12,21 @@ import { glossaryTerm } from '../shared/glossary.js';
 import { infoTooltipHtml } from '../shared/info-tooltip.js';
 import { getEventRiskNotes } from './core-satellite.js';
 
-const ORIGEN_LABEL = { sl_tp: 'Stop-loss/Take-profit', evento: 'Evento', rebalanceo: 'Rebalanceo', senal: 'Señal validada' };
+// senal_kronos/senal_tecnica (antes un único 'senal' -- ver auditoria
+// 19/10/2026, hallazgo 1.3: compartir origen hacía que sync_proposals las
+// tratara como la MISMA propuesta y se pisaran entre sí) -- 'senal' queda
+// como fallback para filas ya expiradas de antes de este cambio, nunca se
+// va a generar de nuevo.
+const ORIGEN_LABEL = {
+    sl_tp: 'Stop-loss/Take-profit', evento: 'Evento', rebalanceo: 'Rebalanceo',
+    senal_kronos: 'Señal Kronos', senal_tecnica: 'Señal técnica (RSI)', senal: 'Señal validada',
+};
 // Cada origen tiene su propia entrada en el glosario -- "Origen" por sí solo
 // no decía nada ("no sé qué mierda es origen", feedback real del usuario).
-const ORIGEN_GLOSSARY_KEY = { sl_tp: 'origen_sl_tp', evento: 'origen_evento', rebalanceo: 'origen_rebalanceo', senal: 'origen_senal' };
+const ORIGEN_GLOSSARY_KEY = {
+    sl_tp: 'origen_sl_tp', evento: 'origen_evento', rebalanceo: 'origen_rebalanceo',
+    senal_kronos: 'origen_senal_kronos', senal_tecnica: 'origen_senal_tecnica', senal: 'origen_senal',
+};
 const ESTADO_LABEL = { nueva: 'Nueva', vista: 'Vista', aceptada: 'Aceptada', descartada: 'Descartada', expirada: 'Expirada' };
 const ESTADO_TAG = { nueva: 'tag-negative', vista: 'tag-neutral', aceptada: 'tag-positive', descartada: 'tag-neutral', expirada: 'tag-neutral' };
 

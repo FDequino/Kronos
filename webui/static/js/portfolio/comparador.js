@@ -49,13 +49,23 @@ function riesgoVerdict(risk) {
 // "comprá" o "vendé", por más que el número no sea exactamente 0.
 // tag-signal-buy/sell (acento), nunca tag-positive/tag-negative -- es un
 // indicador tecnico, no P&L real (ver DESIGN_SYSTEM.md).
+//
+// FIX (ver auditoria 19/10/2026, hallazgo 1.2): esto responde "¿el patrón RSI
+// comprar/vender tuvo edge histórico en este activo?" -- una pregunta
+// DISTINTA a "¿qué dice el RSI de HOY?" (esa la contesta
+// indicators.py::latest_technical_signal, el badge "Técnico: X" del detalle
+// de instrumento). Antes ambas se etiquetaban "Comprar"/"Vender" a secas, así
+// que un mismo activo podía mostrar "Técnico: Comprar" en el detalle (RSI de
+// hoy) y "Vender"/"Sin edge" acá (mejor régimen histórico) y leerse como una
+// contradicción real. Las etiquetas ahora dejan explícito que esto es
+// evidencia histórica, no una lectura del RSI de hoy.
 function tecnicoVerdict(backtest) {
     if (backtest?.pending || !backtest?.by_signal) return null;
     const comprar = backtest.by_signal.comprar?.edge_vs_base_rate_pct;
     const vender = backtest.by_signal.vender?.edge_vs_base_rate_pct;
-    if (comprar !== null && comprar !== undefined && comprar >= EDGE_SIGNIFICANT_PTS) return { label: 'Comprar', cls: 'tag-signal-buy' };
-    if (vender !== null && vender !== undefined && vender >= EDGE_SIGNIFICANT_PTS) return { label: 'Vender', cls: 'tag-signal-sell' };
-    return { label: 'Sin edge', cls: 'tag-neutral' };
+    if (comprar !== null && comprar !== undefined && comprar >= EDGE_SIGNIFICANT_PTS) return { label: 'Edge histórico en Compra', cls: 'tag-signal-buy' };
+    if (vender !== null && vender !== undefined && vender >= EDGE_SIGNIFICANT_PTS) return { label: 'Edge histórico en Venta', cls: 'tag-signal-sell' };
+    return { label: 'Sin edge histórico', cls: 'tag-neutral' };
 }
 
 // Mismo criterio que ya usa la pestaña Fundamental del detalle de instrumento
@@ -222,7 +232,10 @@ const ROWS = [
     { label: 'Resumen', render: (c) => resumenCellHtml(c) },
     { label: 'Pronóstico Kronos', render: (c) => pronosticoCellHtml(c.forecast) },
     { label: 'Riesgo', render: (c) => riesgoCellHtml(c.risk) },
-    { label: `Técnico (${glossaryTerm('edge_tecnico', 'edge')} vs. ${glossaryTerm('tasa_base', 'tasa base')})`, render: (c) => tecnicoCellHtml(c.backtest) },
+    // "histórico", no "Técnico" a secas (ver auditoria 19/10/2026, hallazgo
+    // 1.2) -- esto es el edge pasado del patrón RSI, no el RSI de hoy (ese
+    // vive en el badge "Técnico: X" del detalle de instrumento).
+    { label: `Técnico histórico (${glossaryTerm('edge_tecnico', 'edge')} vs. ${glossaryTerm('tasa_base', 'tasa base')})`, render: (c) => tecnicoCellHtml(c.backtest) },
     { label: 'Fundamental', render: (c) => fundamentalCellHtml(c.fundamentals, signalConfig) },
     { label: 'Confiabilidad histórica', render: (c) => confiabilidadCellHtml(c.accuracy) },
 ];

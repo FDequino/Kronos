@@ -6,12 +6,16 @@ transactions.js del lado frontend). Orden de confianza (de mas a menos cierto):
 1. Reglas del usuario (stop-loss/take-profit ya tocado por el precio).
 2. Eventos deterministicos (vencimiento de bono/LECAP, caucion vencida sin renovar).
 3. Rebalanceo (desvio de target_allocation mas alla de un umbral configurable).
-4. Señales estadisticas YA VALIDADAS (Kronos validado, o tecnico con edge) --
-   nunca una señal sin validar, por mas "razonable" que parezca (mismo
-   criterio que ya aplica Señales/Posiciones desde Fase 2/5). Hoy ningun
-   instrumento tiene suficiente evidencia como para estar validado, asi que
-   esta fuente deberia devolver vacio en la cartera real -- si alguna vez deja
-   de ser asi, esta funcion lo va a reflejar solo, no hace falta tocar nada.
+4. Señales estadisticas YA VALIDADAS (Kronos validado -- origen 'senal_kronos',
+   o tecnico con edge -- origen 'senal_tecnica') -- nunca una señal sin
+   validar, por mas "razonable" que parezca (mismo criterio que ya aplica
+   Señales/Posiciones desde Fase 2/5). Son 2 origenes DISTINTOS a proposito
+   (ver auditoria 19/10/2026, hallazgo 1.3): sync_proposals dedupea por
+   (symbol, origen), y Kronos/RSI pueden validarse para el mismo instrumento
+   el mismo dia apuntando a direcciones opuestas -- con un origen compartido,
+   la segunda señal pisaba el texto de la primera sin actualizar su
+   tipo_sugerido, dejando una propuesta con la etiqueta de una señal y el
+   texto de la otra, ademas de duplicar la fila.
 
 Las lineas de tendencia (ver trendlines.py) NO entran a este motor: una
 ruptura de soporte/resistencia es un evento informativo, no una propuesta,
@@ -169,8 +173,19 @@ def _validated_signal_candidates(conn, holdings_native, config):
                 result = json.loads(forecast_row['result_json'])
                 signal = result.get('signal')
                 if signal and signal != 'mantener':
+                    # 'senal_kronos', NUNCA 'senal' a secas (ver auditoria
+                    # 19/10/2026, hallazgo 1.3): sync_proposals dedupea por
+                    # (symbol, origen) -- con el mismo origen que el candidato
+                    # tecnico de mas abajo, un instrumento con AMBAS señales
+                    # vigentes el mismo dia (ej. Kronos compra + RSI vende)
+                    # producia 2 filas con la misma key, y en corridas
+                    # siguientes una pisaba el texto/evidencia de la otra sin
+                    # tocar su tipo_sugerido -- la propuesta quedaba con la
+                    # etiqueta de una señal y el texto de la otra (bug real
+                    # reproducido con IBM: etiqueta VENDER, texto "sugiere
+                    # comprar"), ademas de la fila duplicada en si.
                     candidates.append({
-                        'origen': 'senal',
+                        'origen': 'senal_kronos',
                         'symbol': instrument['symbol'],
                         'tipo_sugerido': signal,
                         'texto': f"Kronos validado sugiere {signal} en {instrument['symbol']}.",
@@ -189,7 +204,9 @@ def _validated_signal_candidates(conn, holdings_native, config):
         if edge is None or edge < EDGE_SIGNIFICANT_PTS:
             continue
         candidates.append({
-            'origen': 'senal',
+            # 'senal_tecnica', distinto del candidato Kronos de arriba --
+            # ver comentario en ese bloque (hallazgo 1.3 de la auditoria).
+            'origen': 'senal_tecnica',
             'symbol': instrument['symbol'],
             'tipo_sugerido': 'compra' if tecnico == 'comprar' else 'venta',
             'texto': f"RSI técnico sugiere {tecnico} en {instrument['symbol']}: edge {fmt_es(edge, signed=True)}pts sobre {n} casos.",
