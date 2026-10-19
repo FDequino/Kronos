@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ 'Configurar acceso' if mode == 'setup' else 'Iniciar sesión' }} · Kronos</title>
+    <script>
+        (function () {
+            var saved = localStorage.getItem('kronos-theme');
+            if (saved) document.documentElement.dataset.theme = saved;
+        })();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tokens.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/theme-light.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/base.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/panel.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/forms.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/buttons.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/components/status.css') }}">
+    <style>
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+        .auth-card { width: 100%; max-width: 360px; margin: 16px; }
+        .auth-brand { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; justify-content: center; }
+        .auth-brand-mark {
+            width: 32px; height: 32px; border-radius: var(--radius-sm);
+            background: var(--accent); color: var(--bg-sidebar);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-family: var(--font-mono);
+        }
+        .auth-brand-name { font-weight: 600; letter-spacing: 0.02em; }
+        .auth-field { margin-bottom: 14px; }
+    </style>
+</head>
+<body>
+    <div class="auth-card">
+        <div class="auth-brand">
+            <div class="auth-brand-mark">K</div>
+            <div class="auth-brand-name">KRONOS</div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <h2>{{ 'Configurar acceso' if mode == 'setup' else 'Iniciar sesión' }}</h2>
+            </div>
+            <div class="panel-body">
+                {% if mode == 'setup' %}
+                <p class="hint" style="margin-bottom: 16px;">Primera vez acá — definí la contraseña que va a proteger toda la instalación. Un solo usuario, sin cuentas separadas.</p>
+                {% endif %}
+                <form method="post">
+                    {% if mode == 'setup' %}
+                    <div class="field auth-field">
+                        <label for="auth-password">Contraseña nueva</label>
+                        <input type="password" id="auth-password" name="password" autocomplete="new-password" required minlength="8" autofocus>
+                    </div>
+                    <div class="field auth-field">
+                        <label for="auth-password-confirm">Repetir contraseña</label>
+                        <input type="password" id="auth-password-confirm" name="password_confirm" autocomplete="new-password" required minlength="8">
+                    </div>
+                    {% else %}
+                    <div class="field auth-field">
+                        <label for="auth-password">Contraseña</label>
+                        <input type="password" id="auth-password" name="password" autocomplete="current-password" required autofocus>
+                    </div>
+                    {% endif %}
+                    {% if error %}
+                    <p class="modal-error">{{ error }}</p>
+                    {% endif %}
+                    <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center;">
+                        {{ 'Guardar y entrar' if mode == 'setup' else 'Entrar' }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

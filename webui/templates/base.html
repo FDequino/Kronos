@@ -137,10 +137,14 @@
                                     <span class="switch-track"><span class="switch-thumb"></span></span>
                                 </label>
                             </div>
+                            <form action="{{ url_for('logout') }}" method="post" class="user-menu-row">
+                                <span>Sesi&oacute;n iniciada</span>
+                                <button type="submit" class="btn btn-secondary" style="padding: 4px 10px;">Cerrar sesi&oacute;n</button>
+                            </form>
                         </div>
                     </div>
                 </div>
-                <div class="sidebar-foot-meta">Local &middot; sin autenticaci&oacute;n</div>
+                <div class="sidebar-foot-meta">Kronos</div>
             </div>
         </aside>
         <div class="main">

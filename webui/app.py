@@ -4,7 +4,7 @@ load_dotenv()
 import pandas as pd
 import numpy as np
 import json
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 from flask_cors import CORS
 import sys
 import warnings
@@ -21,7 +21,7 @@ except ImportError:
     LIVE_FETCH_AVAILABLE = False
 
 from portfolio.routes import bp as portfolio_bp
-from portfolio import config as capital_config
+from portfolio import auth, config as capital_config
 from portfolio import db as portfolio_db
 from portfolio import live_signals, quote_worker, telegram_bot
 from portfolio.backtest import UNIVERSE as DUAL_ENGINE_UNIVERSE
@@ -37,6 +37,93 @@ if not MODEL_AVAILABLE:
 app = Flask(__name__)
 CORS(app)
 app.register_blueprint(portfolio_bp)
+
+# secret_key para firmar la cookie de sesion del login (ver conversacion,
+# portfolio/auth.py) -- leida de SQLite (generada una vez por instalacion en
+# portfolio/db.py::_migrate), nunca hardcodeada aca ni en una env var que
+# alguien pueda llevarse clonando el repo.
+_auth_conn = portfolio_db.get_connection()
+try:
+    app.secret_key = portfolio_db.get_app_settings(_auth_conn)["app_secret_key"]
+finally:
+    _auth_conn.close()
+
+# Rutas que tienen que funcionar SIN sesion -- login/setup (obvio, son las
+# que inician la sesion) y los assets estaticos (CSS/JS de la propia pagina
+# de login no cargarian si tambien quedaran detras del gate).
+_AUTH_EXEMPT_ENDPOINTS = {'login', 'setup_password', 'static'}
+
+
+@app.before_request
+def _require_login():
+    if request.endpoint in _AUTH_EXEMPT_ENDPOINTS or request.endpoint is None:
+        return None
+    conn = portfolio_db.get_connection()
+    try:
+        if not auth.is_configured(conn):
+            return redirect(url_for('setup_password'))
+    finally:
+        conn.close()
+    if not session.get('logged_in'):
+        return redirect(url_for('login', next=request.path))
+    return None
+
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup_password():
+    conn = portfolio_db.get_connection()
+    try:
+        if auth.is_configured(conn):
+            # Ya se configuro desde otra pestaña/sesion mientras esta seguia
+            # en /setup -- no tiene sentido dejar pisar la contraseña ya
+            # elegida sin pasar por /login primero.
+            return redirect(url_for('login'))
+        error = None
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            confirm = request.form.get('password_confirm', '')
+            if len(password) < 8:
+                error = 'La contraseña tiene que tener al menos 8 caracteres.'
+            elif password != confirm:
+                error = 'Las dos contraseñas no coinciden.'
+            else:
+                auth.set_password(conn, password)
+                session['logged_in'] = True
+                return redirect(url_for('portfolio_page'))
+        return render_template('auth.html', mode='setup', error=error)
+    finally:
+        conn.close()
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    conn = portfolio_db.get_connection()
+    try:
+        if not auth.is_configured(conn):
+            return redirect(url_for('setup_password'))
+        error = None
+        if request.method == 'POST':
+            password = request.form.get('password', '')
+            if auth.verify_password(conn, password):
+                session.permanent = True
+                session['logged_in'] = True
+                return redirect(request.args.get('next') or url_for('portfolio_page'))
+            error = 'Contraseña incorrecta.'
+        return render_template('auth.html', mode='login', error=error)
+    finally:
+        conn.close()
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+# 30 dias -- herramienta de un solo usuario, no hay valor real en forzar un
+# re-login frecuente (ver conversacion); "Cerrar sesión" en el menu de
+# usuario sigue disponible para cuando SI haga falta cortarla a mano.
+app.permanent_session_lifetime = datetime.timedelta(days=30)
 
 # Cliente unico reusado entre requests (mismo patron que
 # portfolio/forecasting.py::_predictor_client) -- no abre conexion hasta el

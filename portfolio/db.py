@@ -216,11 +216,33 @@ def _migrate(conn):
         # automatico de ese dia.
         "pdf_report_last_sent_morning": "TEXT",
         "pdf_report_last_sent_afternoon": "TEXT",
+        # Login (ver conversacion) -- NULL = todavia no se configuro ninguna
+        # contraseña, la app muestra /setup en vez de /login hasta que se
+        # defina una. Nunca se guarda en texto plano (werkzeug.security.
+        # generate_password_hash, ver portfolio/auth.py).
+        "app_login_password_hash": "TEXT",
+        # Clave para firmar las cookies de sesion de Flask -- generada una
+        # sola vez por instalacion (ver mas abajo), nunca hardcodeada en el
+        # codigo fuente (séria un secreto compartido por todos los que
+        # clonen el repo).
+        "app_secret_key": "TEXT",
     }
     for col, ddl in new_settings_cols.items():
         if col not in settings_cols:
             conn.execute(f"ALTER TABLE app_settings ADD COLUMN {col} {ddl}")
     conn.commit()
+
+    # Secret key de sesion: se genera UNA vez por instalacion si todavia no
+    # existe (nunca se pisa una ya generada, eso invalidaria toda sesion
+    # activa). Importado aca adentro (no al tope del modulo) para no sumarle
+    # una dependencia de import a db.py que nada mas usa esta unica linea.
+    row = conn.execute("SELECT app_secret_key FROM app_settings WHERE id = 1").fetchone()
+    if row is not None and not row["app_secret_key"]:
+        import secrets
+        conn.execute(
+            "UPDATE app_settings SET app_secret_key = ? WHERE id = 1", (secrets.token_hex(32),)
+        )
+        conn.commit()
 
     # Gastos del boleto de liquidacion (Fut) -- NUNCA incluia el costo real de
     # la caucion (gastos + 21% IVA sobre esos gastos, mismo patron ya visto en
