@@ -47,6 +47,16 @@ def test_vader_sentiment_score_promedia_varios_titulares():
     assert abs(mixto) < abs(positivo)
 
 
+def test_vader_sentiment_score_acepta_titulares_como_dict_title_url():
+    # Forma real desde _fetch_finnhub_headlines (ver conversacion: "debo
+    # poder entrar a las mismas") -- el score usa solo "title", nunca "url".
+    como_string = nlp_agent.vader_sentiment_score(["Company reports record profits and strong growth"])
+    como_dict = nlp_agent.vader_sentiment_score([
+        {"title": "Company reports record profits and strong growth", "url": "https://example.com"},
+    ])
+    assert como_dict == como_string
+
+
 # --- classify_risk_level -------------------------------------------------------
 
 def test_classify_risk_level_earnings_dentro_de_48hs_es_alto():
@@ -121,7 +131,8 @@ def test_fetch_news_headlines_usa_finnhub_si_hay_key(temp_db, monkeypatch):
         captured["url"] = url
         captured["params"] = params
         return _fake_response([
-            {"headline": "GGAL sube tras balance trimestral", "datetime": 1, "summary": "...", "source": "x"},
+            {"headline": "GGAL sube tras balance trimestral", "datetime": 1, "summary": "...", "source": "x",
+             "url": "https://finnhub.io/api/news?id=abc"},
             {"headline": "Analistas elevan precio objetivo de GGAL", "datetime": 2},
         ])
 
@@ -132,7 +143,13 @@ def test_fetch_news_headlines_usa_finnhub_si_hay_key(temp_db, monkeypatch):
 
     headlines = nlp_agent._fetch_news_headlines(temp_db, "GGAL")
 
-    assert headlines == ["GGAL sube tras balance trimestral", "Analistas elevan precio objetivo de GGAL"]
+    # {"title", "url"} normalizado (ver conversacion: "debo poder entrar a
+    # las mismas") -- url ausente en la fuente se normaliza a None, nunca se
+    # inventa un link.
+    assert headlines == [
+        {"title": "GGAL sube tras balance trimestral", "url": "https://finnhub.io/api/news?id=abc"},
+        {"title": "Analistas elevan precio objetivo de GGAL", "url": None},
+    ]
     assert captured["url"] == f"{nlp_agent.FINNHUB_BASE}/company-news"
     assert captured["params"]["symbol"] == "GGAL"
     assert captured["params"]["token"] == "fake-finnhub-key"
@@ -153,6 +170,25 @@ def test_fetch_news_headlines_sin_key_cae_a_yfinance(temp_db, monkeypatch):
 
     assert headlines == ["titular de yfinance"]
     assert called["yfinance"] is True
+
+
+def test_fetch_yfinance_headlines_normaliza_ambas_formas_a_title_url(monkeypatch):
+    # Dos formas vistas en distintas versiones de yfinance -- ver docstring
+    # de _fetch_yfinance_headlines. Ambas se normalizan a {"title", "url"}.
+    fake_news = [
+        {"title": "Forma plana", "link": "https://example.com/plana"},
+        {"content": {"title": "Forma anidada", "canonicalUrl": {"url": "https://example.com/anidada"}}},
+        {"content": {"title": "Sin url"}},
+    ]
+    monkeypatch.setitem(sys.modules, "yfinance", SimpleNamespace(Ticker=lambda symbol: SimpleNamespace(news=fake_news)))
+
+    headlines = nlp_agent._fetch_yfinance_headlines("AAPL")
+
+    assert headlines == [
+        {"title": "Forma plana", "url": "https://example.com/plana"},
+        {"title": "Forma anidada", "url": "https://example.com/anidada"},
+        {"title": "Sin url", "url": None},
+    ]
 
 
 def test_fetch_finnhub_headlines_error_de_api_degrada_a_lista_vacia(temp_db, monkeypatch):

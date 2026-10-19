@@ -717,13 +717,25 @@ function fundamentalsHtml(data, config) {
 // (portfolio/nlp_agent.py::assess_event_risk), nunca una fuente separada.
 const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 'tag-negative' };
 
+// Cada titular es {"title", "url"} desde el backend (ver conversación:
+// "debo poder entrar a las mismas") -- se linkea a la fuente real cuando
+// hay url, texto plano si no (headlines viejos ya persistidos como string
+// antes de este cambio, o un titular sin url por lo que sea).
+function headlineItemHtml(h) {
+    const title = typeof h === 'object' && h !== null ? h.title : h;
+    const url = typeof h === 'object' && h !== null ? h.url : null;
+    return url
+        ? `<li><a href="${url}" target="_blank" rel="noopener noreferrer">${title}</a></li>`
+        : `<li>${title}</li>`;
+}
+
 function newsHtml(data) {
     const riskTag = `<span class="tag ${NEWS_RISK_TAG_CLASS[data.risk_level] || 'tag-neutral'}">${data.risk_level}</span>`;
     const eventLine = data.event_date
         ? `<p class="hint">Próximo balance: ${fmtDate(data.event_date)} (en ${fmt(data.hours_until_event, 0)}hs)</p>`
         : '';
     const headlinesHtml = data.headlines.length
-        ? `<ul class="detail-news-list">${data.headlines.map((h) => `<li>${h}</li>`).join('')}</ul>`
+        ? `<ul class="detail-news-list">${data.headlines.map(headlineItemHtml).join('')}</ul>`
         : '<p class="table-empty">Sin titulares disponibles hoy.</p>';
     return `
         <div class="mini-stat-grid row">

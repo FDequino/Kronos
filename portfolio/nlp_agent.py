@@ -72,9 +72,12 @@ def _fetch_finnhub_headlines(symbol, api_key):
     """Titulares via Finnhub /company-news -- SIEMPRE envuelto en
     try/except, [] en cualquier falla (red caida, simbolo no cubierto,
     respuesta inesperada). Ultimos 7 dias, mismo criterio de "noticias
-    recientes" que ya tenia el intento de yfinance. "headline" es el campo
-    de titulo en el esquema publico de Finnhub -- nunca se asume otro
-    nombre de campo sin chequear."""
+    recientes" que ya tenia el intento de yfinance. "headline"/"url" son
+    los campos confirmados en el esquema publico de Finnhub (probado
+    contra la API real, ver conversacion) -- nunca se asume otro nombre de
+    campo sin chequear. Devuelve {"title", "url"} normalizado -- ver
+    _fetch_news_headlines, el resto del módulo nunca sabe de qué fuente
+    salió un titular."""
     today = datetime.now(timezone.utc).date()
     week_ago = today - timedelta(days=7)
     try:
@@ -89,13 +92,17 @@ def _fetch_finnhub_headlines(symbol, api_key):
         return []
     if not isinstance(news, list):
         return []  # Finnhub devuelve {"error": "..."} (no una lista) si la key es invalida -- nunca se inventa un titular de ahi
-    return [str(item["headline"]) for item in news if isinstance(item, dict) and item.get("headline")]
+    return [
+        {"title": str(item["headline"]), "url": item.get("url")}
+        for item in news if isinstance(item, dict) and item.get("headline")
+    ]
 
 
 def _fetch_yfinance_headlines(symbol):
     """Titulares recientes via yfinance -- SIEMPRE envuelto en try/except,
     [] en cualquier falla (incluida la ya verificada: .news vacio en esta
-    version/cuenta, ver docstring del modulo). Nunca se inventa un titular."""
+    version/cuenta, ver docstring del modulo). Nunca se inventa un titular.
+    Mismo {"title", "url"} normalizado que _fetch_finnhub_headlines."""
     try:
         import yfinance as yf
         news = yf.Ticker(symbol).news or []
@@ -103,13 +110,17 @@ def _fetch_yfinance_headlines(symbol):
         return []
     headlines = []
     for item in news:
+        if not isinstance(item, dict):
+            continue
         # Dos formas vistas en distintas versiones de yfinance: plano
-        # {"title": ...} o anidado {"content": {"title": ...}} -- se prueban
-        # ambas, nunca se asume una sola forma sin chequear.
-        content = item.get("content", item) if isinstance(item, dict) else {}
-        title = content.get("title") or item.get("title") if isinstance(item, dict) else None
+        # {"title": ..., "link": ...} o anidado {"content": {"title": ...,
+        # "canonicalUrl": {"url": ...}}} -- se prueban ambas, nunca se
+        # asume una sola forma sin chequear.
+        content = item.get("content", item)
+        title = content.get("title") or item.get("title")
+        url = (content.get("canonicalUrl") or {}).get("url") or item.get("link")
         if title:
-            headlines.append(str(title))
+            headlines.append({"title": str(title), "url": url})
     return headlines
 
 
@@ -159,6 +170,15 @@ def _hours_until(event_date):
     return delta.total_seconds() / 3600.0
 
 
+def _headline_title(headline):
+    """Los titulares circulan como {"title", "url"} desde
+    _fetch_finnhub_headlines/_fetch_yfinance_headlines (ver conversación:
+    "debo poder entrar a las mismas") -- acá se extrae el texto para
+    scoring/prompting, nunca la url. Tolera también el string plano viejo
+    (datos ya persistidos en news_sentiment_log antes de este cambio)."""
+    return headline.get("title", "") if isinstance(headline, dict) else str(headline)
+
+
 def vader_sentiment_score(headlines):
     """Promedio del compound score de VADER sobre los titulares -- 0.0
     (neutral) si no hay titulares, NUNCA un valor inventado sin evidencia.
@@ -169,7 +189,7 @@ def vader_sentiment_score(headlines):
         return 0.0
     from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
     analyzer = SentimentIntensityAnalyzer()
-    scores = [analyzer.polarity_scores(h)["compound"] for h in headlines]
+    scores = [analyzer.polarity_scores(_headline_title(h))["compound"] for h in headlines]
     return sum(scores) / len(scores)
 
 
@@ -191,7 +211,7 @@ def _llm_sentiment_score(headlines, conn):
         "Analiza el sentimiento de mercado de estos titulares financieros. "
         "Responde UNICAMENTE con un numero decimal entre -1.0 (muy negativo) "
         "y 1.0 (muy positivo), sin texto adicional.\n\n"
-        + "\n".join(f"- {h}" for h in headlines[:10])
+        + "\n".join(f"- {_headline_title(h)}" for h in headlines[:10])
     )
     try:
         if anthropic_key:
