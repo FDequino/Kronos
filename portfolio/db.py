@@ -836,6 +836,46 @@ def delete_broker_account(conn, account_id):
     conn.commit()
 
 
+# --- Ledger de ejecucion real (ver portfolio/order_execution.py) --------------
+
+def add_auto_trading_order(conn, *, instrument_id, broker_account_id, symbol, operacion, cantidad, precio,
+                            monto_ars, estado, external_id, ppi_order_id=None, error_detalle=None):
+    cur = conn.execute(
+        """INSERT INTO auto_trading_orders
+               (instrument_id, broker_account_id, symbol, operacion, cantidad, precio, monto_ars,
+                estado, external_id, ppi_order_id, error_detalle)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (instrument_id, broker_account_id, symbol, operacion, cantidad, precio, monto_ars,
+         estado, external_id, ppi_order_id, error_detalle),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_auto_trading_orders(conn):
+    rows = conn.execute("SELECT * FROM auto_trading_orders ORDER BY created_at DESC").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def get_auto_trading_order(conn, order_id):
+    row = conn.execute("SELECT * FROM auto_trading_orders WHERE id = ?", (order_id,)).fetchone()
+    return _row_to_dict(row)
+
+
+def sum_confirmed_auto_trading_exposure_ars(conn):
+    """Suma simple de monto_ars de todas las ordenes 'confirmada' -- ver
+    docstring de la tabla en schema.sql: es un tope de "cuanto se gastó en
+    total", no un neteo de posiciones abiertas vs. cerradas (una venta NO
+    libera espacio bajo el tope). Deliberadamente conservador: más fácil de
+    auditar a mano que un cálculo de exposición neta, y el día que haga
+    falta más precisión se puede refinar sin romper el contrato de
+    place_real_order (que solo necesita "un número en ARS para comparar")."""
+    row = conn.execute(
+        "SELECT COALESCE(SUM(monto_ars), 0) AS total FROM auto_trading_orders WHERE estado = 'confirmada'"
+    ).fetchone()
+    return row["total"]
+
+
 def add_planned_movement(conn, *, fecha, tipo, monto, moneda, notas=None):
     cur = conn.execute(
         "INSERT INTO planned_movements (fecha, tipo, monto, moneda, notas) VALUES (?, ?, ?, ?, ?)",

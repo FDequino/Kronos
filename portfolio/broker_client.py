@@ -149,6 +149,21 @@ class BrokerAdapter:
         Devuelve {"price": float, "bid": float|None, "ask": float|None}."""
         raise NotImplementedError
 
+    # --- Ejecución real de órdenes (ver portfolio/order_execution.py) --------
+    # Default NotImplementedError para todo bróker que no la tenga escrita
+    # todavía (hoy: solo PPIAdapter la implementa) -- order_execution.py
+    # nunca chequea "qué bróker es esto" a mano, solo llama estos métodos y
+    # deja que la excepción explique por qué no se pudo.
+
+    def get_order_budget(self, **kwargs):
+        raise NotImplementedError(f"{self.broker_name}: ejecución real de órdenes no implementada todavía.")
+
+    def confirm_order(self, **kwargs):
+        raise NotImplementedError(f"{self.broker_name}: ejecución real de órdenes no implementada todavía.")
+
+    def cancel_order(self, **kwargs):
+        raise NotImplementedError(f"{self.broker_name}: ejecución real de órdenes no implementada todavía.")
+
 
 class IOLAdapter(BrokerAdapter):
     """InvertirOnline -- ver HONESTIDAD DECLARADA arriba del módulo:
@@ -352,6 +367,99 @@ class PPIAdapter(BrokerAdapter):
         if price is None:
             raise ValueError(f"MarketData/Current de PPI sin 'price': {list(data.keys())}")
         return {"price": price, "bid": None, "ask": None}
+
+    # --- Ejecución real de órdenes (ver conversación, "empezá a desarrollar
+    # la ejecución real") -- SOLO llamable a través de
+    # portfolio/order_execution.py::place_real_order, que chequea
+    # ensure_auto_trading_enabled + compute_auto_trading_limit_ars ANTES de
+    # llegar acá. Estos 3 métodos NUNCA deben llamarse directo desde una
+    # ruta HTTP ni desde ningún otro lugar -- son el detalle de PPI, no el
+    # gate (ver docstring del módulo).
+    #
+    # Valores de ejemplo confirmados contra la documentación oficial
+    # (WebFetch real, itatppi.github.io -- no adivinados):
+    # ppi.orders.budget(OrderBudget(account_number, 10000, 150, "GGAL",
+    # "ACCIONES", "Dinero", "PRECIO-LIMITE", "HASTA-SU-EJECUCIÓN", None,
+    # "Compra", "INMEDIATA")). Mapeando esa tupla posicional contra el orden
+    # REAL de campos del dataclass OrderBudget del SDK (accountNumber,
+    # quantity, price, ticker, instrumentType, quantityType, operationType,
+    # operationTerm, operationMaxDate, operation, settlement,
+    # activationPrice): quantityType="Dinero"|"Papeles" (orden por monto o
+    # por cantidad de papeles), operationType="PRECIO-LIMITE"|
+    # "PRECIO-DE-MERCADO" (el TIPO DE PRECIO, no compra/venta pese al
+    # nombre -- fácil de confundir), operation="Compra"|"Venta" (esto SÍ es
+    # la dirección), operationTerm="HASTA-SU-EJECUCIÓN", settlement=
+    # "INMEDIATA" (o "A-24HS"/"A-48HS"/"A-72HS", mismos valores que
+    # get_current_price). NUNCA probado contra una cuenta real -- mismo
+    # disclaimer que el resto del adapter.
+    _VALID_OPERATIONS = ("Compra", "Venta")
+
+    def get_order_budget(self, *, symbol, asset_type, operation, quantity, price,
+                          quantity_type="Papeles", operation_type="PRECIO-LIMITE",
+                          operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
+        """Presupuesto de una orden -- NO ejecuta nada todavía (equivalente a
+        ppi.orders.budget), solo estima costo/comisión y devuelve los
+        disclaimers que confirm_order va a necesitar aceptar."""
+        ppi_type = self._ASSET_TYPE_MAP.get(asset_type)
+        if ppi_type is None:
+            raise ValueError(f"PPI: sin mapeo de tipo de instrumento para '{asset_type}'")
+        if operation not in self._VALID_OPERATIONS:
+            raise ValueError(f"PPI: operation debe ser 'Compra' o 'Venta', recibido {operation!r}")
+        body = {
+            "accountNumber": self._account_number(),
+            "quantity": quantity, "price": price, "ticker": symbol,
+            "instrumentType": ppi_type, "quantityType": quantity_type,
+            "operationType": operation_type, "operationTerm": operation_term,
+            "operationMaxDate": None, "operation": operation, "settlement": settlement,
+            "activationPrice": None,
+        }
+        resp = requests.post(
+            f"{self.BASE_URL}/1.0/Order/Budget", json=body, headers=self._auth_headers(), timeout=self.TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def confirm_order(self, *, symbol, asset_type, operation, quantity, price, external_id, budget,
+                       quantity_type="Papeles", operation_type="PRECIO-LIMITE",
+                       operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
+        """CONFIRMA (ejecuta de verdad) la orden presupuestada por
+        get_order_budget -- los parámetros de la orden se vuelven a pasar
+        explícitos (nunca se leen de vuelta de `budget`: la forma exacta de
+        esa respuesta no está confirmada contra documentación real, los
+        disclaimers sí). disclaimers: mismo patrón que el ejemplo oficial
+        (Disclaimer(disclaimer['code'], True) -- confirmado que la clave se
+        llama 'code', no inventada)."""
+        ppi_type = self._ASSET_TYPE_MAP.get(asset_type)
+        if ppi_type is None:
+            raise ValueError(f"PPI: sin mapeo de tipo de instrumento para '{asset_type}'")
+        if operation not in self._VALID_OPERATIONS:
+            raise ValueError(f"PPI: operation debe ser 'Compra' o 'Venta', recibido {operation!r}")
+        disclaimers = [
+            {"code": d["code"], "accepted": True}
+            for d in (budget.get("disclaimers") or []) if isinstance(d, dict) and "code" in d
+        ]
+        body = {
+            "accountNumber": self._account_number(),
+            "quantity": quantity, "price": price, "ticker": symbol,
+            "instrumentType": ppi_type, "quantityType": quantity_type,
+            "operationType": operation_type, "operationTerm": operation_term,
+            "operationMaxDate": None, "operation": operation, "settlement": settlement,
+            "disclaimers": disclaimers, "externalId": external_id, "activationPrice": None,
+        }
+        resp = requests.post(
+            f"{self.BASE_URL}/1.0/Order/Confirm", json=body, headers=self._auth_headers(), timeout=self.TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def cancel_order(self, *, order_id, external_id=None):
+        """Cancela una orden activa (equivalente a ppi.orders.cancel_order)."""
+        body = {"accountNumber": self._account_number(), "orderID": order_id, "externalID": external_id}
+        resp = requests.post(
+            f"{self.BASE_URL}/1.0/Order/Cancel", json=body, headers=self._auth_headers(), timeout=self.TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 class _PendingIntegrationAdapter(BrokerAdapter):

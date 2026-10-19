@@ -719,3 +719,34 @@ CREATE TABLE IF NOT EXISTS broker_accounts (
     is_active INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- Ledger de ejecucion real (ver conversacion: "empezá a desarrollar la
+-- ejecución real" -- portfolio/order_execution.py::place_real_order es el
+-- UNICO escritor de esta tabla). Es, a la vez, el historial de lo que el
+-- bot realmente mando a un broker Y la fuente de datos que
+-- place_real_order usa para calcular "cuanto tiene abierto el bot ahora"
+-- contra el tope general de broker_client.py::compute_auto_trading_limit_ars
+-- -- sin esta tabla, ese tope no tenia contra que numero compararse.
+-- monto_ars: SIEMPRE positivo, independiente de compra/venta (operacion lo
+-- distingue) -- "cuanto moviste", no un signo de flujo de caja.
+CREATE TABLE IF NOT EXISTS auto_trading_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instrument_id INTEGER NOT NULL REFERENCES instruments(id),
+    broker_account_id INTEGER NOT NULL REFERENCES broker_accounts(id),
+    symbol TEXT NOT NULL,
+    operacion TEXT NOT NULL CHECK (operacion IN ('compra', 'venta')),
+    cantidad REAL NOT NULL CHECK (cantidad > 0),
+    precio REAL NOT NULL CHECK (precio >= 0),
+    monto_ars REAL NOT NULL CHECK (monto_ars >= 0),
+    -- 'confirmada' es la UNICA que cuenta como exposicion real para el tope
+    -- -- 'rechazada'/'error' existen para dejar un registro de un intento
+    -- que no llego a confirmarse (nunca se borra un intento fallido, para
+    -- poder auditar despues por que no se ejecuto).
+    estado TEXT NOT NULL CHECK (estado IN ('confirmada', 'rechazada', 'error')),
+    external_id TEXT NOT NULL,
+    ppi_order_id TEXT,
+    error_detalle TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_auto_trading_orders_broker_account ON auto_trading_orders(broker_account_id);
