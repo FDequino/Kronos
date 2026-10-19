@@ -16,7 +16,6 @@ def check_dependencies():
         import flask_cors
         import pandas
         import numpy
-        import plotly
         print("✅ All dependencies installed")
         return True
     except ImportError as e:

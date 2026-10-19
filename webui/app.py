@@ -4,8 +4,6 @@ load_dotenv()
 import pandas as pd
 import numpy as np
 import json
-import plotly.graph_objects as go
-import plotly.utils
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import sys
@@ -200,43 +198,51 @@ def save_prediction_results(file_path, prediction_type, prediction_results, actu
         print(f"Failed to save prediction results: {e}")
         return None
 
-def create_prediction_chart(df, pred_df, lookback, pred_len, actual_df=None, historical_start_idx=0):
-    """Create prediction chart"""
+def _candles_json(frame, timestamps):
+    """OHLC rows -> lightweight-charts candle objects. `time` as epoch seconds
+    is the same convention already used by portfolio/forecasting.py::_candles_json
+    for every other lightweight-charts series in this app."""
+    candles = []
+    for i, (_, row) in enumerate(frame.iterrows()):
+        if i >= len(timestamps):
+            break
+        candles.append({
+            'time': int(pd.Timestamp(timestamps[i]).timestamp()),
+            'open': float(row['open']),
+            'high': float(row['high']),
+            'low': float(row['low']),
+            'close': float(row['close']),
+        })
+    return candles
+
+def build_prediction_chart_data(df, pred_df, lookback, pred_len, actual_df=None, historical_start_idx=0):
+    """Build the 3 OHLC series (historical / prediction / actual) the Predictor
+    chart renders with lightweight-charts (ver webui/static/js/charts/predictor-forecast-chart.js).
+    Reemplaza al Plotly Figure que armaba esta misma funcion antes: mismos 3
+    tramos candlestick, misma logica de timestamps continuos, solo cambia el
+    formato de salida (JSON plano en vez de un Figure serializado)."""
     # Use specified historical data start position, not always from the beginning of df
     if historical_start_idx + lookback + pred_len <= len(df):
         # Display lookback historical points + pred_len prediction points starting from specified position
         historical_df = df.iloc[historical_start_idx:historical_start_idx+lookback]
-        prediction_range = range(historical_start_idx+lookback, historical_start_idx+lookback+pred_len)
     else:
         # If data is insufficient, adjust to maximum available range
         available_lookback = min(lookback, len(df) - historical_start_idx)
-        available_pred_len = min(pred_len, max(0, len(df) - historical_start_idx - available_lookback))
         historical_df = df.iloc[historical_start_idx:historical_start_idx+available_lookback]
-        prediction_range = range(historical_start_idx+available_lookback, historical_start_idx+available_lookback+available_pred_len)
-    
-    # Create chart
-    fig = go.Figure()
-    
-    # Add historical data (candlestick chart)
-    fig.add_trace(go.Candlestick(
-        x=historical_df['timestamps'] if 'timestamps' in historical_df.columns else historical_df.index,
-        open=historical_df['open'],
-        high=historical_df['high'],
-        low=historical_df['low'],
-        close=historical_df['close'],
-        name='Historical Data (400 data points)',
-        increasing_line_color='#26A69A',
-        decreasing_line_color='#EF5350'
-    ))
-    
+
+    historical_timestamps = list(historical_df['timestamps']) if 'timestamps' in historical_df.columns else list(historical_df.index)
+    historical = _candles_json(historical_df, historical_timestamps)
+
     # Add prediction data (candlestick chart)
+    pred_timestamps = None
+    prediction = []
     if pred_df is not None and len(pred_df) > 0:
         # Calculate prediction data timestamps - ensure continuity with historical data
         if 'timestamps' in df.columns and len(historical_df) > 0:
             # Start from the last timestamp of historical data, create prediction timestamps with the same time interval
             last_timestamp = historical_df['timestamps'].iloc[-1]
             time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0] if len(df) > 1 else pd.Timedelta(hours=1)
-            
+
             pred_timestamps = pd.date_range(
                 start=last_timestamp + time_diff,
                 periods=len(pred_df),
@@ -245,81 +251,34 @@ def create_prediction_chart(df, pred_df, lookback, pred_len, actual_df=None, his
         else:
             # If no timestamps, use index
             pred_timestamps = range(len(historical_df), len(historical_df) + len(pred_df))
-        
-        fig.add_trace(go.Candlestick(
-            x=pred_timestamps,
-            open=pred_df['open'],
-            high=pred_df['high'],
-            low=pred_df['low'],
-            close=pred_df['close'],
-            name='Prediction Data (120 data points)',
-            increasing_line_color='#66BB6A',
-            decreasing_line_color='#FF7043'
-        ))
-    
+
+        prediction = _candles_json(pred_df, list(pred_timestamps))
+
     # Add actual data for comparison (if exists)
+    actual = []
     if actual_df is not None and len(actual_df) > 0:
         # Actual data should be in the same time period as prediction data
-        if 'timestamps' in df.columns:
+        if pred_timestamps is not None:
             # Actual data should use the same timestamps as prediction data to ensure time alignment
-            if 'pred_timestamps' in locals():
-                actual_timestamps = pred_timestamps
+            actual_timestamps = pred_timestamps
+        elif 'timestamps' in df.columns:
+            # If no prediction timestamps, calculate from the last timestamp of historical data
+            if len(historical_df) > 0:
+                last_timestamp = historical_df['timestamps'].iloc[-1]
+                time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0] if len(df) > 1 else pd.Timedelta(hours=1)
+                actual_timestamps = pd.date_range(
+                    start=last_timestamp + time_diff,
+                    periods=len(actual_df),
+                    freq=time_diff
+                )
             else:
-                # If no prediction timestamps, calculate from the last timestamp of historical data
-                if len(historical_df) > 0:
-                    last_timestamp = historical_df['timestamps'].iloc[-1]
-                    time_diff = df['timestamps'].iloc[1] - df['timestamps'].iloc[0] if len(df) > 1 else pd.Timedelta(hours=1)
-                    actual_timestamps = pd.date_range(
-                        start=last_timestamp + time_diff,
-                        periods=len(actual_df),
-                        freq=time_diff
-                    )
-                else:
-                    actual_timestamps = range(len(historical_df), len(historical_df) + len(actual_df))
+                actual_timestamps = range(len(historical_df), len(historical_df) + len(actual_df))
         else:
             actual_timestamps = range(len(historical_df), len(historical_df) + len(actual_df))
-        
-        fig.add_trace(go.Candlestick(
-            x=actual_timestamps,
-            open=actual_df['open'],
-            high=actual_df['high'],
-            low=actual_df['low'],
-            close=actual_df['close'],
-            name='Actual Data (120 data points)',
-            increasing_line_color='#FF9800',
-            decreasing_line_color='#F44336'
-        ))
-    
-    # Update layout
-    fig.update_layout(
-        title='Kronos Financial Prediction Results - 400 Historical Points + 120 Prediction Points vs 120 Actual Points',
-        xaxis_title='Time',
-        yaxis_title='Price',
-        template='plotly_white',
-        height=600,
-        showlegend=True
-    )
-    
-    # Ensure x-axis time continuity
-    if 'timestamps' in historical_df.columns:
-        # Get all timestamps and sort them
-        all_timestamps = []
-        if len(historical_df) > 0:
-            all_timestamps.extend(historical_df['timestamps'])
-        if 'pred_timestamps' in locals():
-            all_timestamps.extend(pred_timestamps)
-        if 'actual_timestamps' in locals():
-            all_timestamps.extend(actual_timestamps)
-        
-        if all_timestamps:
-            all_timestamps = sorted(all_timestamps)
-            fig.update_xaxes(
-                range=[all_timestamps[0], all_timestamps[-1]],
-                rangeslider_visible=False,
-                type='date'
-            )
-    
-    return json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+        actual = _candles_json(actual_df, list(actual_timestamps))
+
+    return {'historical': historical, 'prediction': prediction, 'actual': actual}
 
 @app.route('/')
 def index():
@@ -670,7 +629,7 @@ def predict():
             # Latest data: start from beginning
             historical_start_idx = 0
         
-        chart_json = create_prediction_chart(df, pred_df, lookback, pred_len, actual_df, historical_start_idx)
+        chart_data = build_prediction_chart_data(df, pred_df, lookback, pred_len, actual_df, historical_start_idx)
         
         # Prepare prediction result data - fix timestamp calculation logic
         if 'timestamps' in df.columns:
@@ -738,7 +697,7 @@ def predict():
         return jsonify({
             'success': True,
             'prediction_type': prediction_type,
-            'chart': chart_json,
+            'chart': chart_data,
             'prediction_results': prediction_results,
             'actual_data': actual_data,
             'has_comparison': len(actual_data) > 0,

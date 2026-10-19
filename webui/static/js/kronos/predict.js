@@ -1,9 +1,16 @@
 import { $ } from '../shared/dom.js';
 import { showStatus, setLoading } from '../shared/status.js';
 import { fmt } from '../shared/format.js';
+import { renderPredictorChart } from '../charts/predictor-forecast-chart.js';
 import { api } from './api.js';
 import { state } from './state.js';
 import { getSelectedStartDate } from './time-slider.js';
+
+// Reemplazada en cada prediccion (nunca actualizada in-place vía setData) --
+// mismo patron que instrument-detail.js::paintChartAndWireAlerts: se limpia
+// con chart.remove() antes de pintar la siguiente, para no acumular
+// ResizeObservers/listeners viejos sobre el mismo <div id="chart">.
+let forecastChart = null;
 
 function predictionQuality(predictions, actuals) {
     const n = Math.min(predictions.length, actuals.length);
@@ -50,8 +57,8 @@ function displayComparisonAnalysis(result) {
 }
 
 function displayPredictionResult(result) {
-    const chartData = JSON.parse(result.chart);
-    Plotly.newPlot('chart', chartData.data, chartData.layout);
+    if (forecastChart) forecastChart.remove();
+    forecastChart = renderPredictorChart($('chart'), result.chart);
 
     if (result.has_comparison) displayComparisonAnalysis(result);
     else $('comparison-section').style.display = 'none';
