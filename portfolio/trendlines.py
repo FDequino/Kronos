@@ -94,24 +94,37 @@ def _fit_lines(pivots, candles, kind, atr, last_index):
     return lines
 
 
-def _detect_breakout(resistance, support, candles, atr):
+def _detect_breakout(resistance, support, candles, atr, current_price=None):
+    """current_price (ver conversación/auditoría, hallazgo 1.6: "los motores
+    calculan con la vela de ayer") -- precio EN VIVO (quotes_latest), cuando
+    está disponible. candles[-1]["close"] es el último close de
+    price_history, que solo se backfillea al correr un pronóstico y puede
+    quedar MUCHOS DÍAS atrás (confirmado en producción: 10-11 días para
+    QQQ/GGAL) -- usarlo como "precio actual" en el mensaje de ruptura
+    mostraba un precio que no tenía nada que ver con el real. Las LÍNEAS de
+    soporte/resistencia en sí siguen viniendo de los pivotes históricos (eso
+    es correcto, son zonas de mediano plazo) -- lo que cambia es contra qué
+    precio se compara si ya se "rompieron" HOY."""
     last = candles[-1]
     last_index = len(candles) - 1
+    price = current_price if current_price is not None else last["close"]
     for line in resistance:
         proj = line["slope"] * last_index + line["intercept"]
-        if last["close"] > proj + atr * BREAKOUT_MARGIN_ATR:
-            return {"kind": "resistencia", "direction": "arriba", "price": last["close"], "level": round(proj, 4)}
+        if price > proj + atr * BREAKOUT_MARGIN_ATR:
+            return {"kind": "resistencia", "direction": "arriba", "price": price, "level": round(proj, 4)}
     for line in support:
         proj = line["slope"] * last_index + line["intercept"]
-        if last["close"] < proj - atr * BREAKOUT_MARGIN_ATR:
-            return {"kind": "soporte", "direction": "abajo", "price": last["close"], "level": round(proj, 4)}
+        if price < proj - atr * BREAKOUT_MARGIN_ATR:
+            return {"kind": "soporte", "direction": "abajo", "price": price, "level": round(proj, 4)}
     return None
 
 
-def compute_trendlines(candles):
+def compute_trendlines(candles, current_price=None):
     """candles: lista de {time, open, high, low, close} ordenada ascendente
     (mismo shape que forecasting.py::_candles_json) -- puede venir con más
     historial del que realmente se usa, ver RECENT_WINDOW_CANDLES arriba.
+    current_price: precio en vivo opcional, ver _detect_breakout -- si no se
+    pasa, cae al último close de `candles` (comportamiento de siempre).
     Devuelve {"resistance": [...], "support": [...], "breakout": None|{...}}."""
     candles = candles[-RECENT_WINDOW_CANDLES:]
     if len(candles) < PIVOT_WINDOW * 2 + MIN_TOUCHES:
@@ -125,7 +138,7 @@ def compute_trendlines(candles):
     last_index = len(candles) - 1
     resistance = _fit_lines(pivots, candles, "high", atr, last_index)
     support = _fit_lines(pivots, candles, "low", atr, last_index)
-    breakout = _detect_breakout(resistance, support, candles, atr)
+    breakout = _detect_breakout(resistance, support, candles, atr, current_price=current_price)
 
     # slope/intercept son un detalle interno de calculo (sirven para
     # proyectar la ruptura) -- el frontend solo dibuja los 2 puntos from/to.

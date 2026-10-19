@@ -485,9 +485,17 @@ async function loadPriceAlertsPanel(instrumentId) {
 // se backfillea al correr un pronóstico) y antes de este fix mostraba un
 // precio viejo mientras el resto de la app ya mostraba el correcto. El
 // gráfico de abajo se sigue pintando con `historical` tal cual (su fuente
-// real, sin tocar). "prev" para la variación sigue siendo el último close de
-// price_history (la referencia de "cierre anterior" más reciente que
-// tenemos) -- lo nuevo es que "last" ya no viene de ahí mismo.
+// real, sin tocar).
+// Variación (ver conversación/auditoría, "la variación del día no coincide
+// entre pantallas"): quote.pct_change es el % real de la fuente en vivo
+// (contra el cierre de AYER, ej. el mismo que ya usa el catálogo de
+// Instrumentos) -- se usa SIEMPRE que esté disponible. El cálculo viejo
+// (quote.price vs. último close de price_history) queda solo como fallback
+// para quotes persistidos ANTES de este fix (sin pct_change guardado) o
+// fuentes que no lo proveen (dolarapi/binance/bróker/manual): ese cálculo
+// podía comparar contra un cierre de días atrás y dar un % sin relación con
+// la variación real (bug real confirmado: price_history de QQQ/GGAL con
+// 10-11 días de atraso en producción).
 // Devuelve siempre el último CLOSE de price_history (nunca el precio en
 // vivo) -- lo siguen usando los niveles sugeridos de TP/SL ("aplicado sobre
 // el último cierre", ver loadSuggestedLevels), que son una cuenta aparte del
@@ -506,15 +514,18 @@ function updatePriceHeader(historical, currency, quote) {
     }
     priceEl.textContent = fmtMoney(displayPrice, currency);
     tsEl.textContent = quote?.fetched_at ? `al ${fmtDateTime(quote.fetched_at)}` : '';
-    // Variación solo si hay quote en vivo (distinto en el tiempo de
-    // prevClose) -- sin quote, displayPrice === prevClose y mostrar "0,00%"
-    // sería engañoso (parece que no se movió, en realidad no hay con qué
-    // compararlo).
-    if (!quote?.price || !prevClose) {
+
+    let diffPct = null;
+    if (quote?.pct_change !== null && quote?.pct_change !== undefined) {
+        diffPct = quote.pct_change;
+    } else if (quote?.price && prevClose) {
+        // Fallback (ver docstring de arriba): solo si no hay pct_change real.
+        diffPct = ((displayPrice - prevClose) / prevClose) * 100;
+    }
+    if (diffPct === null) {
         changeEl.textContent = '';
         return prevClose;
     }
-    const diffPct = ((displayPrice - prevClose) / prevClose) * 100;
     changeEl.textContent = `${diffPct >= 0 ? '▲' : '▼'} ${fmtPct(Math.abs(diffPct))}`;
     changeEl.classList.toggle('cell-positive', diffPct >= 0);
     changeEl.classList.toggle('cell-negative', diffPct < 0);

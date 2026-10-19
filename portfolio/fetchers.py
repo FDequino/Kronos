@@ -91,6 +91,11 @@ def fetch_data912_quote(instrument):
         "price": match["c"] / divisor,
         "bid": bid / divisor if bid is not None else None,
         "ask": ask / divisor if ask is not None else None,
+        # % variación real del día (contra el cierre de AYER, calculado por
+        # data912) -- NUNCA se divide por `divisor` (es un %, no un precio
+        # "por 100 nominales"). Ver conversación/auditoría: esto reemplaza al
+        # cálculo basado en price_history, que puede quedar días atrás.
+        "pct_change": match.get("pct_change"),
     }
 
 
@@ -374,7 +379,7 @@ def update_quote(conn, instrument):
 
     db.upsert_quote(
         conn, instrument["id"], quote["price"],
-        source=source, bid=quote.get("bid"), ask=quote.get("ask"),
+        source=source, bid=quote.get("bid"), ask=quote.get("ask"), pct_change=quote.get("pct_change"),
     )
     return quote
 

@@ -94,6 +94,23 @@ def _migrate(conn):
             conn.execute(f"ALTER TABLE instruments ADD COLUMN {col} {ddl}")
     conn.commit()
 
+    # % variación del día tal cual la calcula la fuente en vivo (ej. el
+    # "pct_change" de data912, contra el cierre de AYER real) -- antes el
+    # header del detalle de instrumento la recalculaba como
+    # (quote.price - ultimo_close_de_price_history) / ese_close, y
+    # price_history puede quedar MUCHOS DIAS atras (solo se backfillea al
+    # correr un pronostico, ver backfill_history) -- confirmado en produccion
+    # (ver conversacion, auditoria): price_history de QQQ/GGAL con 10-11 dias
+    # de atraso, lo que hacia que el % mostrado en el detalle no tuviera
+    # nada que ver con el % real del dia (y tampoco coincidiera con el
+    # mismo instrumento en el catalogo de Instrumentos, que SI usa el
+    # pct_change real de data912). None para fuentes que no lo proveen
+    # (dolarapi/binance/broker/manual) -- nunca se inventa un valor.
+    quotes_cols = {row["name"] for row in conn.execute("PRAGMA table_info(quotes_latest)").fetchall()}
+    if "pct_change" not in quotes_cols:
+        conn.execute("ALTER TABLE quotes_latest ADD COLUMN pct_change REAL")
+    conn.commit()
+
     signal_cols = {row["name"] for row in conn.execute("PRAGMA table_info(signal_config)").fetchall()}
     new_signal_cols = {
         "ta_rsi_oversold": "REAL NOT NULL DEFAULT 35.0",
@@ -923,15 +940,16 @@ def delete_planned_movement(conn, movement_id):
 
 # --- Cotizaciones -------------------------------------------------------------
 
-def upsert_quote(conn, instrument_id, price, source, bid=None, ask=None, fetched_at=None):
+def upsert_quote(conn, instrument_id, price, source, bid=None, ask=None, fetched_at=None, pct_change=None):
     fetched_at = fetched_at or datetime.now().isoformat()
     conn.execute(
-        """INSERT INTO quotes_latest (instrument_id, price, bid, ask, fetched_at, source)
-           VALUES (?, ?, ?, ?, ?, ?)
+        """INSERT INTO quotes_latest (instrument_id, price, bid, ask, fetched_at, source, pct_change)
+           VALUES (?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(instrument_id) DO UPDATE SET
                price = excluded.price, bid = excluded.bid, ask = excluded.ask,
-               fetched_at = excluded.fetched_at, source = excluded.source""",
-        (instrument_id, price, bid, ask, fetched_at, source),
+               fetched_at = excluded.fetched_at, source = excluded.source,
+               pct_change = excluded.pct_change""",
+        (instrument_id, price, bid, ask, fetched_at, source, pct_change),
     )
     conn.commit()
 

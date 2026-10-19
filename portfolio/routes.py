@@ -830,8 +830,13 @@ def instrument_overlays(instrument_id):
             }
             for row in price_history
         ]
+        # current_price (ver conversación/auditoría, hallazgo 1.6: "los
+        # motores calculan con la vela de ayer") -- precio EN VIVO para el
+        # mensaje de ruptura, no el último close de price_history (puede
+        # quedar días atrás, ver portfolio/trendlines.py::_detect_breakout).
+        quote = db.get_quote(conn, instrument_id)
         return jsonify({
-            'trendlines': trendlines.compute_trendlines(candles),
+            'trendlines': trendlines.compute_trendlines(candles, current_price=quote['price'] if quote else None),
             'price_alerts': db.list_price_alerts(conn, instrument_id=instrument_id),
         })
     finally:
@@ -1641,7 +1646,7 @@ def risk_profiles():
     conn = db.get_connection()
     try:
         return jsonify({
-            'profiles': capital_config.list_risk_profiles(),
+            'profiles': capital_config.list_risk_profiles(conn),
             'active_profile': capital_config.get_active_risk_profile(conn),
         })
     finally:
