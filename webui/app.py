@@ -4,8 +4,10 @@ load_dotenv()
 import pandas as pd
 import numpy as np
 import json
+import time
 from flask import Flask, render_template, request, jsonify, redirect, session, url_for
 from flask_cors import CORS
+from werkzeug.middleware.proxy_fix import ProxyFix
 import sys
 import warnings
 import datetime
@@ -38,6 +40,16 @@ app = Flask(__name__)
 CORS(app)
 app.register_blueprint(portfolio_bp)
 
+# Caddy es el UNICO frente publico (ver conversacion, "un solo panel de
+# login") -- confia en exactamente 1 hop de proxy para X-Forwarded-For/-Proto,
+# nunca mas: sin esto, request.remote_addr seria siempre 127.0.0.1 (la IP de
+# Caddy, no la del cliente real), inutilizando el rate-limit de /login de
+# mas abajo (todo el mundo compartiria el mismo balde). x_proto=1 ademas le
+# dice a Flask que la conexion original fue HTTPS aunque Caddy la reenvie
+# por HTTP en loopback -- necesario para que SESSION_COOKIE_SECURE no
+# rompa el login detras del proxy.
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
+
 # secret_key para firmar la cookie de sesion del login (ver conversacion,
 # portfolio/auth.py) -- leida de SQLite (generada una vez por instalacion en
 # portfolio/db.py::_migrate), nunca hardcodeada aca ni en una env var que
@@ -48,10 +60,42 @@ try:
 finally:
     _auth_conn.close()
 
+# Única capa de autenticación (ver conversación: se sacó el Basic Auth de
+# Caddy a propósito para no pedir 2 logins -- esto es lo que la reemplaza en
+# seguridad, no solo en comodidad): cookie nunca por HTTP plano, nunca
+# legible por JS, nunca enviada cross-site salvo navegación top-level.
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=datetime.timedelta(days=30),
+)
+
 # Rutas que tienen que funcionar SIN sesion -- login/setup (obvio, son las
 # que inician la sesion) y los assets estaticos (CSS/JS de la propia pagina
 # de login no cargarian si tambien quedaran detras del gate).
 _AUTH_EXEMPT_ENDPOINTS = {'login', 'setup_password', 'static'}
+
+# Rate limit de /login (ver conversación: con el Basic Auth de Caddy afuera,
+# esta es la ÚNICA barrera -- sin esto, nada frena un intento de fuerza
+# bruta contra la contraseña). En memoria, por IP real (ver ProxyFix arriba)
+# -- alcanza para una instalación de un solo proceso; si el deploy pasara a
+# ser multi-worker, esto necesitaría un store compartido (Redis/DB) en vez
+# de un dict en memoria.
+_LOGIN_MAX_ATTEMPTS = 5
+_LOGIN_WINDOW_SECONDS = 300  # 5 minutos
+_login_failures = {}  # ip -> [timestamp, ...] de intentos fallidos recientes
+
+
+def _login_rate_limited(ip):
+    now = time.time()
+    recent = [t for t in _login_failures.get(ip, []) if now - t < _LOGIN_WINDOW_SECONDS]
+    _login_failures[ip] = recent
+    return len(recent) >= _LOGIN_MAX_ATTEMPTS
+
+
+def _register_login_failure(ip):
+    _login_failures.setdefault(ip, []).append(time.time())
 
 
 @app.before_request
@@ -103,12 +147,18 @@ def login():
             return redirect(url_for('setup_password'))
         error = None
         if request.method == 'POST':
-            password = request.form.get('password', '')
-            if auth.verify_password(conn, password):
-                session.permanent = True
-                session['logged_in'] = True
-                return redirect(request.args.get('next') or url_for('portfolio_page'))
-            error = 'Contraseña incorrecta.'
+            ip = request.remote_addr
+            if _login_rate_limited(ip):
+                error = 'Demasiados intentos fallidos — esperá unos minutos antes de volver a probar.'
+            else:
+                password = request.form.get('password', '')
+                if auth.verify_password(conn, password):
+                    _login_failures.pop(ip, None)
+                    session.permanent = True
+                    session['logged_in'] = True
+                    return redirect(request.args.get('next') or url_for('portfolio_page'))
+                _register_login_failure(ip)
+                error = 'Contraseña incorrecta.'
         return render_template('auth.html', mode='login', error=error)
     finally:
         conn.close()
@@ -839,18 +889,27 @@ if __name__ == '__main__':
     else:
         print("Tip: Will use simulated data for demonstration")
 
+    # DEBUG (ver conversación, auditoría de seguridad): antes se dejaba
+    # debug=True SIEMPRE, incluso en producción -- el debugger interactivo
+    # de Werkzeug (ejecución de código arbitrario si una excepción no
+    # atrapada llega a mostrarlo) quedaba activo en la instalación real,
+    # mitigado solo porque Caddy es el único frente público. Ahora
+    # debug/reloader se prenden SOLO si FLASK_DEBUG=1 en el entorno (nunca
+    # seteado en el .env de la VPS) -- en desarrollo local seguís pudiendo
+    # pedirlo a mano si lo necesitás.
+    DEBUG = os.environ.get('FLASK_DEBUG', '0') == '1'
+
     # QuoteWorker (Fase 7) arranca aca, no al importar portfolio.quote_worker
-    # (a diferencia de forecast_worker.py) -- con debug=True el reloader de
-    # Werkzeug re-ejecuta este script COMPLETO como subproceso hijo con
-    # WERKZEUG_RUN_MAIN=true ya seteado desde antes de que Python arranque, y
-    # el proceso original (donde esa variable todavia no existe en este punto)
-    # queda vivo solo para vigilar cambios de archivo y relanzar el hijo --
-    # nunca sirve requests de verdad. Arrancar el poller con un simple
-    # "al importar" (como forecast_worker.py) lo arrancaria en los DOS
-    # procesos, duplicando las llamadas a data912. Arrancar solo cuando la
-    # variable YA vale "true" asegura que corra una unica vez, en el hijo que
-    # si sirve trafico -- confirmado empiricamente (ver nota en quote_worker.py).
-    if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    # (a diferencia de forecast_worker.py) -- CON el reloader de Werkzeug
+    # (solo si DEBUG=True) este script corre COMPLETO como subproceso hijo
+    # con WERKZEUG_RUN_MAIN=true ya seteado desde antes de que Python
+    # arranque, y el proceso original (donde esa variable todavia no existe
+    # en este punto) queda vivo solo para vigilar cambios de archivo y
+    # relanzar el hijo -- nunca sirve requests de verdad. Arrancar el poller
+    # con un simple "al importar" (como forecast_worker.py) lo arrancaria en
+    # los DOS procesos, duplicando las llamadas a data912. SIN reloader
+    # (producción) no hay proceso duplicado -- arranca derecho, una sola vez.
+    if not DEBUG or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         quote_worker.start()
         telegram_bot.start()
 
@@ -858,11 +917,10 @@ if __name__ == '__main__':
     # el de siempre en dev local) -- el deploy de la VPS los pisa a
     # 127.0.0.1:8090 via /opt/kronos/app/.env, mismo criterio "nunca
     # expuesto directo" que ya usan el resto de los servicios de ese server
-    # (Caddy hace de unico frente publico). debug=True se deja intacto a
-    # proposito: el truco de WERKZEUG_RUN_MAIN de arriba depende exactamente
-    # de ese reloader.
+    # (Caddy hace de unico frente publico).
     app.run(
-        debug=True,
+        debug=DEBUG,
+        use_reloader=DEBUG,
         host=os.environ.get('KRONOS_HOST', '0.0.0.0'),
         port=int(os.environ.get('KRONOS_PORT', 7070)),
         threaded=True,
