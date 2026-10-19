@@ -90,3 +90,20 @@
     flex-wrap: nowrap;
     white-space: nowrap;
 }
+
+/* Tarjeta de Noticias = una noticia puntual, clickeable entera (ver
+   conversación: "al presionar la tarjeta no entra a ningún lado... quiero
+   que al presionar la tarjeta me lleve a un detalle de la noticia con
+   todo") -- data-skip-card-click (ticker/Fuente, ver news.js) son la
+   excepción, el resto de la tarjeta abre el modal de detalle. */
+.news-item-card {
+    cursor: pointer;
+}
+
+.news-item-title {
+    font-weight: 600;
+}
+
+.news-item-row {
+    cursor: pointer;
+}

@@ -11,6 +11,15 @@
 // pestañas") -- mismo patrón createSearchBar/applySearchState que
 // Instrumentos/Préstamos/Propuestas, con el mismo toggle Tarjetas/Lista
 // que ya tenía Oportunidades del Día.
+//
+// Una TARJETA = UNA noticia (ver conversación: "al presionar la tarjeta no
+// entra a ningún lado... quiero que al presionar la tarjeta me lleve a un
+// detalle de la noticia con todo") -- el backend devuelve una fila por
+// TICKER con una lista de titulares adentro (db.list_today_sentiment),
+// pero acá se aplana a una fila/tarjeta por TITULAR antes de buscar/
+// filtrar/agrupar/pintar, para que "la tarjeta que ves" y "la noticia que
+// se abre al clickearla" sean la misma cosa, sin anidar una lista de
+// titulares adentro de cada tarjeta de ticker.
 import { $ } from '../shared/dom.js';
 import { fmtDate, fmtDateTime } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
@@ -22,7 +31,10 @@ const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 
 const IMPACT_TAG_CLASS = { positivo: 'tag-positive', negativo: 'tag-negative', neutral: 'tag-neutral' };
 
 const NEWS_SEARCH_CONFIG = {
-    searchFields: [{ key: 'ticker', label: 'Ticker', value: (r) => r.ticker }],
+    searchFields: [
+        { key: 'ticker', label: 'Ticker', value: (r) => r.ticker },
+        { key: 'title', label: 'Título', value: (r) => r.title || '' },
+    ],
     filters: [
         { key: 'bajo', label: 'Riesgo bajo', block: 'Riesgo', test: (r) => r.risk_level === 'BAJO' },
         { key: 'medio', label: 'Riesgo medio', block: 'Riesgo', test: (r) => r.risk_level === 'MEDIO' },
@@ -30,6 +42,7 @@ const NEWS_SEARCH_CONFIG = {
         { key: 'con-evento', label: 'Con próximo balance', block: 'Evento', test: (r) => !!r.event_date },
     ],
     groupBy: [
+        { key: 'ticker', label: 'Ticker', value: (r) => r.ticker },
         { key: 'risk_level', label: 'Nivel de riesgo', value: (r) => r.risk_level },
     ],
 };
@@ -41,28 +54,32 @@ const newsCollapsedGroups = new Set();
 
 // Cada titular es {"title", "url", "summary", "source", "published_at",
 // "impact_score", "impact_direction", "impact_magnitude"} desde el backend
-// (ver conversación: "debo poder entrar a las mismas" / "no puedo entrar a
-// la tarjeta... para ver un apartado de la noticia... quiero que esté el
-// impacto"). El titular se muestra como texto (no como link), el link de
-// fuente queda aparte y chico, y hacer click en la fila abre un detalle con
-// resumen + impacto estimado -- headlines viejos ya persistidos como string
-// antes de este cambio, o sin esos campos, degradan a "sin evaluar" en el
-// modal, nunca rompen el render.
-function headlineItemHtml(h, ticker, idx) {
-    const title = typeof h === 'object' && h !== null ? h.title : h;
-    const url = typeof h === 'object' && h !== null ? h.url : null;
-    return `
-        <li class="detail-news-item" data-ticker="${ticker}" data-headline-idx="${idx}">
-            <span class="detail-news-title" title="${title}">${title}</span>
-            ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="detail-news-source-link">Fuente ↗</a>` : ''}
-        </li>
-    `;
+// (headlines viejos ya persistidos como string antes de este cambio, o sin
+// esos campos, degradan a "sin evaluar" en el modal, nunca rompen el
+// render). Una fila por titular, con el ticker/riesgo/evento de su
+// instrumento ya resueltos -- esto es lo que se busca/filtra/agrupa/pinta.
+function flattenNewsItems(entries) {
+    const items = [];
+    entries.forEach((entry) => {
+        if (!entry.headlines.length) {
+            items.push({
+                ticker: entry.ticker, risk_level: entry.risk_level, event_date: entry.event_date, headline: null,
+            });
+            return;
+        }
+        entry.headlines.forEach((h, idx) => {
+            const title = typeof h === 'object' && h !== null ? h.title : h;
+            items.push({
+                ticker: entry.ticker, risk_level: entry.risk_level, event_date: entry.event_date,
+                headline: h, headlineIdx: idx, title,
+            });
+        });
+    });
+    return items;
 }
 
-function headlinesHtml(entry, limit) {
-    return entry.headlines.length
-        ? `<ul class="detail-news-list">${entry.headlines.slice(0, limit).map((h, idx) => headlineItemHtml(h, entry.ticker, idx)).join('')}</ul>`
-        : '<p class="table-empty">Sin titulares disponibles hoy.</p>';
+function riskTagHtml(item) {
+    return `<span class="tag ${NEWS_RISK_TAG_CLASS[item.risk_level] || 'tag-neutral'}">${item.risk_level}</span>`;
 }
 
 function newsDetailModalHtml(h) {
@@ -97,46 +114,76 @@ function openNewsDetailModal(ticker, h) {
     });
 }
 
-function riskTagHtml(entry) {
-    return `<span class="tag ${NEWS_RISK_TAG_CLASS[entry.risk_level] || 'tag-neutral'}">${entry.risk_level}</span>`;
+// Resumen corto para la vista previa de la tarjeta/fila (el detalle
+// completo vive en el modal, ver newsDetailModalHtml) -- recortado para que
+// la tarjeta no crezca de más con resúmenes largos (ver conversación,
+// "agrandaste las tarjetas").
+function summaryPreview(summary, limit = 140) {
+    if (!summary) return '';
+    return summary.length > limit ? `${summary.slice(0, limit).trimEnd()}…` : summary;
 }
 
-function entryCardHtml(entry) {
-    const detailHref = `#detalle/${encodeURIComponent(entry.ticker)}`;
-    // Sin "en Xhs" acá (a diferencia del panel de instrumento, ver
-    // instrument-detail.js::newsHtml) -- este dato viene de
-    // db.list_today_sentiment, una fila cruda de news_sentiment_log, que
-    // nunca persiste hours_until_event (es un valor que depende del
-    // momento exacto en que se mira, no algo que tenga sentido guardar
-    // fijo) -- el detalle de horas ya está adentro de `summary`, calculado
-    // en el momento real de la corrida.
-    const eventLine = entry.event_date
-        ? `<p class="hint">Próximo balance: ${fmtDate(entry.event_date)}</p>`
-        : '';
-    return `
-        <div class="opportunity-card">
-            <div class="opportunity-card-head">
-                <a href="${detailHref}" class="opportunity-card-symbol table-link">${entry.ticker}</a>
-                ${riskTagHtml(entry)}
+function newsItemCardHtml(item) {
+    const detailHref = `#detalle/${encodeURIComponent(item.ticker)}`;
+    if (!item.headline) {
+        return `
+            <div class="opportunity-card">
+                <div class="opportunity-card-head">
+                    <a href="${detailHref}" class="opportunity-card-symbol table-link">${item.ticker}</a>
+                    ${riskTagHtml(item)}
+                </div>
+                <p class="table-empty">Sin titulares disponibles hoy.</p>
             </div>
-            <p class="hint">${entry.summary}</p>
-            ${eventLine}
-            ${headlinesHtml(entry, 5)}
+        `;
+    }
+    const h = item.headline;
+    const url = typeof h === 'object' && h !== null ? h.url : null;
+    const source = typeof h === 'object' && h !== null ? h.source : null;
+    const publishedAt = typeof h === 'object' && h !== null ? h.published_at : null;
+    const direction = typeof h === 'object' && h !== null ? h.impact_direction : null;
+    const summary = typeof h === 'object' && h !== null ? h.summary : null;
+    const metaParts = [
+        source, publishedAt ? fmtDateTime(publishedAt) : null,
+        item.event_date ? `Próximo balance: ${fmtDate(item.event_date)}` : null,
+    ].filter(Boolean);
+    const impactTag = direction ? `<span class="tag ${IMPACT_TAG_CLASS[direction] || 'tag-neutral'}">${direction.toUpperCase()}</span>` : '';
+    return `
+        <div class="opportunity-card news-item-card" data-ticker="${item.ticker}" data-headline-idx="${item.headlineIdx}">
+            <div class="opportunity-card-head">
+                <a href="${detailHref}" class="opportunity-card-symbol table-link" data-skip-card-click>${item.ticker}</a>
+                ${riskTagHtml(item)} ${impactTag}
+            </div>
+            <p class="news-item-title">${item.title}</p>
+            ${metaParts.length ? `<p class="hint">${metaParts.join(' · ')}</p>` : ''}
+            ${summary ? `<p class="hint">${summaryPreview(summary)}</p>` : ''}
+            ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="detail-news-source-link" data-skip-card-click>Fuente ↗</a>` : ''}
         </div>
     `;
 }
 
-const NEWS_LIST_COLUMNS = [{}, {}, {}, {}, {}]; // solo para colspan del "sin resultados", ver tableBodyRowsHtml
+const NEWS_LIST_COLUMNS = [{}, {}, {}, {}]; // solo para colspan del "sin resultados", ver tableBodyRowsHtml
 
-function entryRowHtml(entry) {
-    const detailHref = `#detalle/${encodeURIComponent(entry.ticker)}`;
+function newsItemRowHtml(item) {
+    const detailHref = `#detalle/${encodeURIComponent(item.ticker)}`;
+    if (!item.headline) {
+        return `
+            <tr>
+                <td><a href="${detailHref}" class="table-link">${item.ticker}</a></td>
+                <td>${riskTagHtml(item)}</td>
+                <td colspan="2" class="table-empty">Sin titulares disponibles hoy.</td>
+            </tr>
+        `;
+    }
+    const h = item.headline;
+    const url = typeof h === 'object' && h !== null ? h.url : null;
+    const direction = typeof h === 'object' && h !== null ? h.impact_direction : null;
+    const impactTag = direction ? `<span class="tag ${IMPACT_TAG_CLASS[direction] || 'tag-neutral'}">${direction.toUpperCase()}</span>` : '<span class="hint">—</span>';
     return `
-        <tr>
-            <td><a href="${detailHref}" class="table-link">${entry.ticker}</a></td>
-            <td>${riskTagHtml(entry)}</td>
-            <td>${entry.summary}</td>
-            <td>${entry.event_date ? fmtDate(entry.event_date) : '—'}</td>
-            <td>${headlinesHtml(entry, 3)}</td>
+        <tr class="news-item-row" data-ticker="${item.ticker}" data-headline-idx="${item.headlineIdx}">
+            <td><a href="${detailHref}" class="table-link" data-skip-card-click>${item.ticker}</a></td>
+            <td>${riskTagHtml(item)}</td>
+            <td><span title="${item.title}">${item.title}</span></td>
+            <td>${impactTag} ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="detail-news-source-link" data-skip-card-click>Fuente ↗</a>` : ''}</td>
         </tr>
     `;
 }
@@ -148,18 +195,19 @@ function renderNewsToday() {
         container.innerHTML = '<p class="table-empty">Ningún instrumento fue evaluado todavía hoy — se llena a medida que el Motor Satélite evalúa señales o entrás al detalle de un instrumento.</p>';
         return;
     }
-    const result = applySearchState(currentEntries, newsSearchState, NEWS_SEARCH_CONFIG);
+    const flatItems = flattenNewsItems(currentEntries);
+    const result = applySearchState(flatItems, newsSearchState, NEWS_SEARCH_CONFIG);
 
     if (newsView === 'list') {
-        const bodyRows = tableBodyRowsHtml(result, NEWS_LIST_COLUMNS, entryRowHtml, {
+        const bodyRows = tableBodyRowsHtml(result, NEWS_LIST_COLUMNS, newsItemRowHtml, {
             collapsedGroups: newsCollapsedGroups,
-            colspan: 5,
+            colspan: 4,
             emptyMessage: 'Ningún resultado para este filtro.',
         });
         container.innerHTML = `
             <div class="table-scroll">
                 <table>
-                    <thead><tr><th>Ticker</th><th>Riesgo</th><th>Resumen</th><th>Próximo balance</th><th>Titulares</th></tr></thead>
+                    <thead><tr><th>Ticker</th><th>Riesgo</th><th>Titular</th><th>Impacto / Fuente</th></tr></thead>
                     <tbody>${bodyRows}</tbody>
                 </table>
             </div>
@@ -175,7 +223,7 @@ function renderNewsToday() {
                     <button type="button" class="group-toggle" data-group="${g.label}">${newsCollapsedGroups.has(g.label) ? '▸' : '▾'}</button>
                     ${g.label} <span class="table-group-count">(${g.items.length})</span>
                 </div>
-                ${newsCollapsedGroups.has(g.label) ? '' : `<div class="opportunity-cards-grid" style="margin-bottom:16px;">${g.items.map(entryCardHtml).join('')}</div>`}
+                ${newsCollapsedGroups.has(g.label) ? '' : `<div class="opportunity-cards-grid" style="margin-bottom:16px;">${g.items.map(newsItemCardHtml).join('')}</div>`}
             `).join('')
             : '<p class="table-empty">Ningún resultado para este filtro.</p>';
         wireGroupToggles(container, newsCollapsedGroups, renderNewsToday);
@@ -183,7 +231,7 @@ function renderNewsToday() {
     }
 
     container.innerHTML = result.items.length
-        ? `<div class="opportunity-cards-grid">${result.items.map(entryCardHtml).join('')}</div>`
+        ? `<div class="opportunity-cards-grid">${result.items.map(newsItemCardHtml).join('')}</div>`
         : '<p class="table-empty">Ningún resultado para este filtro.</p>';
 }
 
@@ -215,7 +263,7 @@ export function initNewsView() {
 
     createSearchBar($('news-search-bar'), {
         ...NEWS_SEARCH_CONFIG,
-        searchPlaceholder: 'Buscar por ticker...',
+        searchPlaceholder: 'Buscar por ticker o título...',
         initialState: newsSearchState,
         onChange: (state) => { newsSearchState = state; renderNewsToday(); },
     });
@@ -240,17 +288,19 @@ export function initNewsView() {
     }
 
     // Delegado sobre el contenedor (sobrevive a cada re-render de
-    // renderNewsToday, que reemplaza el innerHTML entero) -- clickear la
-    // fila/tarjeta de un titular abre su detalle; clickear el link de
-    // "Fuente" sigue abriendo la fuente externa normal, sin disparar
-    // también el modal (ver conversación: "no puedo entrar a la tarjeta o
-    // fila para ver... un apartado de la noticia").
+    // renderNewsToday, que reemplaza el innerHTML entero) -- clickear
+    // CUALQUIER PARTE de la tarjeta/fila de una noticia abre su detalle
+    // completo; el ticker y el link de "Fuente" (data-skip-card-click)
+    // siguen su propio comportamiento sin disparar también el modal (ver
+    // conversación: "al presionar la tarjeta no entra a ningún lado...
+    // quiero que al presionar la tarjeta me lleve a un detalle de la
+    // noticia con todo").
     const newsContainer = $('news-today-container');
     if (newsContainer) {
         newsContainer.addEventListener('click', (e) => {
-            if (e.target.closest('.detail-news-source-link')) return;
-            const item = e.target.closest('.detail-news-item');
-            if (!item) return;
+            if (e.target.closest('[data-skip-card-click]')) return;
+            const item = e.target.closest('.news-item-card, .news-item-row');
+            if (!item || item.dataset.headlineIdx === undefined) return;
             const entry = currentEntries.find((x) => x.ticker === item.dataset.ticker);
             const headline = entry?.headlines[Number(item.dataset.headlineIdx)];
             if (headline) openNewsDetailModal(entry.ticker, headline);
