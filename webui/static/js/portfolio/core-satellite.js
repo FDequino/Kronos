@@ -51,6 +51,39 @@ export const INDICATOR_TOOLTIPS = {
 let loaded = false;
 let lastSignals = null; // respuesta cruda de /api/signals, para recalcular montos sin re-pedir al servidor
 let allocation = { core_pct: 70, satellite_pct: 30 };
+let opportunitiesView = 'cards'; // 'cards' | 'list' (ver conversación: vista de lista para escanear muchas señales de un vistazo)
+
+// Qué es cada motor/alerta y qué significan sus métricas (ver conversación:
+// "no entiendo qué son" las tarjetas) -- un tooltip por tipo de tarjeta,
+// pegado al badge de motor, mismo patrón que INDICATOR_TOOLTIPS más arriba.
+const ENGINE_TOOLTIPS = {
+    core: infoTooltipHtml(`
+        <div>Motor Core: ranking cross-sectional del Motor Cuantitativo Kronos sobre todo el universo. Solo opera si SPY está por encima de su propia EMA(50) (filtro de régimen); si no, el capital queda en Caución.</div>
+        <div class="info-tooltip-formula">Score = eficiencia esperada de la señal según el modelo\nDispersión = qué tan consistente fue ese resultado en la simulación (CPCV) — más bajo es más confiable</div>
+    `),
+    satellite: infoTooltipHtml(`
+        <div>Motor Satélite: señales técnicas de corto plazo (1 a 3 ruedas), sin consultar al modelo. La táctica (ej. "mean_reversion") es la regla técnica que disparó esta entrada.</div>
+    `),
+    pairs: infoTooltipHtml(`
+        <div>Pairs Trading: dos activos cuyo precio relativo históricamente vuelve a su media — se compra el que quedó barato (y se vendería el caro, si ya se tiene en cartera).</div>
+        <div class="info-tooltip-formula">Z-score = cuán lejos está el spread actual de su media (más alto, más estirado)\nCointegración p = confiabilidad de la relación (cuanto más bajo, mejor)\nHedge ratio = cuánto del activo caro corresponde vender por cada unidad del barato</div>
+    `),
+    factor: infoTooltipHtml(`
+        <div>Factor Investing: rotación hacia los instrumentos con mejor combinación de 4 factores — no es un trade con entrada/salida, es a qué instrumentos conviene estar expuesto esta semana.</div>
+        <div class="info-tooltip-formula">Composite = ranking combinado de los 4 factores de abajo\nMomentum = retorno reciente (más alto, mejor)\nLow-Vol = baja volatilidad (más alto, más estable)\nValue = qué tan barato está relativo a sus fundamentals</div>
+    `),
+    arbitrage: infoTooltipHtml(`
+        <div>Arbitraje de Canje MEP/CCL: el mismo bono cotiza distinto según la plaza en la que se opera (ley argentina vs. ley Nueva York) — cuando la brecha se estira, conviene pasar de la versión cara a la barata.</div>
+        <div class="info-tooltip-formula">Z-score = cuán lejos está la brecha actual de su promedio histórico\nBrecha = diferencia de precio entre ambas versiones del bono</div>
+    `),
+    syntheticDollar: infoTooltipHtml(`
+        <div>Dólar Sintético: armar un dólar a futuro (ROFEX) prestando pesos a tasa de caución en vez de comprar el futuro directo — conviene cuando la tasa implícita del futuro rinde más que caución + margen.</div>
+    `),
+    fixedIncomeCarry: infoTooltipHtml(`
+        <div>Renta Fija / Carry Trade: compara el rendimiento mensual de un bono a tasa fija (LECAP) contra uno que ajusta por inflación (CER) y sugiere rotar hacia el que rinda más este mes.</div>
+        <div class="info-tooltip-formula">TEM = Tasa Efectiva Mensual de cada instrumento\nSpread mensual = diferencia a favor del que conviene</div>
+    `),
+};
 
 function suggestedAmount(positionWeight, enginePct) {
     if (!lastSignals?.account_value_ars) return null;
@@ -105,7 +138,7 @@ function opportunityCardHtml(sig, enginePct, isCore, eventRiskNotes) {
         <div class="opportunity-card">
             <div class="opportunity-card-head">
                 <a href="${detailHref}" class="opportunity-card-symbol table-link">${sig.symbol}</a>
-                <span class="tag ${isCore ? 'tag-neutral' : 'tag-positive'}">${isCore ? '🛡️ Core' : '⚡ Satélite'}</span>
+                <span class="tag ${isCore ? 'tag-neutral' : 'tag-positive'}">${isCore ? '🛡️ Core' : '⚡ Satélite'}${isCore ? ENGINE_TOOLTIPS.core : ENGINE_TOOLTIPS.satellite}</span>
             </div>
             <p class="hint">${subtitle}</p>
             ${eventNote ? `<p class="hint cell-warning">${eventNote}</p>` : ''}
@@ -123,6 +156,37 @@ function opportunityCardHtml(sig, enginePct, isCore, eventRiskNotes) {
     `;
 }
 
+// Fila equivalente de opportunityCardHtml para la vista de lista (ver
+// conversación) -- mismos datos, 5 columnas comunes a todos los *RowHtml
+// (Instrumento/Motor/Detalle/Monto sugerido/Acciones) para que una sola
+// tabla pueda listar las 7 estrategias juntas sin columnas vacías por tipo.
+function opportunityRowHtml(sig, enginePct, isCore, eventRiskNotes) {
+    const amount = suggestedAmount(sig.position_weight, enginePct);
+    const subtitle = isCore
+        ? `Score ${fmt(sig.efficiency_score, 1)} · Dispersión ${fmt(sig.dispersion_ratio, 3)}`
+        : (sig.tactics || []).join(', ');
+    const detailHref = `#detalle/${encodeURIComponent(sig.symbol)}`;
+    const eventNote = eventRiskNotes?.[sig.symbol];
+    return `
+        <tr>
+            <td><a href="${detailHref}" class="table-link">${sig.symbol}</a></td>
+            <td><span class="tag ${isCore ? 'tag-neutral' : 'tag-positive'}">${isCore ? '🛡️ Core' : '⚡ Satélite'}${isCore ? ENGINE_TOOLTIPS.core : ENGINE_TOOLTIPS.satellite}</span></td>
+            <td>
+                <div class="hint">${subtitle}</div>
+                <div>Entrada ${dualPrice(sig.entry_price_usd, sig.entry_price_ars)} · <span class="cell-positive">TP ${dualPrice(sig.take_profit_price_usd, sig.take_profit_price_ars)} (+${fmt(sig.take_profit_pct, 1)}%)</span> · <span class="cell-negative">Stop ${dualPrice(sig.initial_stop_price_usd, sig.initial_stop_price_ars)} (-${fmt(sig.initial_stop_pct, 1)}%)</span></div>
+                ${eventNote ? `<div class="hint cell-warning">${eventNote}</div>` : ''}
+            </td>
+            <td class="num">${amount !== null ? fmtMoney(amount) : '—'}${suggestedAmountTooltip(isCore)}</td>
+            <td>
+                <div class="opportunity-card-actions">
+                    <a href="${detailHref}" class="btn btn-secondary">Ver Gráfico</a>
+                    <button type="button" class="btn btn-primary opportunity-paper-trading-btn">Operar en Paper Trading</button>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
 // Pairs Trading (ver conversacion, portfolio/pairs_trading.py) -- esta app
 // no soporta venta en corto real (ver portfolio/backtest.py::summarize),
 // asi que la pata "cara" del par solo es operable de verdad si ya se tiene
@@ -134,17 +198,34 @@ function pairCardHtml(sig) {
         <div class="opportunity-card">
             <div class="opportunity-card-head">
                 <span class="opportunity-card-symbol">${sig.pair[0]} / ${sig.pair[1]}</span>
-                <span class="tag tag-neutral">📊 Pairs</span>
+                <span class="tag tag-neutral">📊 Pairs${ENGINE_TOOLTIPS.pairs}</span>
             </div>
             <p class="hint">Z-score ${fmt(sig.zscore, 2)} · Cointegración p=${fmt(sig.cointegration_pvalue, 3)} · Hedge ratio ${fmt(sig.hedge_ratio, 3)}</p>
             <div class="opportunity-card-prices">
                 <div><span class="l">Comprar (barata)</span><span class="v cell-positive">${cheap.symbol}</span></div>
                 <div><span class="l">${expensive.actionable ? 'Vender (cara, en cartera)' : 'Cara (informativo)'}</span>
                      <span class="v ${expensive.actionable ? 'cell-negative' : ''}">${expensive.symbol}${expensive.actionable ? '' : ' ⓘ'}</span></div>
-                <div><span class="l">Monto sugerido</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
+                <div><span class="l">Monto sugerido${infoTooltipHtml('<div>Capital asignado a Pairs Trading (ver Ajustes → Estrategia y Motores), completo para esta oportunidad.</div>')}</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
             </div>
             <p class="hint">${expensive.note}</p>
         </div>
+    `;
+}
+
+function pairRowHtml(sig) {
+    const { cheap_leg: cheap, expensive_leg: expensive } = sig;
+    return `
+        <tr>
+            <td>${sig.pair[0]} / ${sig.pair[1]}</td>
+            <td><span class="tag tag-neutral">📊 Pairs${ENGINE_TOOLTIPS.pairs}</span></td>
+            <td>
+                <div class="hint">Z-score ${fmt(sig.zscore, 2)} · Cointegración p=${fmt(sig.cointegration_pvalue, 3)} · Hedge ratio ${fmt(sig.hedge_ratio, 3)}</div>
+                <div><span class="cell-positive">Comprar ${cheap.symbol}</span> · <span class="${expensive.actionable ? 'cell-negative' : ''}">${expensive.actionable ? 'Vender' : 'Cara (informativo)'} ${expensive.symbol}</span></div>
+                <div class="hint">${expensive.note}</div>
+            </td>
+            <td class="num">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}${infoTooltipHtml('<div>Capital asignado a Pairs Trading (ver Ajustes → Estrategia y Motores), completo para esta oportunidad.</div>')}</td>
+            <td>—</td>
+        </tr>
     `;
 }
 
@@ -157,13 +238,26 @@ function factorCardHtml(sig) {
         <div class="opportunity-card">
             <div class="opportunity-card-head">
                 <a href="#detalle/${encodeURIComponent(sig.symbol)}" class="opportunity-card-symbol table-link">${sig.symbol}</a>
-                <span class="tag tag-neutral">🔄 Factor #${sig.rank}</span>
+                <span class="tag tag-neutral">🔄 Factor #${sig.rank}${ENGINE_TOOLTIPS.factor}</span>
             </div>
             <p class="hint">Composite ${fmt(sig.composite_score, 2)} · Momentum ${fmtPct(sig.momentum_raw)} · Low-Vol ${fmt(sig.low_vol_raw, 3)} · Value ${valueLabel}</p>
             <div class="opportunity-card-prices">
-                <div><span class="l">Monto sugerido</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
+                <div><span class="l">Monto sugerido${infoTooltipHtml('<div>Capital asignado a Factor Investing (ver Ajustes → Estrategia y Motores), repartido en partes iguales entre los instrumentos del Top N de esta rotación.</div>')}</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
             </div>
         </div>
+    `;
+}
+
+function factorRowHtml(sig) {
+    const valueLabel = sig.value_raw !== null && sig.value_raw !== undefined ? fmt(sig.value_raw, 3) : '—';
+    return `
+        <tr>
+            <td><a href="#detalle/${encodeURIComponent(sig.symbol)}" class="table-link">${sig.symbol}</a></td>
+            <td><span class="tag tag-neutral">🔄 Factor #${sig.rank}${ENGINE_TOOLTIPS.factor}</span></td>
+            <td class="hint">Composite ${fmt(sig.composite_score, 2)} · Momentum ${fmtPct(sig.momentum_raw)} · Low-Vol ${fmt(sig.low_vol_raw, 3)} · Value ${valueLabel}</td>
+            <td class="num">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}${infoTooltipHtml('<div>Capital asignado a Factor Investing (ver Ajustes → Estrategia y Motores), repartido en partes iguales entre los instrumentos del Top N de esta rotación.</div>')}</td>
+            <td><a href="#detalle/${encodeURIComponent(sig.symbol)}" class="btn btn-secondary">Ver Gráfico</a></td>
+        </tr>
     `;
 }
 
@@ -175,7 +269,7 @@ function arbitrageCardHtml(sig) {
         <div class="opportunity-card">
             <div class="opportunity-card-head">
                 <span class="opportunity-card-symbol">${sig.pair[0]} / ${sig.pair[1]}</span>
-                <span class="tag tag-neutral">🔀 Canje</span>
+                <span class="tag tag-neutral">🔀 Canje${ENGINE_TOOLTIPS.arbitrage}</span>
             </div>
             <p class="hint">Z-score ${fmt(sig.zscore, 2)} · Brecha ${fmtPct(sig.brecha_pct)}</p>
             <div class="opportunity-card-prices">
@@ -187,13 +281,29 @@ function arbitrageCardHtml(sig) {
     `;
 }
 
+function arbitrageRowHtml(sig) {
+    return `
+        <tr>
+            <td>${sig.pair[0]} / ${sig.pair[1]}</td>
+            <td><span class="tag tag-neutral">🔀 Canje${ENGINE_TOOLTIPS.arbitrage}</span></td>
+            <td>
+                <div class="hint">Z-score ${fmt(sig.zscore, 2)} · Brecha ${fmtPct(sig.brecha_pct)}</div>
+                <div><span class="cell-positive">Barato vía ${sig.cheap_leg}</span> · <span class="cell-negative">Caro vía ${sig.expensive_leg}</span></div>
+                <div class="hint">${sig.note}</div>
+            </td>
+            <td>—</td>
+            <td>—</td>
+        </tr>
+    `;
+}
+
 // Dólar Sintético / Futuros ROFEX (ver conversacion, portfolio/synthetic_dollar.py)
 function syntheticDollarCardHtml(sig) {
     return `
         <div class="opportunity-card">
             <div class="opportunity-card-head">
                 <span class="opportunity-card-symbol">${sig.contract}</span>
-                <span class="tag tag-positive">💵 Dólar Sintético</span>
+                <span class="tag tag-positive">💵 Dólar Sintético${ENGINE_TOOLTIPS.syntheticDollar}</span>
             </div>
             <p class="hint">Vencimiento ${fmtDate(sig.maturity_date)}</p>
             <div class="opportunity-card-prices">
@@ -206,6 +316,22 @@ function syntheticDollarCardHtml(sig) {
     `;
 }
 
+function syntheticDollarRowHtml(sig) {
+    return `
+        <tr>
+            <td>${sig.contract}</td>
+            <td><span class="tag tag-positive">💵 Dólar Sintético${ENGINE_TOOLTIPS.syntheticDollar}</span></td>
+            <td>
+                <div class="hint">Vencimiento ${fmtDate(sig.maturity_date)}</div>
+                <div>Implícita <span class="cell-positive">${fmtPct(sig.implied_tna_pct)} TNA</span> · Caución+margen ${fmtPct(sig.caucion_tna_pct + sig.margin_pct)} TNA · Spread <span class="cell-positive">${fmtPct(sig.spread_pct)}</span></div>
+                <div class="hint">${sig.note}</div>
+            </td>
+            <td>—</td>
+            <td>—</td>
+        </tr>
+    `;
+}
+
 // Renta Fija: rotacion LECAP/CER (ver conversacion, portfolio/fixed_income.py::compute_carry_trade_rotation_signals)
 function fixedIncomeCarryCardHtml(sig) {
     const betterSymbol = sig.better === 'LECAP' ? sig.lecap_symbol : sig.cer_symbol;
@@ -213,7 +339,7 @@ function fixedIncomeCarryCardHtml(sig) {
         <div class="opportunity-card">
             <div class="opportunity-card-head">
                 <span class="opportunity-card-symbol">${sig.lecap_symbol} / ${sig.cer_symbol}</span>
-                <span class="tag tag-neutral">🔁 ${sig.bucket_label}</span>
+                <span class="tag tag-neutral">🔁 ${sig.bucket_label}${ENGINE_TOOLTIPS.fixedIncomeCarry}</span>
             </div>
             <p class="hint">TEM LECAP ${fmtPct(sig.lecap_tem_pct)} · TEM CER (nominal) ${fmtPct(sig.cer_tem_nominal_pct)}</p>
             <div class="opportunity-card-prices">
@@ -225,55 +351,97 @@ function fixedIncomeCarryCardHtml(sig) {
     `;
 }
 
+function fixedIncomeCarryRowHtml(sig) {
+    const betterSymbol = sig.better === 'LECAP' ? sig.lecap_symbol : sig.cer_symbol;
+    return `
+        <tr>
+            <td>${sig.lecap_symbol} / ${sig.cer_symbol}</td>
+            <td><span class="tag tag-neutral">🔁 ${sig.bucket_label}${ENGINE_TOOLTIPS.fixedIncomeCarry}</span></td>
+            <td>
+                <div class="hint">TEM LECAP ${fmtPct(sig.lecap_tem_pct)} · TEM CER (nominal) ${fmtPct(sig.cer_tem_nominal_pct)}</div>
+                <div>Rota hacia <span class="cell-positive">${sig.better} (${betterSymbol})</span> · Spread mensual ${fmtPct(sig.spread_pct)}</div>
+                <div class="hint">${sig.note}</div>
+            </td>
+            <td>—</td>
+            <td>—</td>
+        </tr>
+    `;
+}
+
 function renderOpportunityCards() {
     const container = $('dual-engine-signals-container');
+    const lastUpdatedSlot = $('dual-engine-last-updated');
     if (!container) return;
     if (!lastSignals) {
         container.innerHTML = '<p class="table-empty">Todavía no se consultaron las señales de hoy.</p>';
+        if (lastUpdatedSlot) lastUpdatedSlot.textContent = '';
         return;
     }
     const eventRiskNotes = lastSignals.event_risk_notes || {};
-    const coreCards = lastSignals.core_signals.map((s) => opportunityCardHtml(s, allocation.core_pct, true, eventRiskNotes));
-    const satelliteCards = lastSignals.satellite_signals.map((s) => opportunityCardHtml(s, allocation.satellite_pct, false, eventRiskNotes));
-    const pairCards = (lastSignals.pairs_signals || []).map((s) => pairCardHtml(s));
-    const factorCards = (lastSignals.factor_signals || []).map((s) => factorCardHtml(s));
-    const arbitrageCards = (lastSignals.arbitrage_signals || []).map((s) => arbitrageCardHtml(s));
-    const syntheticDollarCards = (lastSignals.synthetic_dollar_signals || []).map((s) => syntheticDollarCardHtml(s));
-    const fixedIncomeCards = (lastSignals.fixed_income_signals || []).map((s) => fixedIncomeCarryCardHtml(s));
-    const allCards = [
-        ...coreCards, ...satelliteCards, ...pairCards, ...factorCards,
-        ...arbitrageCards, ...syntheticDollarCards, ...fixedIncomeCards,
+    const htmlFn = opportunitiesView === 'list' ? opportunityRowHtml : opportunityCardHtml;
+    const pairFn = opportunitiesView === 'list' ? pairRowHtml : pairCardHtml;
+    const factorFn = opportunitiesView === 'list' ? factorRowHtml : factorCardHtml;
+    const arbitrageFn = opportunitiesView === 'list' ? arbitrageRowHtml : arbitrageCardHtml;
+    const syntheticDollarFn = opportunitiesView === 'list' ? syntheticDollarRowHtml : syntheticDollarCardHtml;
+    const fixedIncomeFn = opportunitiesView === 'list' ? fixedIncomeCarryRowHtml : fixedIncomeCarryCardHtml;
+    const coreItems = lastSignals.core_signals.map((s) => htmlFn(s, allocation.core_pct, true, eventRiskNotes));
+    const satelliteItems = lastSignals.satellite_signals.map((s) => htmlFn(s, allocation.satellite_pct, false, eventRiskNotes));
+    const pairItems = (lastSignals.pairs_signals || []).map((s) => pairFn(s));
+    const factorItems = (lastSignals.factor_signals || []).map((s) => factorFn(s));
+    const arbitrageItems = (lastSignals.arbitrage_signals || []).map((s) => arbitrageFn(s));
+    const syntheticDollarItems = (lastSignals.synthetic_dollar_signals || []).map((s) => syntheticDollarFn(s));
+    const fixedIncomeItems = (lastSignals.fixed_income_signals || []).map((s) => fixedIncomeFn(s));
+    const allItems = [
+        ...coreItems, ...satelliteItems, ...pairItems, ...factorItems,
+        ...arbitrageItems, ...syntheticDollarItems, ...fixedIncomeItems,
     ];
 
+    // Notas de régimen (ver conversación: estaban como texto suelto antes de
+    // la grilla de KPIs, "colgadas" sin jerarquía visual) -- ahora son un
+    // status banner real (mismo componente que los mensajes de éxito/error
+    // de la app), pegado arriba de las tarjetas/lista en vez de flotar entre
+    // el botón de refresco y los KPIs.
     let note = '';
     if (!lastSignals.spy_above_ema50) {
-        note += '<p class="panel-note">SPY está por debajo de su propia EMA(50) — filtro de régimen no favorable: el Motor Core no opera hoy, el capital queda 100% en Caución.</p>';
+        note += '<div class="status warning show">SPY está por debajo de su propia EMA(50) — filtro de régimen no favorable: el Motor Core no opera hoy, el capital queda 100% en Caución.</div>';
     }
     if (lastSignals.market_regime === 'alta_volatilidad') {
-        note += '<p class="panel-note">Régimen de alta volatilidad (VIX disparado) — el Motor Satélite no abre posiciones nuevas hoy.</p>';
+        note += '<div class="status warning show">Régimen de alta volatilidad (VIX disparado) — el Motor Satélite no abre posiciones nuevas hoy.</div>';
     }
 
     // run_at (ver conversación, Fase 7): ahora que esto viene de una caché
     // por día hábil (dual_engine_signals_cache), nunca más "recién
     // calculado" por default -- sin este timestamp no había forma de saber
-    // si lo que se ve es de hace 2 minutos o de la mañana.
-    const runAtHint = lastSignals.run_at
-        ? `<p class="hint">Última actualización: ${new Date(lastSignals.run_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${lastSignals.cached ? '' : ' (recién calculado)'}</p>`
-        : '';
+    // si lo que se ve es de hace 2 minutos o de la mañana. Vive en el
+    // view-toolbar (junto al botón "Actualizar"), no flotando arriba de los
+    // KPIs (ver conversación: estaba "colgado" sin relación visual con nada).
+    if (lastUpdatedSlot) {
+        lastUpdatedSlot.textContent = lastSignals.run_at
+            ? `Última actualización: ${new Date(lastSignals.run_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}${lastSignals.cached ? '' : ' (recién calculado)'}`
+            : '';
+    }
+
+    const itemsHtml = allItems.length
+        ? (opportunitiesView === 'list'
+            ? `<div class="table-scroll"><table>
+                <thead><tr>
+                    <th>Instrumento</th><th>Motor</th><th>Detalle</th><th>Monto sugerido</th><th>Acciones</th>
+                </tr></thead>
+                <tbody>${allItems.join('')}</tbody>
+            </table></div>`
+            : `<div class="opportunity-cards-grid">${allItems.join('')}</div>`)
+        : '<p class="table-empty">Ninguna oportunidad hoy — el capital queda en Caución.</p>';
 
     container.innerHTML = `
-        ${runAtHint}
         <div class="mini-stat-grid row">
             <div class="mini-stat"><div class="l">Capital Core</div><div class="v">${fmtMoney(lastSignals.core_capital_ars)}</div></div>
             <div class="mini-stat"><div class="l">Capital Satélite</div><div class="v">${fmtMoney(lastSignals.satellite_capital_ars)}</div></div>
             <div class="mini-stat"><div class="l">Capital Pairs</div><div class="v">${fmtMoney(lastSignals.pairs_capital_ars)}</div></div>
             <div class="mini-stat"><div class="l">Capital Factor</div><div class="v">${fmtMoney(lastSignals.factor_capital_ars)}</div></div>
-            <div class="mini-stat"><div class="l">Oportunidades hoy</div><div class="v num">${allCards.length}</div></div>
+            <div class="mini-stat"><div class="l">Oportunidades hoy</div><div class="v num">${allItems.length}</div></div>
         </div>
         ${note}
-        ${allCards.length
-            ? `<div class="opportunity-cards-grid">${allCards.join('')}</div>`
-            : '<p class="table-empty">Ninguna oportunidad hoy — el capital queda en Caución.</p>'}
+        ${itemsHtml}
     `;
 }
 
@@ -399,6 +567,17 @@ export function initCoreSatelliteView() {
 
     const refreshBtn = $('refresh-dual-engine-signals-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', () => loadSignals(true));
+
+    const viewToggle = $('dual-engine-view-toggle');
+    if (viewToggle) {
+        viewToggle.addEventListener('click', (e) => {
+            const btn = e.target.closest('.segmented-toggle-option');
+            if (!btn || btn.dataset.view === opportunitiesView) return;
+            opportunitiesView = btn.dataset.view;
+            viewToggle.querySelectorAll('.segmented-toggle-option').forEach((b) => b.classList.toggle('active', b === btn));
+            renderOpportunityCards();
+        });
+    }
 
     const signalsContainer = $('dual-engine-signals-container');
     if (signalsContainer) {

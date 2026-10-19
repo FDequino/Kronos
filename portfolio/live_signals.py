@@ -21,6 +21,8 @@ Telegram muestren la equivalencia real al precio que se opera en el broker
 (ARS en BYMA para accion/cedear), sin que la moneda de ANALISIS deje de ser
 USD. ccl_rate expone el tipo de cambio usado para esa conversion puntual,
 nunca oculto."""
+import concurrent.futures
+
 import numpy as np
 
 from portfolio import config as capital_config
@@ -438,29 +440,66 @@ def compute_fixed_income_carry_signals(conn):
     return {"signals": rotation}
 
 
+def _with_own_connection(fn, *args, **kwargs):
+    """Corre `fn(conn, *args, **kwargs)` con una conexion sqlite PROPIA de este
+    thread -- sqlite3.connect() default es check_same_thread=True, asi que la
+    `conn` del caller (de otro thread) no se puede reusar aca. Exclusivo del
+    paralelizado de compute_today_signals de abajo."""
+    conn = db.get_connection()
+    try:
+        return fn(conn, *args, **kwargs)
+    finally:
+        conn.close()
+
+
 def compute_today_signals(conn, client, universe=UNIVERSE, account_value=None):
-    """Punto de entrada unico para GET /api/signals y /signals de Telegram."""
-    core = compute_core_signals(conn, client, universe=universe, account_value=account_value)
-    satellite = compute_satellite_signals(conn, universe=universe, account_value=account_value)
-    pairs = compute_pairs_signals(conn, account_value=account_value)
-    factor = compute_factor_signals(conn, account_value=account_value)
-    arbitrage_result = compute_arbitrage_signals()
-    synthetic_dollar_result = compute_synthetic_dollar_signals(conn)
-    fixed_income_result = compute_fixed_income_carry_signals(conn)
+    """Punto de entrada unico para GET /api/signals y /signals de Telegram.
+
+    Paralelizado (ver conversacion, "por que Decisiones es tan lenta"): los 7
+    motores/alertas de abajo son independientes entre si y cada uno hace su
+    propio I/O de red (yfinance/data912/dolarapi -- Core ademas consulta al
+    Motor Cuantitativo Kronos) -- antes corrian en serie, uno atras del otro,
+    asi que el tiempo total era la SUMA de los 7 (medido en vivo: >90s con
+    una sola dependencia lenta). Correrlos en threads hace que el tiempo
+    total sea el del mas lento, no la suma. Cada thread abre su propia
+    conexion sqlite (ver _with_own_connection) -- nunca comparten `conn`."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=7) as pool:
+        core_future = pool.submit(_with_own_connection, compute_core_signals, client, universe=universe, account_value=account_value)
+        satellite_future = pool.submit(_with_own_connection, compute_satellite_signals, universe=universe, account_value=account_value)
+        pairs_future = pool.submit(_with_own_connection, compute_pairs_signals, account_value=account_value)
+        factor_future = pool.submit(_with_own_connection, compute_factor_signals, account_value=account_value)
+        arbitrage_future = pool.submit(compute_arbitrage_signals)
+        synthetic_dollar_future = pool.submit(_with_own_connection, compute_synthetic_dollar_signals)
+        fixed_income_future = pool.submit(_with_own_connection, compute_fixed_income_carry_signals)
+
+        core = core_future.result()
+        satellite = satellite_future.result()
+        pairs = pairs_future.result()
+        factor = factor_future.result()
+        arbitrage_result = arbitrage_future.result()
+        synthetic_dollar_result = synthetic_dollar_future.result()
+        fixed_income_result = fixed_income_future.result()
 
     # Notas del Agente NLP (ver conversacion, portfolio/nlp_agent.py) -- SOLO
     # para los tickers que de verdad aparecen en una señal de hoy (no todo el
     # universo: evita llamadas a yfinance/LLM para tickers sin señal, que ya
     # fue el Satelite el que los filtro si corresponde). Usa el cache diario
     # de assess_event_risk, asi que esto no pega a yfinance de nuevo si
-    # compute_satellite_signals ya lo hizo mas arriba para ese ticker.
+    # compute_satellite_signals ya lo hizo mas arriba para ese ticker. Tambien
+    # paralelizado -- un cache-miss de noticias/LLM por simbolo es la misma
+    # clase de I/O lento que los motores de arriba.
     signaled_symbols = {s["symbol"] for s in core["signals"]} | {s["symbol"] for s in satellite["signals"]}
     event_risk_notes = {}
-    for symbol in signaled_symbols:
-        assessment = nlp_agent.assess_event_risk(conn, symbol)
-        note = nlp_agent.event_risk_note(assessment)
-        if note:
-            event_risk_notes[symbol] = note
+    if signaled_symbols:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(len(signaled_symbols), 8)) as pool:
+            futures_by_symbol = {
+                symbol: pool.submit(_with_own_connection, nlp_agent.assess_event_risk, symbol)
+                for symbol in signaled_symbols
+            }
+            for symbol, future in futures_by_symbol.items():
+                note = nlp_agent.event_risk_note(future.result())
+                if note:
+                    event_risk_notes[symbol] = note
 
     return {
         "core_signals": core["signals"],
