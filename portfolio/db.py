@@ -333,6 +333,15 @@ def _migrate(conn):
         conn.execute("ALTER TABLE signal_config ADD COLUMN anthropic_api_key TEXT")
         conn.commit()
 
+    # Interruptor maestro de ejecucion real de ordenes (ver conversacion,
+    # portfolio/broker_client.py::ensure_auto_trading_enabled) -- arranca
+    # en 0 para instalaciones existentes, mismo criterio que toda columna
+    # nueva de seguridad: nunca default-habilitada.
+    app_settings_cols = {row["name"] for row in conn.execute("PRAGMA table_info(app_settings)").fetchall()}
+    if "auto_trading_enabled" not in app_settings_cols:
+        conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_enabled INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+
     # Pairs Trading / Factor Investing (ver conversacion) -- asignacion
     # NOMINAL/informativa para las tarjetas de estos 2 motores nuevos, nunca
     # mezclada con core_allocation_pct (ese 100% sigue siendo exclusivo de

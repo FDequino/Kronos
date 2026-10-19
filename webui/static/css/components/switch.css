@@ -41,3 +41,10 @@
 .switch input:checked + .switch-track .switch-thumb {
     transform: translateX(16px);
 }
+
+/* Variante para interruptores de alto riesgo (ver conversación: ejecución
+   real de órdenes) -- encendido se ve rojo/alerta, nunca el mismo azul de
+   un toggle inocuo (ajuste por inflación, Paper Trading, etc.). */
+.switch.switch-danger input:checked + .switch-track {
+    background: var(--negative);
+}

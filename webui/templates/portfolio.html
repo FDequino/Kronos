@@ -574,6 +574,30 @@
             </div>
         </div>
 
+        <!-- Interruptor maestro de ejecución real (ver conversación,
+             "diseñemos el interruptor" -- diseñado a propósito ANTES de que
+             exista código que ejecute una orden real contra un bróker, ver
+             portfolio/broker_client.py::ensure_auto_trading_enabled). Hoy
+             no tiene ningún consumidor -- es la base de seguridad para
+             cuando se construya esa función. -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Ejecución Real de Órdenes</h2>
+                    <p class="panel-subtitle">Hoy ningún código de Kronos ejecuta una orden real — "Aceptar" en una Propuesta solo precarga un formulario que cargás a mano, la compra/venta la seguís apretando vos en la app del bróker. Este interruptor es el gate de seguridad para el día que se construya ejecución automática: arranca apagado por diseño, y cualquier código futuro de órdenes va a tener que chequearlo explícitamente antes de poder mandar algo real.</p>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="field-row" style="align-items: center;">
+                    <label class="switch switch-danger">
+                        <input type="checkbox" id="auto-trading-enabled-switch">
+                        <span class="switch-track"><span class="switch-thumb"></span></span>
+                    </label>
+                    <span class="hint" id="auto-trading-status-label"></span>
+                </div>
+            </div>
+        </div>
+
         <div class="panel">
             <div class="panel-header">
                 <div class="panel-header-text">

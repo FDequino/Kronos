@@ -39,7 +39,20 @@ Arquitectura: cada broker implementa la MISMA interfaz (BrokerAdapter:
 test_connection/get_balance/get_holdings) para que MultiBrokerManager
 pueda agregar entre todos sin conocer el detalle de cada uno -- agregar un
 broker real nuevo en el futuro es escribir UN adapter más, nunca tocar el
-manager."""
+manager.
+
+INTERRUPTOR MAESTRO DE EJECUCION REAL (ver conversación, "diseñemos el
+interruptor" -- diseñado a propósito ANTES de que exista ninguna función
+que ejecute una orden real; hoy BrokerAdapter solo tiene test_connection/
+get_balance/get_holdings, las tres de solo lectura -- "operar de verdad"
+sigue siendo 100% manual, ver proposals.js::accept). El día que se agregue
+`place_order`/`confirm_order` a algún adapter, esa función (y la ruta HTTP
+que la exponga) DEBE empezar llamando ensure_auto_trading_enabled(conn) y
+dejar que la excepción se propague si no está habilitado -- nunca envuelta
+en un try/except silencioso, nunca asumido encendido. app_settings.auto_trading_enabled
+arranca en 0 (ver schema.sql) y se prende a mano desde Ajustes >
+Integraciones -- este módulo es el único lugar que lo chequea, para que no
+haya un segundo camino que lo pase por alto."""
 import requests
 
 from portfolio import db
@@ -47,6 +60,24 @@ from portfolio import db
 CONNECTION_OK = "ok"
 CONNECTION_FAILED = "failed"
 CONNECTION_PENDING = "pending_integration"
+
+
+class AutoTradingDisabledError(Exception):
+    """Ver INTERRUPTOR MAESTRO DE EJECUCION REAL en el docstring del módulo."""
+
+
+def ensure_auto_trading_enabled(conn):
+    """Punto único de chequeo para CUALQUIER código futuro que vaya a
+    ejecutar una orden real contra un bróker. Sin caller todavía (no existe
+    código de ejecución real aún) -- existe para que, el día que se escriba
+    esa primera línea, el gate ya esté ahí en vez de tener que acordarse de
+    agregarlo bajo presión."""
+    settings = db.get_app_settings(conn)
+    if not settings.get("auto_trading_enabled"):
+        raise AutoTradingDisabledError(
+            "Ejecución real de órdenes deshabilitada -- activala en Ajustes > Integraciones "
+            "si de verdad querés que este código mande una orden real a un bróker."
+        )
 
 BROKER_NAMES = ("PPI", "IOL", "Balanz", "Matrix")
 

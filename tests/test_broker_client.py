@@ -217,3 +217,23 @@ def test_unified_holdings_broker_sin_documentacion_queda_como_error(manager, tem
 def test_unified_balance_sin_ninguna_cuenta_devuelve_lista_vacia(manager, temp_db):
     result = manager.get_unified_balance(temp_db)
     assert result == {"accounts": []}
+
+
+# --- interruptor maestro de ejecución real (ver conversación) -----------------
+
+def test_auto_trading_arranca_deshabilitado_por_default(temp_db):
+    assert db.get_app_settings(temp_db)["auto_trading_enabled"] == 0
+    with pytest.raises(broker_client.AutoTradingDisabledError):
+        broker_client.ensure_auto_trading_enabled(temp_db)
+
+
+def test_auto_trading_no_tira_una_vez_habilitado(temp_db):
+    db.update_app_settings(temp_db, auto_trading_enabled=1)
+    broker_client.ensure_auto_trading_enabled(temp_db)  # no debe levantar nada
+
+
+def test_auto_trading_se_puede_volver_a_apagar(temp_db):
+    db.update_app_settings(temp_db, auto_trading_enabled=1)
+    db.update_app_settings(temp_db, auto_trading_enabled=0)
+    with pytest.raises(broker_client.AutoTradingDisabledError):
+        broker_client.ensure_auto_trading_enabled(temp_db)

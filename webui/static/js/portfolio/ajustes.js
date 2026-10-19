@@ -293,6 +293,44 @@ function openAddTelegramUserModal() {
     });
 }
 
+// Interruptor maestro de ejecución real (ver conversación, "diseñemos el
+// interruptor" -- portfolio/broker_client.py::ensure_auto_trading_enabled
+// es el único punto que lo chequea; esto solo lo prende/apaga). Vive en
+// app_settings (api.settings/updateSettings), no en signal_config -- es un
+// gate de "qué puede hacer esta instalación", no un parámetro de estrategia.
+async function loadAutoTradingControl() {
+    const { data: settings } = await api.settings();
+    const enabled = !!settings.auto_trading_enabled;
+    $('auto-trading-enabled-switch').checked = enabled;
+    $('auto-trading-status-label').textContent = enabled
+        ? 'Ejecución real: ENCENDIDA'
+        : 'Ejecución real: Apagada — hoy no hay ningún código que la use todavía.';
+}
+
+function initAutoTradingControl() {
+    $('auto-trading-enabled-switch').addEventListener('change', async (e) => {
+        // Encender pide confirmación explícita (apagar nunca, siempre es
+        // seguro apagar de una) -- este interruptor no hace nada todavía,
+        // pero la fricción tiene que estar desde el día uno, no agregarse
+        // recién cuando haya código real del otro lado.
+        if (e.target.checked) {
+            const confirmed = confirm(
+                'Vas a encender el interruptor maestro de ejecución real de órdenes.\n\n' +
+                'Hoy ningún código de Kronos lo usa todavía (no hay ejecución automática construida), ' +
+                'pero esto es exactamente lo que cualquier función futura de "mandar una orden real" ' +
+                'va a chequear antes de operar.\n\n¿Confirmás?'
+            );
+            if (!confirmed) {
+                e.target.checked = false;
+                return;
+            }
+        }
+        await api.updateSettings({ auto_trading_enabled: e.target.checked ? 1 : 0 });
+        await loadAutoTradingControl();
+        showStatus('status-banner', 'success', e.target.checked ? 'Ejecución real ACTIVADA.' : 'Ejecución real desactivada.');
+    });
+}
+
 // --- Bloque 3: Preferencias Generales y Moneda ------------------------------
 
 function setAjustesCurrencyActive(currency) {
@@ -475,6 +513,9 @@ export function initAjustesView() {
     if (addUserBtn) addUserBtn.addEventListener('click', () => openAddTelegramUserModal());
     $('telegram-test-message-btn').addEventListener('click', sendTelegramTestMessage);
     loadTelegramBotStatus();
+
+    initAutoTradingControl();
+    loadAutoTradingControl();
 
     initPreferencesControls();
     loadPreferencesControls();

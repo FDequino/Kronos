@@ -385,6 +385,14 @@ CREATE TABLE IF NOT EXISTS app_settings (
     -- inflacion acumulada (ver portfolio/history.py::adjust_for_inflation).
     -- Se ignora si display_currency = 'USD'.
     ars_inflation_adjusted INTEGER NOT NULL DEFAULT 0,
+    -- Interruptor maestro de ejecucion real de ordenes (ver conversacion,
+    -- "diseñemos el interruptor" -- disenado ANTES de que exista ninguna
+    -- funcion que ejecute una orden real, a proposito). Arranca en 0 y se
+    -- queda en 0 hasta que el usuario lo prenda a mano desde Ajustes >
+    -- Integraciones -- ver portfolio/broker_client.py::ensure_auto_trading_enabled,
+    -- el punto unico de chequeo que CUALQUIER codigo futuro de ordenes
+    -- tiene que llamar primero.
+    auto_trading_enabled INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);
