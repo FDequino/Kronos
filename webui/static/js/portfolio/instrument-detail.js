@@ -15,6 +15,7 @@ import { EDGE_SIGNIFICANT_PTS } from './technical-signal.js';
 import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { headerCellHtml, updateSortIndicators } from '../shared/table-chrome.js';
 import { loadingHtml } from '../shared/loading.js';
+import { openModal, closeModal } from '../shared/modal.js';
 
 const SIGNAL_LABEL = { comprar: 'Comprar', mantener: 'Mantener', vender: 'Vender' };
 // tag-signal-buy/sell (acento), nunca tag-positive/tag-negative -- es una
@@ -717,21 +718,57 @@ function fundamentalsHtml(data, config) {
 // (portfolio/nlp_agent.py::assess_event_risk), nunca una fuente separada.
 const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 'tag-negative' };
 
-// Cada titular es {"title", "url"} desde el backend (ver conversación:
-// "debo poder entrar a las mismas"). El titular se muestra como texto
-// (no como link) y el link queda aparte, como "Fuente" corto (ver
-// conversación: "quiero que estén escritas ahí y que el link sea de fuente
-// nada más") -- headlines viejos ya persistidos como string antes de este
-// cambio, o sin url, se muestran sin el link de fuente.
-function headlineItemHtml(h) {
+const IMPACT_TAG_CLASS = { positivo: 'tag-positive', negativo: 'tag-negative', neutral: 'tag-neutral' };
+
+// Cada titular es {"title", "url", "summary", "source", "published_at",
+// "impact_score", "impact_direction", "impact_magnitude"} desde el backend
+// (ver conversación: "debo poder entrar a las mismas" / "no puedo entrar a
+// la tarjeta o fila... quiero que esté el impacto"). El titular se muestra
+// como texto (no como link), el link de fuente queda aparte y chico, y
+// hacer click en la fila abre un detalle con resumen + impacto estimado --
+// headlines viejos ya persistidos como string, o sin esos campos, degradan
+// a "sin evaluar" en el modal, nunca rompen el render.
+function headlineItemHtml(h, idx) {
     const title = typeof h === 'object' && h !== null ? h.title : h;
     const url = typeof h === 'object' && h !== null ? h.url : null;
     return `
-        <li class="detail-news-item">
+        <li class="detail-news-item" data-headline-idx="${idx}">
             <span class="detail-news-title" title="${title}">${title}</span>
             ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="detail-news-source-link">Fuente ↗</a>` : ''}
         </li>
     `;
+}
+
+function newsDetailModalHtml(h) {
+    const title = typeof h === 'object' && h !== null ? h.title : h;
+    const url = typeof h === 'object' && h !== null ? h.url : null;
+    const summary = typeof h === 'object' && h !== null ? h.summary : null;
+    const source = typeof h === 'object' && h !== null ? h.source : null;
+    const publishedAt = typeof h === 'object' && h !== null ? h.published_at : null;
+    const direction = typeof h === 'object' && h !== null ? h.impact_direction : null;
+    const magnitude = typeof h === 'object' && h !== null ? h.impact_magnitude : null;
+    const metaParts = [source, publishedAt ? fmtDateTime(publishedAt) : null].filter(Boolean);
+    const impactHtml = direction
+        ? `<p><span class="tag ${IMPACT_TAG_CLASS[direction] || 'tag-neutral'}">${direction.toUpperCase()}</span> <span class="hint">impacto estimado: ${magnitude}</span></p>`
+        : '<p class="hint">Impacto no evaluado para este titular (guardado antes de este análisis).</p>';
+    return `
+        <h3 style="margin:0 0 8px;">${title}</h3>
+        ${metaParts.length ? `<p class="hint">${metaParts.join(' · ')}</p>` : ''}
+        ${impactHtml}
+        ${summary ? `<p>${summary}</p>` : '<p class="hint">Sin resumen disponible para este titular.</p>'}
+        <div class="modal-footer">
+            ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Ver fuente ↗</a>` : ''}
+            <button type="button" class="btn btn-secondary modal-close-btn">Cerrar</button>
+        </div>
+    `;
+}
+
+function openNewsDetailModal(ticker, h) {
+    openModal({
+        title: `${ticker} — noticia`,
+        bodyHtml: newsDetailModalHtml(h),
+        onMount: (form) => form.querySelector('.modal-close-btn')?.addEventListener('click', () => closeModal()),
+    });
 }
 
 function newsHtml(data) {
@@ -753,13 +790,20 @@ function newsHtml(data) {
     `;
 }
 
-async function loadNews(instrumentId) {
+async function loadNews(instrumentId, ticker) {
     const root = $('detail-news');
     if (!root) return;
     root.innerHTML = loadingHtml('Buscando noticias…');
     try {
         const { data } = await api.instrumentNews(instrumentId);
         root.innerHTML = newsHtml(data);
+        root.addEventListener('click', (e) => {
+            if (e.target.closest('.detail-news-source-link')) return;
+            const item = e.target.closest('.detail-news-item');
+            if (!item) return;
+            const headline = data.headlines[Number(item.dataset.headlineIdx)];
+            if (headline) openNewsDetailModal(ticker, headline);
+        });
     } catch (err) {
         root.innerHTML = `<p class="hint">Error: ${err.response?.data?.error || err.message}</p>`;
     }
@@ -1189,7 +1233,7 @@ export async function renderInstrumentDetail(hash) {
         }
         loadPriceAlertsPanel(resolvedInstrumentId);
         loadFundamentals(resolvedInstrumentId);
-        loadNews(resolvedInstrumentId);
+        loadNews(resolvedInstrumentId, symbol);
         loadModelMetrics(resolvedInstrumentId);
         await loadChartFast(resolvedInstrumentId, holding?.instrument.currency || 'ARS');
         const hasForecast = await checkKronosStatus({ symbol, instrumentId: resolvedInstrumentId, market: resolvedMarket });

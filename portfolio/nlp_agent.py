@@ -36,7 +36,15 @@ endpoint GET /api/v1/company-news?symbol=...&from=...&to=...&token=...
 confirmado contra la API real esta sesion (una request sin token valido
 responde {"error": "Invalid API key."}, confirmando la forma del endpoint).
 Sin la key configurada, sigue intentando yfinance primero (comportamiento
-de siempre, nunca una regresion)."""
+de siempre, nunca una regresion).
+
+Impacto por titular (ver conversacion: "quiero que... este el impacto que
+tiene... la noticia o que bien podria tener") -- cada titular guardado
+lleva ademas impact_score/impact_direction/impact_magnitude (VADER sobre
+titulo+resumen, ver _annotate_headline_impact), distinto del sentiment_score
+AGREGADO del conjunto que ya alimenta risk_level: ese es "como esta el
+riesgo de este ticker hoy en conjunto", esto es "que tan fuerte pego o
+podria pegar ESTA noticia puntual"."""
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -75,9 +83,11 @@ def _fetch_finnhub_headlines(symbol, api_key):
     recientes" que ya tenia el intento de yfinance. "headline"/"url" son
     los campos confirmados en el esquema publico de Finnhub (probado
     contra la API real, ver conversacion) -- nunca se asume otro nombre de
-    campo sin chequear. Devuelve {"title", "url"} normalizado -- ver
-    _fetch_news_headlines, el resto del módulo nunca sabe de qué fuente
-    salió un titular."""
+    campo sin chequear. Devuelve {"title", "url", "summary", "source",
+    "published_at"} normalizado -- ver _fetch_news_headlines, el resto del
+    módulo nunca sabe de qué fuente salió un titular (ver conversación:
+    "quiero que en ese apartado esté el impacto... de la noticia", que
+    necesita más que solo el título para mostrar un detalle real)."""
     today = datetime.now(timezone.utc).date()
     week_ago = today - timedelta(days=7)
     try:
@@ -92,17 +102,34 @@ def _fetch_finnhub_headlines(symbol, api_key):
         return []
     if not isinstance(news, list):
         return []  # Finnhub devuelve {"error": "..."} (no una lista) si la key es invalida -- nunca se inventa un titular de ahi
-    return [
-        {"title": str(item["headline"]), "url": item.get("url")}
-        for item in news if isinstance(item, dict) and item.get("headline")
-    ]
+    headlines = []
+    for item in news:
+        if not isinstance(item, dict) or not item.get("headline"):
+            continue
+        published_at = None
+        if item.get("datetime"):
+            try:
+                published_at = datetime.fromtimestamp(item["datetime"], tz=timezone.utc).isoformat()
+            except Exception:
+                published_at = None  # timestamp invalido/fuera de rango -- nunca se inventa una fecha
+        headlines.append({
+            "title": str(item["headline"]),
+            "url": item.get("url"),
+            "summary": item.get("summary") or None,
+            "source": item.get("source") or None,
+            "published_at": published_at,
+        })
+    return headlines
 
 
 def _fetch_yfinance_headlines(symbol):
     """Titulares recientes via yfinance -- SIEMPRE envuelto en try/except,
     [] en cualquier falla (incluida la ya verificada: .news vacio en esta
     version/cuenta, ver docstring del modulo). Nunca se inventa un titular.
-    Mismo {"title", "url"} normalizado que _fetch_finnhub_headlines."""
+    Mismo {"title", "url", "summary", "source", "published_at"} normalizado
+    que _fetch_finnhub_headlines (summary/source/published_at quedan en
+    None si la version de yfinance no los expone -- best-effort, esta
+    fuente ya es el fallback secundario, ver docstring del modulo)."""
     try:
         import yfinance as yf
         news = yf.Ticker(symbol).news or []
@@ -113,14 +140,26 @@ def _fetch_yfinance_headlines(symbol):
         if not isinstance(item, dict):
             continue
         # Dos formas vistas en distintas versiones de yfinance: plano
-        # {"title": ..., "link": ...} o anidado {"content": {"title": ...,
-        # "canonicalUrl": {"url": ...}}} -- se prueban ambas, nunca se
-        # asume una sola forma sin chequear.
+        # {"title": ..., "link": ..., "publisher": ..., "providerPublishTime": ...}
+        # o anidado {"content": {"title": ..., "summary": ...,
+        # "canonicalUrl": {"url": ...}, "pubDate": ..., "provider": {"displayName": ...}}}
+        # -- se prueban ambas, nunca se asume una sola forma sin chequear.
         content = item.get("content", item)
         title = content.get("title") or item.get("title")
         url = (content.get("canonicalUrl") or {}).get("url") or item.get("link")
+        summary = content.get("summary") or item.get("summary")
+        source = (content.get("provider") or {}).get("displayName") or item.get("publisher")
+        published_at = content.get("pubDate")
+        if not published_at and item.get("providerPublishTime"):
+            try:
+                published_at = datetime.fromtimestamp(item["providerPublishTime"], tz=timezone.utc).isoformat()
+            except Exception:
+                published_at = None
         if title:
-            headlines.append({"title": str(title), "url": url})
+            headlines.append({
+                "title": str(title), "url": url, "summary": summary or None,
+                "source": source or None, "published_at": published_at or None,
+            })
     return headlines
 
 
@@ -236,6 +275,57 @@ def _llm_sentiment_score(headlines, conn):
         return None  # red caida, libreria no instalada, respuesta no parseable, etc. -- degrada a VADER
 
 
+IMPACT_POSITIVO = "positivo"
+IMPACT_NEGATIVO = "negativo"
+IMPACT_NEUTRAL = "neutral"
+
+
+def _classify_headline_impact(score):
+    """Direccion + magnitud del impacto de UN titular puntual (ver
+    conversacion: "quiero que... este el impacto que tiene... la noticia o
+    que bien podria tener") -- mismos umbrales que classify_risk_level
+    (SENTIMENT_EXTREME/NOTABLE_THRESHOLD) para no inventar una segunda
+    escala de "cuanto es mucho". 0.05 como piso de "neutral" es el mismo
+    valor que VADER documenta como zona muerta alrededor de compound=0."""
+    direction = IMPACT_POSITIVO if score > 0.05 else IMPACT_NEGATIVO if score < -0.05 else IMPACT_NEUTRAL
+    abs_score = abs(score)
+    if abs_score >= SENTIMENT_EXTREME_THRESHOLD:
+        magnitude = "alto"
+    elif abs_score >= SENTIMENT_NOTABLE_THRESHOLD:
+        magnitude = "moderado"
+    else:
+        magnitude = "bajo"
+    return direction, magnitude
+
+
+def _annotate_headline_impact(headlines):
+    """Agrega impact_score/impact_direction/impact_magnitude a cada
+    titular -- VADER local sobre titulo+resumen (cuando hay resumen, da mas
+    texto para puntuar que el titulo solo), nunca una llamada a LLM por
+    titular (serian hasta 10 llamadas pagas extra por instrumento evaluado,
+    no declarado/pedido -- el LLM opcional ya se usa para el sentiment_score
+    AGREGADO del conjunto, ver _llm_sentiment_score). Headlines viejos ya
+    persistidos como string (antes de este cambio) se normalizan a dict acá
+    tambien, nunca se descartan."""
+    if not headlines:
+        return []
+    from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+    analyzer = SentimentIntensityAnalyzer()
+    annotated = []
+    for h in headlines:
+        title = _headline_title(h)
+        summary = h.get("summary") if isinstance(h, dict) else None
+        text = f"{title}. {summary}" if summary else title
+        score = analyzer.polarity_scores(text)["compound"]
+        direction, magnitude = _classify_headline_impact(score)
+        item = dict(h) if isinstance(h, dict) else {"title": h, "url": None}
+        item["impact_score"] = round(score, 4)
+        item["impact_direction"] = direction
+        item["impact_magnitude"] = magnitude
+        annotated.append(item)
+    return annotated
+
+
 def classify_risk_level(sentiment_score, hours_until_event):
     """Combina magnitud del sentimiento con proximidad del evento (pedido
     explicito: risk_level NO es solo sentimiento) --
@@ -299,8 +389,11 @@ def assess_event_risk(conn, symbol, use_cache=True):
 
     # Acotado a 10 (ver conversacion: "no hay seccion de noticias" -- se
     # guardan para MOSTRARLOS, nunca los ~250 crudos de Finnhub sin curar;
-    # mismo recorte que ya usa _llm_sentiment_score para puntuar).
-    stored_headlines = headlines[:10]
+    # mismo recorte que ya usa _llm_sentiment_score para puntuar). El
+    # impacto por titular (ver conversacion: "quiero que... este el
+    # impacto") se calcula solo sobre estos 10, nunca sobre el crudo
+    # completo -- no tiene sentido puntuar titulares que no se van a mostrar.
+    stored_headlines = _annotate_headline_impact(headlines[:10])
 
     db.insert_news_sentiment(
         conn, ticker=symbol, sentiment_score=round(sentiment_score, 4), risk_level=risk_level,

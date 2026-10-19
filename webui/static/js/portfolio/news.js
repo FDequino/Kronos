@@ -12,12 +12,14 @@
 // Instrumentos/Préstamos/Propuestas, con el mismo toggle Tarjetas/Lista
 // que ya tenía Oportunidades del Día.
 import { $ } from '../shared/dom.js';
-import { fmtDate } from '../shared/format.js';
+import { fmtDate, fmtDateTime } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
 import { api } from './api.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
+import { openModal, closeModal } from '../shared/modal.js';
 
 const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 'tag-negative' };
+const IMPACT_TAG_CLASS = { positivo: 'tag-positive', negativo: 'tag-negative', neutral: 'tag-neutral' };
 
 const NEWS_SEARCH_CONFIG = {
     searchFields: [{ key: 'ticker', label: 'Ticker', value: (r) => r.ticker }],
@@ -37,17 +39,20 @@ let newsSearchState = { query: '', activeFilters: new Set(), groupKey: null };
 let newsView = 'cards'; // 'cards' | 'list', mismo patrón que Oportunidades del Día
 const newsCollapsedGroups = new Set();
 
-// Cada titular es {"title", "url"} desde el backend (ver conversación:
-// "debo poder entrar a las mismas"). El titular se muestra como texto
-// (no como link) y el link queda aparte, como "Fuente" corto (ver
-// conversación: "quiero que estén escritas ahí y que el link sea de fuente
-// nada más") -- headlines viejos ya persistidos como string antes de este
-// cambio, o sin url, se muestran sin el link de fuente.
-function headlineItemHtml(h) {
+// Cada titular es {"title", "url", "summary", "source", "published_at",
+// "impact_score", "impact_direction", "impact_magnitude"} desde el backend
+// (ver conversación: "debo poder entrar a las mismas" / "no puedo entrar a
+// la tarjeta... para ver un apartado de la noticia... quiero que esté el
+// impacto"). El titular se muestra como texto (no como link), el link de
+// fuente queda aparte y chico, y hacer click en la fila abre un detalle con
+// resumen + impacto estimado -- headlines viejos ya persistidos como string
+// antes de este cambio, o sin esos campos, degradan a "sin evaluar" en el
+// modal, nunca rompen el render.
+function headlineItemHtml(h, ticker, idx) {
     const title = typeof h === 'object' && h !== null ? h.title : h;
     const url = typeof h === 'object' && h !== null ? h.url : null;
     return `
-        <li class="detail-news-item">
+        <li class="detail-news-item" data-ticker="${ticker}" data-headline-idx="${idx}">
             <span class="detail-news-title" title="${title}">${title}</span>
             ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="detail-news-source-link">Fuente ↗</a>` : ''}
         </li>
@@ -56,8 +61,40 @@ function headlineItemHtml(h) {
 
 function headlinesHtml(entry, limit) {
     return entry.headlines.length
-        ? `<ul class="detail-news-list">${entry.headlines.slice(0, limit).map(headlineItemHtml).join('')}</ul>`
+        ? `<ul class="detail-news-list">${entry.headlines.slice(0, limit).map((h, idx) => headlineItemHtml(h, entry.ticker, idx)).join('')}</ul>`
         : '<p class="table-empty">Sin titulares disponibles hoy.</p>';
+}
+
+function newsDetailModalHtml(h) {
+    const title = typeof h === 'object' && h !== null ? h.title : h;
+    const url = typeof h === 'object' && h !== null ? h.url : null;
+    const summary = typeof h === 'object' && h !== null ? h.summary : null;
+    const source = typeof h === 'object' && h !== null ? h.source : null;
+    const publishedAt = typeof h === 'object' && h !== null ? h.published_at : null;
+    const direction = typeof h === 'object' && h !== null ? h.impact_direction : null;
+    const magnitude = typeof h === 'object' && h !== null ? h.impact_magnitude : null;
+    const metaParts = [source, publishedAt ? fmtDateTime(publishedAt) : null].filter(Boolean);
+    const impactHtml = direction
+        ? `<p><span class="tag ${IMPACT_TAG_CLASS[direction] || 'tag-neutral'}">${direction.toUpperCase()}</span> <span class="hint">impacto estimado: ${magnitude}</span></p>`
+        : '<p class="hint">Impacto no evaluado para este titular (guardado antes de este análisis).</p>';
+    return `
+        <h3 style="margin:0 0 8px;">${title}</h3>
+        ${metaParts.length ? `<p class="hint">${metaParts.join(' · ')}</p>` : ''}
+        ${impactHtml}
+        ${summary ? `<p>${summary}</p>` : '<p class="hint">Sin resumen disponible para este titular.</p>'}
+        <div class="modal-footer">
+            ${url ? `<a href="${url}" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">Ver fuente ↗</a>` : ''}
+            <button type="button" class="btn btn-secondary modal-close-btn">Cerrar</button>
+        </div>
+    `;
+}
+
+function openNewsDetailModal(ticker, h) {
+    openModal({
+        title: `${ticker} — noticia`,
+        bodyHtml: newsDetailModalHtml(h),
+        onMount: (form) => form.querySelector('.modal-close-btn')?.addEventListener('click', () => closeModal()),
+    });
 }
 
 function riskTagHtml(entry) {
@@ -199,6 +236,24 @@ export function initNewsView() {
         refreshBtn.addEventListener('click', () => {
             loaded = true;
             loadNewsToday();
+        });
+    }
+
+    // Delegado sobre el contenedor (sobrevive a cada re-render de
+    // renderNewsToday, que reemplaza el innerHTML entero) -- clickear la
+    // fila/tarjeta de un titular abre su detalle; clickear el link de
+    // "Fuente" sigue abriendo la fuente externa normal, sin disparar
+    // también el modal (ver conversación: "no puedo entrar a la tarjeta o
+    // fila para ver... un apartado de la noticia").
+    const newsContainer = $('news-today-container');
+    if (newsContainer) {
+        newsContainer.addEventListener('click', (e) => {
+            if (e.target.closest('.detail-news-source-link')) return;
+            const item = e.target.closest('.detail-news-item');
+            if (!item) return;
+            const entry = currentEntries.find((x) => x.ticker === item.dataset.ticker);
+            const headline = entry?.headlines[Number(item.dataset.headlineIdx)];
+            if (headline) openNewsDetailModal(entry.ticker, headline);
         });
     }
 }

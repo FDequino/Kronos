@@ -143,12 +143,19 @@ def test_fetch_news_headlines_usa_finnhub_si_hay_key(temp_db, monkeypatch):
 
     headlines = nlp_agent._fetch_news_headlines(temp_db, "GGAL")
 
-    # {"title", "url"} normalizado (ver conversacion: "debo poder entrar a
-    # las mismas") -- url ausente en la fuente se normaliza a None, nunca se
-    # inventa un link.
+    # {"title", "url", "summary", "source", "published_at"} normalizado (ver
+    # conversacion: "debo poder entrar a las mismas" / "quiero... el
+    # impacto... de la noticia", que necesita mas que el titulo solo) --
+    # campos ausentes en la fuente se normalizan a None, nunca se inventan.
     assert headlines == [
-        {"title": "GGAL sube tras balance trimestral", "url": "https://finnhub.io/api/news?id=abc"},
-        {"title": "Analistas elevan precio objetivo de GGAL", "url": None},
+        {
+            "title": "GGAL sube tras balance trimestral", "url": "https://finnhub.io/api/news?id=abc",
+            "summary": "...", "source": "x", "published_at": "1970-01-01T00:00:01+00:00",
+        },
+        {
+            "title": "Analistas elevan precio objetivo de GGAL", "url": None,
+            "summary": None, "source": None, "published_at": "1970-01-01T00:00:02+00:00",
+        },
     ]
     assert captured["url"] == f"{nlp_agent.FINNHUB_BASE}/company-news"
     assert captured["params"]["symbol"] == "GGAL"
@@ -174,10 +181,15 @@ def test_fetch_news_headlines_sin_key_cae_a_yfinance(temp_db, monkeypatch):
 
 def test_fetch_yfinance_headlines_normaliza_ambas_formas_a_title_url(monkeypatch):
     # Dos formas vistas en distintas versiones de yfinance -- ver docstring
-    # de _fetch_yfinance_headlines. Ambas se normalizan a {"title", "url"}.
+    # de _fetch_yfinance_headlines. Ambas se normalizan al mismo shape que
+    # Finnhub ({"title", "url", "summary", "source", "published_at"}).
     fake_news = [
-        {"title": "Forma plana", "link": "https://example.com/plana"},
-        {"content": {"title": "Forma anidada", "canonicalUrl": {"url": "https://example.com/anidada"}}},
+        {"title": "Forma plana", "link": "https://example.com/plana", "publisher": "Reuters", "providerPublishTime": 1},
+        {"content": {
+            "title": "Forma anidada", "summary": "resumen anidado",
+            "canonicalUrl": {"url": "https://example.com/anidada"},
+            "provider": {"displayName": "Bloomberg"}, "pubDate": "2026-01-01T00:00:00Z",
+        }},
         {"content": {"title": "Sin url"}},
     ]
     monkeypatch.setitem(sys.modules, "yfinance", SimpleNamespace(Ticker=lambda symbol: SimpleNamespace(news=fake_news)))
@@ -185,9 +197,15 @@ def test_fetch_yfinance_headlines_normaliza_ambas_formas_a_title_url(monkeypatch
     headlines = nlp_agent._fetch_yfinance_headlines("AAPL")
 
     assert headlines == [
-        {"title": "Forma plana", "url": "https://example.com/plana"},
-        {"title": "Forma anidada", "url": "https://example.com/anidada"},
-        {"title": "Sin url", "url": None},
+        {
+            "title": "Forma plana", "url": "https://example.com/plana", "summary": None,
+            "source": "Reuters", "published_at": "1970-01-01T00:00:01+00:00",
+        },
+        {
+            "title": "Forma anidada", "url": "https://example.com/anidada", "summary": "resumen anidado",
+            "source": "Bloomberg", "published_at": "2026-01-01T00:00:00Z",
+        },
+        {"title": "Sin url", "url": None, "summary": None, "source": None, "published_at": None},
     ]
 
 
@@ -266,6 +284,55 @@ def test_llm_sentiment_score_sin_key_devuelve_none(temp_db):
     assert nlp_agent._llm_sentiment_score(["alguna noticia"], temp_db) is None
 
 
+# --- impacto por titular (ver conversacion: "quiero que... este el impacto
+# que tiene... la noticia o que bien podria tener") ---------------------------
+
+def test_annotate_headline_impact_positivo_alto():
+    annotated = nlp_agent._annotate_headline_impact([
+        "Company reports record profits and strong growth, beating all estimates",
+    ])
+    assert annotated[0]["impact_direction"] == "positivo"
+    assert annotated[0]["impact_magnitude"] == "alto"
+    assert annotated[0]["impact_score"] > 0
+
+
+def test_annotate_headline_impact_negativo_alto():
+    annotated = nlp_agent._annotate_headline_impact([
+        "Company collapses amid fraud scandal, shares plunge, investors furious",
+    ])
+    assert annotated[0]["impact_direction"] == "negativo"
+    assert annotated[0]["impact_magnitude"] == "alto"
+    assert annotated[0]["impact_score"] < 0
+
+
+def test_annotate_headline_impact_neutral_sin_carga_emocional():
+    annotated = nlp_agent._annotate_headline_impact(["Company files quarterly report with the SEC"])
+    assert annotated[0]["impact_direction"] == "neutral"
+    assert annotated[0]["impact_magnitude"] == "bajo"
+
+
+def test_annotate_headline_impact_usa_summary_ademas_del_titulo():
+    # El resumen pesa en el score (mas texto para VADER) -- mismo titulo,
+    # distinto resumen, distinto impacto.
+    neutro = nlp_agent._annotate_headline_impact([{"title": "GGAL anuncia balance", "summary": None}])
+    positivo = nlp_agent._annotate_headline_impact([
+        {"title": "GGAL anuncia balance", "summary": "Record profits and excellent growth, beating all estimates"},
+    ])
+    assert positivo[0]["impact_score"] > neutro[0]["impact_score"]
+
+
+def test_annotate_headline_impact_sin_titulares_lista_vacia():
+    assert nlp_agent._annotate_headline_impact([]) == []
+
+
+def test_annotate_headline_impact_conserva_url_y_demas_campos():
+    annotated = nlp_agent._annotate_headline_impact([
+        {"title": "Titular", "url": "https://example.com", "source": "Reuters"},
+    ])
+    assert annotated[0]["url"] == "https://example.com"
+    assert annotated[0]["source"] == "Reuters"
+
+
 # --- titulares persistidos (ver conversacion: "no hay seccion de noticias") ---
 
 def test_assess_event_risk_persiste_titulares_reales(temp_db, monkeypatch):
@@ -273,10 +340,13 @@ def test_assess_event_risk_persiste_titulares_reales(temp_db, monkeypatch):
     monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
 
     result = nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
-    assert result["headlines"] == ["Titular uno", "Titular dos"]
+    assert [h["title"] for h in result["headlines"]] == ["Titular uno", "Titular dos"]
+    # Cada titular guardado lleva su propio impacto (ver conversacion:
+    # "quiero que... este el impacto... de la noticia"), no solo el titulo.
+    assert all({"impact_score", "impact_direction", "impact_magnitude"} <= h.keys() for h in result["headlines"])
 
     persisted = db.get_latest_sentiment(temp_db, "AAPL")
-    assert persisted["headlines"] == ["Titular uno", "Titular dos"]
+    assert [h["title"] for h in persisted["headlines"]] == ["Titular uno", "Titular dos"]
 
 
 def test_assess_event_risk_acota_titulares_a_10(temp_db, monkeypatch):
@@ -286,7 +356,7 @@ def test_assess_event_risk_acota_titulares_a_10(temp_db, monkeypatch):
 
     result = nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
     assert len(result["headlines"]) == 10
-    assert result["headlines"] == muchos[:10]
+    assert [h["title"] for h in result["headlines"]] == muchos[:10]
 
 
 def test_assess_event_risk_cache_hit_devuelve_los_mismos_titulares(temp_db, monkeypatch):
@@ -298,7 +368,7 @@ def test_assess_event_risk_cache_hit_devuelve_los_mismos_titulares(temp_db, monk
     # test_assess_event_risk_usa_cache_reciente) pero igual tiene que
     # devolver los titulares ya persistidos, no una lista vacia.
     result = nlp_agent.assess_event_risk(temp_db, "TSLA", use_cache=True)
-    assert result["headlines"] == ["Solo esta vez"]
+    assert [h["title"] for h in result["headlines"]] == ["Solo esta vez"]
 
 
 def test_assess_event_risk_sin_titulares_persiste_lista_vacia(temp_db, monkeypatch):
@@ -323,7 +393,7 @@ def test_list_today_sentiment_un_symbolo_una_vez_aunque_se_evalue_dos_veces(temp
     today = db.list_today_sentiment(temp_db)
     ggal_entries = [e for e in today if e["ticker"] == "GGAL"]
     assert len(ggal_entries) == 1
-    assert ggal_entries[0]["headlines"] == ["Segunda corrida, mas reciente"]
+    assert [h["title"] for h in ggal_entries[0]["headlines"]] == ["Segunda corrida, mas reciente"]
 
 
 def test_list_today_sentiment_agrega_varios_simbolos(temp_db, monkeypatch):

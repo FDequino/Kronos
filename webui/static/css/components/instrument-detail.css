@@ -253,6 +253,12 @@
     display: flex;
     align-items: baseline;
     gap: 10px;
+    cursor: pointer;
+}
+
+.detail-news-item:hover .detail-news-title {
+    color: var(--text-primary);
+    text-decoration: underline;
 }
 
 .detail-news-title {
