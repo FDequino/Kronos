@@ -11,6 +11,13 @@
     display: flex;
 }
 
+/* Reemplaza el toolbar de un panel mientras carga (ej. tenencias
+   refrescando cotizaciones) -- mismo padding que .view-toolbar/.table-toolbar
+   para que no haya salto de alto al pasar de uno a otro. */
+.loading.loading-panel {
+    padding: 14px 20px;
+}
+
 .spinner {
     width: 16px;
     height: 16px;

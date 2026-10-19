@@ -3,6 +3,65 @@
     justify-content: center;
 }
 
+/* Gauges (medio velocímetro) para Patrimonio > Riesgo -- mismo patrón ya
+   aprobado en el mockup, reemplaza el risk-metrics-strip plano solo ahí. */
+.gauge-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 14px;
+    margin-bottom: 16px;
+}
+@media (max-width: 700px) { .gauge-row { grid-template-columns: 1fr; } }
+.gauge-tile {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    text-align: center;
+}
+.gauge-tile .gauge-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    margin-bottom: 2px;
+}
+.gauge-tile svg { display: block; margin: 0 auto; }
+.gauge-tile .gauge-value { font-size: var(--step-2); font-weight: 600; margin: 2px 0 6px; }
+
+/* Panel de riesgo de cartera (4 metricas): a diferencia del stat-strip del
+   encabezado de Resumen, este vive en una columna angosta (1 de 3), asi que
+   necesita su propio tamano de fuente y una grilla de 2 en vez de 4 para que
+   un numero como "13,20%" no se parta letra por letra. */
+.risk-metrics-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 16px;
+}
+
+.risk-metrics-strip .stat {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 12px 10px;
+    text-align: center;
+}
+
+.risk-metrics-strip .stat-label {
+    font-size: 0.65rem;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 6px;
+}
+
+.risk-metrics-strip .stat-value {
+    font-size: var(--step-1);
+    font-weight: 600;
+}
+
 .risk-gauge-value {
     display: flex;
     align-items: baseline;

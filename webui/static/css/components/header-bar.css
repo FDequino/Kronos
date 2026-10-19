@@ -31,7 +31,9 @@
     height: 16px;
     padding: 0 3px;
     border-radius: 999px;
-    background: #c0392b;
+    /* Antes un rojo propio (#c0392b) distinto a --negative (#ef5b5b), sin que
+       fuera una decision declarada -- ver DESIGN_SYSTEM.md hallazgo 3. */
+    background: var(--negative);
     color: #fff;
     font-size: 0.65rem;
     font-weight: 700;

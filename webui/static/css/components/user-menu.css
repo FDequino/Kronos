@@ -86,6 +86,22 @@
     color: var(--text-primary);
 }
 
+.user-menu-number-input {
+    width: 72px;
+    padding: 4px 8px;
+    background: var(--bg-content);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    color: var(--text-primary);
+    font-size: var(--step--1);
+    text-align: right;
+}
+
+.user-menu-number-input:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
 .sidebar-foot-meta {
     font-size: 0.7rem;
     color: var(--text-tertiary);

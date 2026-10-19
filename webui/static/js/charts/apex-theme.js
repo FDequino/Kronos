@@ -1,22 +1,19 @@
-const DARK = {
-    grid: '#242933', text: '#8a93a3', textStrong: '#e7e9ee',
-    accent: '#4c7dff', accentAlt: '#759bff',
-    positive: '#30c177', negative: '#ef5b5b', warning: '#e0a63c',
-    surface: '#1a1e27',
-};
-const LIGHT = {
-    grid: '#e3e5ea', text: '#585f6b', textStrong: '#14161a',
-    accent: '#3b6fe0', accentAlt: '#2851b8',
-    positive: '#1f9d57', negative: '#d63939', warning: '#b5790a',
-    surface: '#ffffff',
-};
+import { getChartPalette } from '../shared/chart-palette.js';
 
 export function isLightTheme() {
     return document.documentElement.dataset.theme === 'light';
 }
 
+// Antes esto era un mapa DARK/LIGHT hardcodeado en hex, una cuarta copia de
+// los mismos valores que ya viven en tokens.css/theme-light.css (ver
+// DESIGN_SYSTEM.md) -- ahora delega en chart-palette.js, que los lee en vivo
+// via getComputedStyle. Se mantiene la forma {grid, text, textStrong, accent,
+// accentAlt, positive, negative, warning, surface} para no tocar a los 4
+// callers existentes (pnl-bar-chart.js, cash-flow-chart.js,
+// allocation-donut.js, patrimonio.js).
 export function currentPalette() {
-    return isLightTheme() ? LIGHT : DARK;
+    const p = getChartPalette();
+    return { ...p, accentAlt: p.accentStrong };
 }
 
 export function baseApexOptions() {

@@ -5,13 +5,84 @@
     padding: 12px 20px;
     border-bottom: 1px solid var(--border);
     font-size: var(--step--1);
+    cursor: pointer;
 }
 
 .alert-row:last-child {
     border-bottom: none;
 }
 
+.alert-row:hover {
+    background: var(--bg-elevated-hover);
+}
+
+/* Click en una fila la marca como vista (persistido en localStorage) -- se
+   atenua en vez de desaparecer, la condicion que la genero puede seguir vigente. */
+.alert-row-seen {
+    opacity: 0.55;
+}
+
 .alert-text {
     color: var(--text-secondary);
     max-width: 70ch;
+}
+
+/* Stop-loss/take-profit (Fase 8) -- panel embebido en el detalle de instrumento. */
+.price-alert-form {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+
+/* Botones arriba del gráfico ("+ Stop-loss"/"+ Take-profit") que arman el
+   modo click-para-fijar-nivel -- reemplazan el formulario con select+input
+   numérico de abajo, sin relación visual con el precio real. */
+.price-alert-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.price-alert-hint {
+    white-space: nowrap;
+}
+
+.price-alert-form input[type="number"] {
+    width: 120px;
+}
+
+.price-alert-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 7px 0;
+    border-bottom: 1px solid var(--border);
+    transition: background-color 300ms ease;
+}
+
+.price-alert-tag {
+    flex-shrink: 0;
+}
+
+.price-alert-level {
+    font-weight: 600;
+}
+
+/* Botón "Eliminar" pegado al borde derecho -- antes quedaba pegado al nivel,
+   a mitad de fila, dejando un hueco vacío a la derecha (ver conversación,
+   pase de UX/UI: "más limpia y compacta"). */
+.price-alert-delete-btn {
+    margin-left: auto;
+}
+
+/* Tocar (sin arrastrar) la línea en el gráfico resalta su fila acá -- flash
+   breve, mismo tono que el acento, para encontrarla rápido y borrarla. */
+.price-alert-row-highlight {
+    background: var(--accent-dim);
+}
+
+.price-alert-row:last-child {
+    border-bottom: none;
 }

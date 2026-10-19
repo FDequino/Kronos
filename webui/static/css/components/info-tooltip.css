@@ -50,11 +50,50 @@
     animation: dropdown-in 140ms ease-out;
 }
 
+/* Termino de glosario inline (subrayado punteado) -- alternativa mas liviana
+   al boton ⓘ de .info-tooltip para texto corrido/labels/headers, donde un
+   icono extra ensuciaria la estetica (ver glossary.js). */
+.glossary-term {
+    position: relative;
+    border-bottom: 1px dotted var(--text-tertiary);
+    cursor: help;
+}
+
+.glossary-term-panel {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    z-index: 25;
+    min-width: 220px;
+    max-width: min(300px, calc(100vw - 32px));
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+    font-size: var(--step--1);
+    font-weight: 400;
+    font-style: normal;
+    color: var(--text-secondary);
+    white-space: normal;
+    text-transform: none;
+    letter-spacing: normal;
+    cursor: auto;
+}
+
+.glossary-term:hover .glossary-term-panel,
+.glossary-term:focus .glossary-term-panel {
+    display: block;
+    animation: dropdown-in 140ms ease-out;
+}
+
 .info-tooltip-formula {
     margin-top: 8px;
     padding-top: 8px;
     border-top: 1px solid var(--border);
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
+    font-variant-numeric: tabular-nums;
     font-size: 0.75rem;
     color: var(--text-primary);
     white-space: pre-line;

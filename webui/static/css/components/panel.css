@@ -5,6 +5,42 @@
     margin-bottom: 24px;
 }
 
+/* Título + KPIs + buscador fijos arriba mientras la tabla de abajo scrollea
+   -- antes cada tabla clampeaba su propia altura a 70vh con scroll interno
+   (ver .table-scroll), lo que cortaba filas a la mitad y generaba un doble
+   scroll confuso (el de la tabla y el de la página). Ahora la tabla crece a
+   su alto real y es la página la que scrollea -- este wrapper agrupa todo
+   lo que debe quedar visible y lo fija contra el viewport (no hay ningún
+   ancestro con overflow propio entre acá y <body>, asique position:sticky
+   funciona sin necesidad de medir nada por JS). */
+.panel-sticky-head {
+    position: sticky;
+    /* Se acopla debajo de la fila de subtabs (.view > .subtabs, también
+       sticky) -- --subtabs-h la mide shared/sticky-offset.js con un
+       ResizeObserver, nunca un pixel fijo a mano. */
+    top: var(--subtabs-h, 0px);
+    z-index: 3;
+    background: var(--bg-elevated);
+    border-radius: var(--radius) var(--radius) 0 0;
+}
+
+/* Misma idea que .panel-sticky-head, para contenido que NO vive adentro de
+   un .panel (ej. el hero + fila de tiles de Patrimonio, que se asientan
+   directo sobre el fondo de la página) -- el fondo es --bg-content, no
+   --bg-elevated, para no pintar un rectángulo que no combina con nada
+   cuando el contenido de abajo scrollea por debajo. */
+.page-sticky-head {
+    position: sticky;
+    /* Mismo --subtabs-h que .panel-sticky-head arriba -- lo mide
+       shared/sticky-offset.js con un ResizeObserver sobre la fila de subtabs
+       (.view > .subtabs), nunca un pixel fijo a mano. Si se toca el alto de
+       subtabs.css sin tocar ese JS, este offset queda desincronizado. */
+    top: var(--subtabs-h, 0px);
+    z-index: 3;
+    background: var(--bg-content);
+    padding-top: 4px;
+}
+
 .panel-header {
     display: flex;
     align-items: center;
@@ -22,6 +58,18 @@
     min-width: 0;
 }
 
+.panel-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+/* Nota/aviso (hint, status) que precede a una tabla dentro de un panel-body
+   -- separacion antes del container de la tabla en si. */
+.panel-note {
+    margin-bottom: 16px;
+}
+
 .panel-subtitle {
     font-size: 0.75rem;
     font-weight: 400;
@@ -36,6 +84,15 @@
 .panel-body.flush {
     padding: 0;
     overflow-x: auto;
+}
+
+/* El panel-body del strip de KPIs (mini-stat-grid.row) dentro de
+   .panel-sticky-head, justo antes del .view-toolbar -- sin esto queda un
+   padding-bottom de 20px duplicando el espacio que ya da el toolbar de
+   abajo. Antes `style="padding-bottom:0;"` inline, repetido igual en 9
+   templates de portfolio.html. */
+.panel-body.no-bottom {
+    padding-bottom: 0;
 }
 
 .stat-strip {

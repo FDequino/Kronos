@@ -1,86 +1,45 @@
 import { $ } from '../shared/dom.js';
 import { showStatus } from '../shared/status.js';
 import { api } from './api.js';
-import { createSearchBar, applySearchState } from '../shared/search-bar.js';
-import { rowActionsHtml, wireRowActions } from '../shared/row-actions.js';
 import { openModal } from '../shared/modal.js';
 
-const TYPE_LABELS = {
-    accion: 'Acción', cedear: 'CEDEAR', bono: 'Bono',
-    on: 'Obligación Negociable', moneda: 'Moneda', fondo: 'Fondo',
-};
-
+// Catálogo unificado (ver conversación, limpieza de UI): este archivo dejó
+// de tener vista propia -- Catálogo y Explorador BYMA se fusionaron en una
+// sola tabla con filtro superior (ver webui/static/js/portfolio/
+// instrumentos.js). Lo que queda acá es el núcleo reusable: la lista cruda
+// de instrumentos y el modal de alta/edición, consumidos por esa vista y por
+// cualquier otra pantalla que necesite elegir/crear un instrumento
+// (Transacciones, Comparador, Alertas de precio, etc.).
 let currentInstruments = [];
-let searchState = { query: '', activeFilters: new Set(), groupKey: null };
-
-const SEARCH_CONFIG = {
-    searchFields: (inst) => [inst.symbol, inst.name],
-    filters: [
-        { key: 'accion', label: 'Acción', test: (i) => i.type === 'accion' },
-        { key: 'cedear', label: 'CEDEAR', test: (i) => i.type === 'cedear' },
-        { key: 'bono', label: 'Bono', test: (i) => i.type === 'bono' },
-        { key: 'on', label: 'Obligación Negociable', test: (i) => i.type === 'on' },
-        { key: 'moneda', label: 'Moneda', test: (i) => i.type === 'moneda' },
-        { key: 'fondo', label: 'Fondo', test: (i) => i.type === 'fondo' },
-        { key: 'ars', label: 'ARS', test: (i) => i.currency === 'ARS' },
-        { key: 'usd', label: 'USD', test: (i) => i.currency === 'USD' },
-    ],
-    groupBy: [
-        { key: 'type', label: 'Tipo', value: (i) => TYPE_LABELS[i.type] || i.type },
-        { key: 'price_source', label: 'Fuente de precio', value: (i) => i.price_source },
-    ],
-};
 
 export async function fetchInstrumentsList() {
     const { data } = await api.instruments();
     return data;
 }
 
-export async function loadInstruments() {
-    currentInstruments = await fetchInstrumentsList();
-    renderTable();
-    return currentInstruments;
-}
+const CUENTA_DEFAULT = 'NH Capital';
 
-function renderTable() {
-    const tbody = $('instruments-tbody');
-    if (!currentInstruments.length) {
-        tbody.innerHTML = `<tr><td colspan="7" class="table-empty">Todav&iacute;a no carg&aacute;ste ning&uacute;n instrumento.</td></tr>`;
-        return;
-    }
-
-    const result = applySearchState(currentInstruments, searchState, SEARCH_CONFIG);
-    if (result.grouped) {
-        tbody.innerHTML = result.groups.map((g) => `
-            <tr class="table-group-header"><td colspan="7">${g.label} (${g.items.length})</td></tr>
-            ${g.items.map(rowHtml).join('')}
-        `).join('');
-    } else {
-        tbody.innerHTML = result.items.length
-            ? result.items.map(rowHtml).join('')
-            : `<tr><td colspan="7" class="table-empty">Sin resultados para este filtro.</td></tr>`;
-    }
-}
-
-function rowHtml(inst) {
-    const params = new URLSearchParams({ market: inst.market, assetType: inst.type, instrumentId: inst.id });
-    return `<tr>
-        <td><a href="#detalle/${encodeURIComponent(inst.symbol)}?${params.toString()}" class="table-link">${inst.symbol}</a></td>
-        <td>${inst.name || '—'}</td>
-        <td><span class="tag tag-neutral">${TYPE_LABELS[inst.type] || inst.type}</span></td>
-        <td><span class="tag tag-neutral">${inst.market}</span></td>
-        <td><span class="tag tag-neutral">${inst.currency}</span></td>
-        <td><span class="tag tag-neutral">${inst.price_source}</span></td>
-        ${rowActionsHtml(inst.id)}
-    </tr>`;
+// Antes era un <input type="text"> a mano -- cualquier typo ("NH capital" vs
+// "NH Capital") partía en dos la misma cuenta en todos los agrupamientos por
+// cuenta (Patrimonio -> Por cuenta, etc.). Ahora se elige entre las que ya
+// existen en el catálogo; "+ Nueva cuenta" es la única puerta para un nombre
+// nuevo, y ese nombre se escribe una sola vez.
+function cuentaOptionsHtml(selected) {
+    const existentes = [...new Set(currentInstruments.map((i) => i.cuenta || CUENTA_DEFAULT))].sort();
+    if (!existentes.includes(CUENTA_DEFAULT)) existentes.unshift(CUENTA_DEFAULT);
+    const value = selected || CUENTA_DEFAULT;
+    return `
+        ${existentes.map((c) => `<option value="${c}" ${c === value ? 'selected' : ''}>${c}</option>`).join('')}
+        <option value="__nueva__">+ Nueva cuenta...</option>
+    `;
 }
 
 function formFieldsHtml(inst = {}) {
     const isEdit = !!inst.id;
     return `
         <div class="field-row">
-            <div class="field"><label for="inst-symbol">S&iacute;mbolo</label><input type="text" id="inst-symbol" placeholder="GGAL" value="${inst.symbol || ''}"></div>
-            <div class="field"><label for="inst-name">Nombre</label><input type="text" id="inst-name" placeholder="Grupo Financiero Galicia" value="${inst.name || ''}"></div>
+            <div class="field"><label for="inst-symbol">S&iacute;mbolo</label><input type="text" id="inst-symbol" placeholder="Ej: GGAL" value="${inst.symbol || ''}"></div>
+            <div class="field"><label for="inst-name">Nombre</label><input type="text" id="inst-name" placeholder="Ej: Grupo Financiero Galicia" value="${inst.name || ''}"></div>
             <div class="field">
                 <label for="inst-type">Tipo</label>
                 <select id="inst-type">
@@ -90,9 +49,18 @@ function formFieldsHtml(inst = {}) {
                     <option value="on" ${inst.type === 'on' ? 'selected' : ''}>Obligaci&oacute;n Negociable</option>
                     <option value="moneda" ${inst.type === 'moneda' ? 'selected' : ''}>Moneda</option>
                     <option value="fondo" ${inst.type === 'fondo' ? 'selected' : ''}>Fondo</option>
+                    <option value="cripto" ${inst.type === 'cripto' ? 'selected' : ''}>Cripto</option>
                 </select>
             </div>
-            <div class="field"><label for="inst-market">Mercado</label><input type="text" id="inst-market" placeholder="byma" value="${inst.market || ''}"></div>
+            <div class="field"><label for="inst-market">Mercado</label><input type="text" id="inst-market" placeholder="Ej: byma" value="${inst.market || ''}"></div>
+            <div class="field">
+                <label for="inst-cuenta">Cuenta/Broker</label>
+                <select id="inst-cuenta">${cuentaOptionsHtml(inst.cuenta)}</select>
+            </div>
+            <div class="field" id="cuenta-nueva-field" style="display:none;">
+                <label for="inst-cuenta-nueva">Nombre de la cuenta nueva</label>
+                <input type="text" id="inst-cuenta-nueva" placeholder="Ej: Balanz">
+            </div>
             <div class="field">
                 <label for="inst-currency">Moneda</label>
                 <select id="inst-currency">
@@ -127,6 +95,34 @@ function formFieldsHtml(inst = {}) {
                 <input type="text" id="inst-pair" placeholder="BTCUSDT">
             </div>
         </div>
+        <div class="field-row" id="bono-fields" style="display: none;">
+            <div class="field">
+                <label for="inst-maturity">Fecha de vencimiento</label>
+                <input type="date" id="inst-maturity" value="${inst.maturity_date || ''}">
+            </div>
+            <div class="field">
+                <label for="inst-coupon-rate">Cup&oacute;n anual %</label>
+                <input type="number" id="inst-coupon-rate" step="0.01" min="0" placeholder="0 = cup&oacute;n cero" value="${inst.coupon_rate ?? ''}">
+            </div>
+            <div class="field">
+                <label for="inst-coupon-freq">Frecuencia de pago</label>
+                <select id="inst-coupon-freq">
+                    <option value="" ${!inst.coupon_frequency ? 'selected' : ''}>Cup&oacute;n cero</option>
+                    <option value="1" ${inst.coupon_frequency === 1 ? 'selected' : ''}>Anual</option>
+                    <option value="2" ${inst.coupon_frequency === 2 ? 'selected' : ''}>Semestral</option>
+                    <option value="4" ${inst.coupon_frequency === 4 ? 'selected' : ''}>Trimestral</option>
+                    <option value="12" ${inst.coupon_frequency === 12 ? 'selected' : ''}>Mensual</option>
+                </select>
+            </div>
+            <div class="field">
+                <label for="inst-rate-type">Tipo de tasa</label>
+                <select id="inst-rate-type">
+                    <option value="" ${!inst.rate_type ? 'selected' : ''}>Sin clasificar</option>
+                    <option value="fija" ${inst.rate_type === 'fija' ? 'selected' : ''}>Fija</option>
+                    <option value="cer" ${inst.rate_type === 'cer' ? 'selected' : ''}>Ajustable por CER</option>
+                </select>
+            </div>
+        </div>
         <p class="modal-error"></p>
         <div class="modal-footer">
             <button type="submit" class="btn btn-primary">${isEdit ? 'Guardar' : 'Agregar'}</button>
@@ -153,56 +149,90 @@ function wireSourceToggle(form) {
     sync();
 }
 
-function openInstrumentModal(inst = null) {
+function wireTypeToggle(form) {
+    const typeSelect = form.querySelector('#inst-type');
+    const sync = () => {
+        form.querySelector('#bono-fields').style.display = ['bono', 'on'].includes(typeSelect.value) ? 'flex' : 'none';
+    };
+    typeSelect.addEventListener('change', sync);
+    sync();
+}
+
+function wireCuentaToggle(form) {
+    const cuentaSelect = form.querySelector('#inst-cuenta');
+    const sync = () => {
+        form.querySelector('#cuenta-nueva-field').style.display = cuentaSelect.value === '__nueva__' ? 'flex' : 'none';
+    };
+    cuentaSelect.addEventListener('change', sync);
+    sync();
+}
+
+function resolveCuenta(form) {
+    const value = form.querySelector('#inst-cuenta').value;
+    if (value === '__nueva__') return form.querySelector('#inst-cuenta-nueva').value.trim() || null;
+    return value === CUENTA_DEFAULT ? null : value;
+}
+
+// inst=null (nuevo) o un objeto YA conocido por el llamador (editar, o un
+// resultado de explorerSearch prellenado para "agregar a cartera") -- este
+// modulo ya no mantiene su propia tabla, asi que refresca currentInstruments
+// (para las opciones de "Cuenta/Broker" del formulario) antes de abrir.
+// Al guardar, dispara 'instruments-changed' en vez de recargar una vista
+// propia -- quien este mostrando la lista (instrumentos.js) se re-renderiza
+// solo, desacoplado de este modulo.
+export async function openInstrumentModal(inst = null) {
+    currentInstruments = await fetchInstrumentsList();
     openModal({
-        title: inst ? `Editar ${inst.symbol}` : 'Nuevo instrumento',
+        title: inst?.id ? `Editar ${inst.symbol}` : 'Nuevo instrumento',
         bodyHtml: formFieldsHtml(inst || {}),
-        onMount: wireSourceToggle,
+        onMount: (form) => { wireSourceToggle(form); wireTypeToggle(form); wireCuentaToggle(form); },
         onSubmit: async (form) => {
             const source = form.querySelector('#inst-source').value;
+            const type = form.querySelector('#inst-type').value;
             const payload = {
                 symbol: form.querySelector('#inst-symbol').value,
                 name: form.querySelector('#inst-name').value,
-                type: form.querySelector('#inst-type').value,
+                type,
                 market: form.querySelector('#inst-market').value,
+                cuenta: resolveCuenta(form),
                 currency: form.querySelector('#inst-currency').value,
                 price_source: source,
                 price_source_params: buildPriceSourceParams(source),
             };
-            if (inst) {
+            if (['bono', 'on'].includes(type)) {
+                const maturity = form.querySelector('#inst-maturity').value;
+                const couponRate = form.querySelector('#inst-coupon-rate').value;
+                const couponFreq = form.querySelector('#inst-coupon-freq').value;
+                const rateType = form.querySelector('#inst-rate-type').value;
+                payload.maturity_date = maturity || null;
+                payload.coupon_rate = couponRate === '' ? null : Number(couponRate);
+                payload.coupon_frequency = couponFreq === '' ? null : Number(couponFreq);
+                payload.rate_type = rateType || null;
+            }
+            if (inst?.id) {
                 await api.updateInstrument(inst.id, payload);
                 showStatus('status-banner', 'success', 'Instrumento actualizado');
             } else {
                 await api.addInstrument(payload);
                 showStatus('status-banner', 'success', 'Instrumento agregado');
             }
-            await loadInstruments();
+            currentInstruments = await fetchInstrumentsList();
+            document.dispatchEvent(new CustomEvent('instruments-changed'));
         },
     });
 }
 
-async function deleteInstrument(id) {
-    const inst = currentInstruments.find((i) => String(i.id) === String(id));
-    if (!inst) return;
-    if (!confirm(`¿Eliminar el instrumento ${inst.symbol}? Esta acción no se puede deshacer.`)) return;
+// Devuelve true si se borro de verdad -- el llamador decide como refrescar
+// su propia vista (ver instrumentos.js).
+export async function deleteInstrument(id, symbol) {
+    if (!confirm(`¿Eliminar el instrumento ${symbol}? Esta acción no se puede deshacer.`)) return false;
     try {
         await api.deleteInstrument(id);
         showStatus('status-banner', 'success', 'Instrumento eliminado');
-        await loadInstruments();
+        document.dispatchEvent(new CustomEvent('instruments-changed'));
+        return true;
     } catch (error) {
         showStatus('status-banner', 'error', error.response?.data?.error || error.message);
+        return false;
     }
-}
-
-export function initInstrumentsView() {
-    createSearchBar($('instruments-search-bar'), {
-        ...SEARCH_CONFIG,
-        searchPlaceholder: 'Buscar por símbolo o nombre...',
-        onChange: (state) => { searchState = state; renderTable(); },
-    });
-    $('new-instrument-btn').addEventListener('click', () => openInstrumentModal());
-    wireRowActions($('instruments-tbody'), {
-        onEdit: (id) => openInstrumentModal(currentInstruments.find((i) => String(i.id) === String(id))),
-        onDelete: deleteInstrument,
-    });
 }

@@ -33,8 +33,20 @@ input, select, textarea {
     padding: 8px 10px;
 }
 
+/* appearance:auto deja el navegador dibujar la flechita del <select> con su
+   propio estilo nativo (en macOS queda un recuadro resaltado que no combina
+   con el fondo oscuro -- "esta descajetado") -- se reemplaza por un chevron
+   propio, consistente en todos los selects de la app y en ambos temas. */
+select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='14' viewBox='0 0 14 14' fill='none'%3E%3Cpath d='M3.5 5.25L7 8.75L10.5 5.25' stroke='%238a93a3' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    padding-right: 30px;
+}
+
 input[type="number"], input.num-input {
-    font-family: var(--font-mono);
+    font-family: var(--font-sans);
     font-variant-numeric: tabular-nums;
 }
 
