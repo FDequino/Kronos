@@ -1,5 +1,5 @@
 import { $ } from '../shared/dom.js';
-import { fmt, fmtPct, fmtMoney, fmtDateTime } from '../shared/format.js';
+import { fmt, fmtPct, fmtMoney, fmtDate, fmtDateTime } from '../shared/format.js';
 import { showStatus } from '../shared/status.js';
 import { goBack } from '../shared/nav-history.js';
 import { api } from './api.js';
@@ -195,6 +195,15 @@ function shellHtml(symbol, tabs) {
                                         </div>
                                     </div>
                                     <div class="panel-body" id="detail-fundamentals"></div>
+                                </div>
+                                <div class="panel">
+                                    <div class="panel-header">
+                                        <div class="panel-header-text">
+                                            <h2>Noticias y Sentimiento</h2>
+                                            <p class="panel-subtitle">Vía Finnhub (si hay API key configurada) o yfinance -- cacheado 6hs. Alimenta el filtro de riesgo preventivo del Motor Satélite.</p>
+                                        </div>
+                                    </div>
+                                    <div class="panel-body" id="detail-news"></div>
                                 </div>
                             </div>
                         </div>
@@ -702,6 +711,43 @@ function fundamentalsHtml(data, config) {
     `;
 }
 
+// Noticias y Sentimiento (ver conversación: "no hay sección de noticias" /
+// "dentro de cada instrumento las que le afectan") -- mismo origen de
+// datos que ya alimenta el filtro de riesgo preventivo del Motor Satélite
+// (portfolio/nlp_agent.py::assess_event_risk), nunca una fuente separada.
+const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 'tag-negative' };
+
+function newsHtml(data) {
+    const riskTag = `<span class="tag ${NEWS_RISK_TAG_CLASS[data.risk_level] || 'tag-neutral'}">${data.risk_level}</span>`;
+    const eventLine = data.event_date
+        ? `<p class="hint">Próximo balance: ${fmtDate(data.event_date)} (en ${fmt(data.hours_until_event, 0)}hs)</p>`
+        : '';
+    const headlinesHtml = data.headlines.length
+        ? `<ul class="detail-news-list">${data.headlines.map((h) => `<li>${h}</li>`).join('')}</ul>`
+        : '<p class="table-empty">Sin titulares disponibles hoy.</p>';
+    return `
+        <div class="mini-stat-grid row">
+            <div class="mini-stat"><div class="l">Riesgo de evento</div><div class="v">${riskTag}</div></div>
+            <div class="mini-stat"><div class="l">Score de sentimiento</div><div class="v num">${fmt(data.sentiment_score, 2)}</div></div>
+        </div>
+        ${eventLine}
+        <p class="hint">${data.summary}</p>
+        ${headlinesHtml}
+    `;
+}
+
+async function loadNews(instrumentId) {
+    const root = $('detail-news');
+    if (!root) return;
+    root.innerHTML = loadingHtml('Buscando noticias…');
+    try {
+        const { data } = await api.instrumentNews(instrumentId);
+        root.innerHTML = newsHtml(data);
+    } catch (err) {
+        root.innerHTML = `<p class="hint">Error: ${err.response?.data?.error || err.message}</p>`;
+    }
+}
+
 async function loadFundamentals(instrumentId) {
     const root = $('detail-fundamentals');
     root.innerHTML = loadingHtml('Cargando fundamentales…');
@@ -1126,6 +1172,7 @@ export async function renderInstrumentDetail(hash) {
         }
         loadPriceAlertsPanel(resolvedInstrumentId);
         loadFundamentals(resolvedInstrumentId);
+        loadNews(resolvedInstrumentId);
         loadModelMetrics(resolvedInstrumentId);
         await loadChartFast(resolvedInstrumentId, holding?.instrument.currency || 'ARS');
         const hasForecast = await checkKronosStatus({ symbol, instrumentId: resolvedInstrumentId, market: resolvedMarket });

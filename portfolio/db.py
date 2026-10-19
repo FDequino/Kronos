@@ -357,6 +357,13 @@ def _migrate(conn):
         conn.execute("ALTER TABLE instruments ADD COLUMN broker_account_id INTEGER REFERENCES broker_accounts(id)")
         conn.commit()
 
+    # Titulares reales del Agente NLP (ver conversacion: "no hay seccion de
+    # noticias") -- antes se descartaban despues de puntuar.
+    news_sentiment_log_cols = {row["name"] for row in conn.execute("PRAGMA table_info(news_sentiment_log)").fetchall()}
+    if "headlines_json" not in news_sentiment_log_cols:
+        conn.execute("ALTER TABLE news_sentiment_log ADD COLUMN headlines_json TEXT")
+        conn.commit()
+
     # Pairs Trading / Factor Investing (ver conversacion) -- asignacion
     # NOMINAL/informativa para las tarjetas de estos 2 motores nuevos, nunca
     # mezclada con core_allocation_pct (ese 100% sigue siendo exclusivo de
@@ -1144,16 +1151,26 @@ def get_underlying_latest_fetched_date(conn, symbol):
 
 # --- Agente NLP de noticias/sentimiento (ver schema.sql, portfolio/nlp_agent.py) --
 
-def insert_news_sentiment(conn, *, ticker, sentiment_score, risk_level, summary=None, event_date=None):
+def insert_news_sentiment(conn, *, ticker, sentiment_score, risk_level, summary=None, event_date=None, headlines=None):
     """Log append-only (ver schema.sql) -- cada corrida del agente inserta
-    una fila nueva, nunca pisa la anterior (a diferencia de signal_config)."""
+    una fila nueva, nunca pisa la anterior (a diferencia de signal_config).
+    headlines: lista de strings (ya acotada por el caller, ver
+    nlp_agent.py) -- se guarda como JSON, None si no se evaluaron
+    titulares esta vez."""
     cur = conn.execute(
-        """INSERT INTO news_sentiment_log (ticker, event_date, sentiment_score, risk_level, summary)
-           VALUES (?, ?, ?, ?, ?)""",
-        (ticker, event_date, sentiment_score, risk_level, summary),
+        """INSERT INTO news_sentiment_log (ticker, event_date, sentiment_score, risk_level, summary, headlines_json)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (ticker, event_date, sentiment_score, risk_level, summary, json.dumps(headlines) if headlines else None),
     )
     conn.commit()
     return cur.lastrowid
+
+
+def _parse_headlines(row):
+    row = dict(row)
+    raw = row.pop("headlines_json", None)
+    row["headlines"] = json.loads(raw) if raw else []
+    return row
 
 
 def get_latest_sentiment(conn, ticker):
@@ -1166,7 +1183,7 @@ def get_latest_sentiment(conn, ticker):
         # autoincrement SI refleja el orden real de insercion.
         "SELECT * FROM news_sentiment_log WHERE ticker = ? ORDER BY created_at DESC, id DESC LIMIT 1", (ticker,)
     ).fetchone()
-    return _row_to_dict(row) if row else None
+    return _parse_headlines(_row_to_dict(row)) if row else None
 
 
 def list_recent_sentiment(conn, ticker, days=7):
@@ -1179,7 +1196,25 @@ def list_recent_sentiment(conn, ticker, days=7):
            ORDER BY created_at DESC, id DESC""",
         (ticker, f"-{int(days)} days"),
     ).fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_parse_headlines(_row_to_dict(r)) for r in rows]
+
+
+def list_today_sentiment(conn):
+    """Última evaluación de HOY por símbolo (ver conversación: la subtab
+    "Noticias" de Decisiones agrega esto, un símbolo nunca aparece 2 veces
+    aunque se haya re-evaluado varias veces en el día) -- nunca incluye el
+    historial de días anteriores, eso ya lo cubre list_recent_sentiment por
+    símbolo individual."""
+    rows = conn.execute(
+        """SELECT * FROM news_sentiment_log n1
+           WHERE date(created_at) = date('now')
+             AND id = (
+                 SELECT MAX(id) FROM news_sentiment_log n2
+                 WHERE n2.ticker = n1.ticker AND date(n2.created_at) = date('now')
+             )
+           ORDER BY risk_level = 'ALTO' DESC, risk_level = 'MEDIO' DESC, ticker"""
+    ).fetchall()
+    return [_parse_headlines(_row_to_dict(r)) for r in rows]
 
 
 # --- Asignacion objetivo --------------------------------------------------------

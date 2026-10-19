@@ -71,6 +71,7 @@
         <button class="subtab-btn" type="button" data-subtab-target="propuestas">Propuestas</button>
         <button class="subtab-btn" type="button" data-subtab-target="paper-trading">Paper Trading</button>
         <button class="subtab-btn" type="button" data-subtab-target="rendimiento">Backtest</button>
+        <button class="subtab-btn" type="button" data-subtab-target="noticias">Noticias</button>
     </div>
 
     <!-- Arquitectura Dual CORE/SATELITE (ver conversacion): Motor Core
@@ -205,6 +206,31 @@
                 </div>
             </div>
             <div class="panel-body" id="rendimiento-kronos-leaderboard">{{ skeleton_chart(180) }}</div>
+        </div>
+    </div>
+
+    <!-- Noticias y Sentimiento (ver conversación: "no hay sección de
+         noticias" -- agrega, por símbolo, la última evaluación de HOY del
+         Agente NLP (portfolio/nlp_agent.py). Mismo dato que ya alimenta el
+         filtro de riesgo preventivo del Motor Satélite y el badge de las
+         tarjetas de Oportunidades/Propuestas -- acá se ve completo
+         (titulares reales, no solo el badge). -->
+    <div class="subtab-panel" data-subtab-panel="noticias">
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Noticias y Sentimiento</h2>
+                        <p class="panel-subtitle">Última evaluación de HOY por símbolo — solo instrumentos que de verdad se evaluaron (una señal de hoy, o alguien mirando su página de detalle), nunca todo el universo.</p>
+                    </div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="view-toolbar-actions">
+                        <button id="refresh-news-today-btn" class="btn btn-secondary" type="button">Actualizar</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body" id="news-today-container">{{ skeleton_chart(220) }}</div>
         </div>
     </div>
 </section>

@@ -254,7 +254,7 @@ def assess_event_risk(conn, symbol, use_cache=True):
             return {
                 "ticker": symbol, "sentiment_score": latest["sentiment_score"],
                 "risk_level": latest["risk_level"], "summary": latest["summary"],
-                "event_date": latest["event_date"],
+                "event_date": latest["event_date"], "headlines": latest["headlines"],
                 "hours_until_event": _hours_until(
                     datetime.fromisoformat(latest["event_date"]).date() if latest["event_date"] else None
                 ),
@@ -277,14 +277,20 @@ def assess_event_risk(conn, symbol, use_cache=True):
         summary_parts.append("sin titulares disponibles hoy")
     summary = " · ".join(summary_parts)
 
+    # Acotado a 10 (ver conversacion: "no hay seccion de noticias" -- se
+    # guardan para MOSTRARLOS, nunca los ~250 crudos de Finnhub sin curar;
+    # mismo recorte que ya usa _llm_sentiment_score para puntuar).
+    stored_headlines = headlines[:10]
+
     db.insert_news_sentiment(
         conn, ticker=symbol, sentiment_score=round(sentiment_score, 4), risk_level=risk_level,
         summary=summary, event_date=earnings_date.isoformat() if earnings_date else None,
+        headlines=stored_headlines,
     )
     return {
         "ticker": symbol, "sentiment_score": round(sentiment_score, 4), "risk_level": risk_level,
         "summary": summary, "event_date": earnings_date.isoformat() if earnings_date else None,
-        "hours_until_event": hours_until_event,
+        "hours_until_event": hours_until_event, "headlines": stored_headlines,
     }
 
 

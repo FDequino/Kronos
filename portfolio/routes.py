@@ -7,7 +7,7 @@ from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, request, send_from_directory, stream_with_context
 
-from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, paper_trading, projection, proposals, quote_worker, risk, trendlines, xirr
+from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, nlp_agent, paper_trading, projection, proposals, quote_worker, risk, trendlines, xirr
 from portfolio import config as capital_config
 from portfolio.tz import today_ar
 
@@ -1233,6 +1233,40 @@ def instrument_fundamentals(instrument_id):
         config = db.get_signal_config(conn)
         cached['explanation'] = fundamentals.explain_fundamentals(instrument['symbol'], cached, config)
         return jsonify(cached)
+    finally:
+        conn.close()
+
+
+@bp.route('/instruments/<int:instrument_id>/news')
+def instrument_news(instrument_id):
+    """Noticias y sentimiento de ESTE instrumento puntual (ver
+    conversación: "dentro de cada instrumento las que le afectan") --
+    reusa el mismo cache de 6hs que ya usa el filtro de riesgo del Motor
+    Satélite (assess_event_risk), nunca pega a Finnhub/yfinance en cada
+    carga de pantalla. ?refresh=1 lo fuerza (mismo criterio que
+    /fundamentals de arriba)."""
+    conn = db.get_connection()
+    try:
+        instrument = db.get_instrument(conn, instrument_id)
+        if not instrument:
+            return jsonify({'error': 'Instrumento no encontrado'}), 404
+        assessment = nlp_agent.assess_event_risk(
+            conn, instrument['symbol'], use_cache=request.args.get('refresh') != '1',
+        )
+        return jsonify(assessment)
+    finally:
+        conn.close()
+
+
+@bp.route('/news-today')
+def news_today():
+    """Subtab "Noticias" de Decisiones (ver conversación) -- agrega la
+    última evaluación de HOY por símbolo, de cualquier instrumento que haya
+    sido evaluado (por una señal de hoy o por alguien mirando su página de
+    detalle) -- nunca el historial de días anteriores."""
+    conn = db.get_connection()
+    try:
+        return jsonify(db.list_today_sentiment(conn))
     finally:
         conn.close()
 

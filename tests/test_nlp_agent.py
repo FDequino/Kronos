@@ -230,6 +230,77 @@ def test_llm_sentiment_score_sin_key_devuelve_none(temp_db):
     assert nlp_agent._llm_sentiment_score(["alguna noticia"], temp_db) is None
 
 
+# --- titulares persistidos (ver conversacion: "no hay seccion de noticias") ---
+
+def test_assess_event_risk_persiste_titulares_reales(temp_db, monkeypatch):
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: ["Titular uno", "Titular dos"])
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+
+    result = nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
+    assert result["headlines"] == ["Titular uno", "Titular dos"]
+
+    persisted = db.get_latest_sentiment(temp_db, "AAPL")
+    assert persisted["headlines"] == ["Titular uno", "Titular dos"]
+
+
+def test_assess_event_risk_acota_titulares_a_10(temp_db, monkeypatch):
+    muchos = [f"Titular {i}" for i in range(50)]
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: muchos)
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+
+    result = nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
+    assert len(result["headlines"]) == 10
+    assert result["headlines"] == muchos[:10]
+
+
+def test_assess_event_risk_cache_hit_devuelve_los_mismos_titulares(temp_db, monkeypatch):
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: ["Solo esta vez"])
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+
+    nlp_agent.assess_event_risk(temp_db, "TSLA", use_cache=False)
+    # Segunda llamada con cache=True NO vuelve a fetchear (ver
+    # test_assess_event_risk_usa_cache_reciente) pero igual tiene que
+    # devolver los titulares ya persistidos, no una lista vacia.
+    result = nlp_agent.assess_event_risk(temp_db, "TSLA", use_cache=True)
+    assert result["headlines"] == ["Solo esta vez"]
+
+
+def test_assess_event_risk_sin_titulares_persiste_lista_vacia(temp_db, monkeypatch):
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [])
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+
+    result = nlp_agent.assess_event_risk(temp_db, "GGAL", use_cache=False)
+    assert result["headlines"] == []
+    assert db.get_latest_sentiment(temp_db, "GGAL")["headlines"] == []
+
+
+# --- db.list_today_sentiment (ver conversacion: subtab "Noticias" de Decisiones) --
+
+def test_list_today_sentiment_un_symbolo_una_vez_aunque_se_evalue_dos_veces(temp_db, monkeypatch):
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: ["Primera corrida"])
+    nlp_agent.assess_event_risk(temp_db, "GGAL", use_cache=False)
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: ["Segunda corrida, mas reciente"])
+    nlp_agent.assess_event_risk(temp_db, "GGAL", use_cache=False)
+
+    today = db.list_today_sentiment(temp_db)
+    ggal_entries = [e for e in today if e["ticker"] == "GGAL"]
+    assert len(ggal_entries) == 1
+    assert ggal_entries[0]["headlines"] == ["Segunda corrida, mas reciente"]
+
+
+def test_list_today_sentiment_agrega_varios_simbolos(temp_db, monkeypatch):
+    monkeypatch.setattr(nlp_agent, "_fetch_next_earnings_date", lambda symbol: None)
+    monkeypatch.setattr(nlp_agent, "_fetch_news_headlines", lambda conn, symbol: [f"Noticia de {symbol}"])
+
+    nlp_agent.assess_event_risk(temp_db, "GGAL", use_cache=False)
+    nlp_agent.assess_event_risk(temp_db, "AAPL", use_cache=False)
+
+    tickers = {e["ticker"] for e in db.list_today_sentiment(temp_db)}
+    assert tickers == {"GGAL", "AAPL"}
+
+
 def test_llm_sentiment_score_sin_titulares_nunca_llama_a_la_api(temp_db):
     db.update_signal_config(temp_db, openai_api_key="sk-fake-no-deberia-usarse")
     assert nlp_agent._llm_sentiment_score([], temp_db) is None

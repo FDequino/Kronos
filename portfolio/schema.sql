@@ -316,6 +316,13 @@ CREATE TABLE IF NOT EXISTS news_sentiment_log (
     sentiment_score REAL NOT NULL,   -- -1.0 (muy negativo) a +1.0 (muy positivo), 0.0 = neutral/sin datos
     risk_level TEXT NOT NULL CHECK (risk_level IN ('BAJO', 'MEDIO', 'ALTO')),
     summary TEXT,                    -- resumen humano de por que se clasifico asi (titulares vistos, evento detectado, etc.)
+    -- Titulares reales que generaron el score (ver conversacion: "no hay
+    -- seccion de noticias" -- antes se descartaban despues de puntuar,
+    -- ahora se persisten para mostrarlos). JSON array de strings, acotado a
+    -- los primeros 10 (mismo recorte que ya usa el LLM para puntuar, ver
+    -- nlp_agent.py::_llm_sentiment_score) -- nunca los ~250 crudos de
+    -- Finnhub sin curar, eso no es "noticias relevantes", es ruido.
+    headlines_json TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_news_sentiment_log_ticker_created
