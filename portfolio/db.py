@@ -935,6 +935,25 @@ def upsert_technical_cache(conn, instrument_id, *, rsi, tecnico, edge, n, fundam
     conn.commit()
 
 
+def get_accuracy_cache(conn, instrument_id):
+    row = conn.execute(
+        "SELECT * FROM accuracy_cache WHERE instrument_id = ?", (instrument_id,)
+    ).fetchone()
+    return _row_to_dict(row)
+
+
+def upsert_accuracy_cache(conn, instrument_id, *, result_json, fetched_at=None):
+    fetched_at = fetched_at or datetime.now().isoformat()
+    conn.execute(
+        """INSERT INTO accuracy_cache (instrument_id, result_json, fetched_at)
+           VALUES (?, ?, ?)
+           ON CONFLICT(instrument_id) DO UPDATE SET
+               result_json = excluded.result_json, fetched_at = excluded.fetched_at""",
+        (instrument_id, result_json, fetched_at),
+    )
+    conn.commit()
+
+
 # --- Historico de cotizaciones de dolar (fx_rate_history) ----------------------
 
 def upsert_fx_rates(conn, casa, rows):

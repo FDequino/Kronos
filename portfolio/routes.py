@@ -576,9 +576,7 @@ def _forecast_response(row, conn=None):
         # Explorador sin alta en la cartera (instrument_id None) no tienen
         # historial coherente de forecasts propios, quedan sin este campo.
         if conn is not None and row['instrument_id'] is not None:
-            forecasts = db.list_forecasts_for_instrument(conn, row['instrument_id'])
-            price_history = db.get_price_history(conn, row['instrument_id'])
-            acc = accuracy.compute_accuracy(forecasts, price_history, conn=conn)
+            acc = _get_cached_accuracy(conn, row['instrument_id'])
             response['validation'] = accuracy.compute_signal_validation(acc, db.get_signal_config(conn))
     return response
 
@@ -695,9 +693,7 @@ def instrument_accuracy(instrument_id):
         instrument = db.get_instrument(conn, instrument_id)
         if not instrument:
             return jsonify({'error': 'Instrumento no encontrado'}), 404
-        forecasts = db.list_forecasts_for_instrument(conn, instrument_id)
-        price_history = db.get_price_history(conn, instrument_id)
-        result = accuracy.compute_accuracy(forecasts, price_history, conn=conn)
+        result = _get_cached_accuracy(conn, instrument_id)
         if result is None:
             return jsonify(None)
         result['validation'] = accuracy.compute_signal_validation(result, db.get_signal_config(conn))
@@ -740,7 +736,7 @@ def forecasts_history():
             if not forecasts:
                 continue
             price_history = db.get_price_history(conn, instrument['id'])
-            acc = accuracy.compute_accuracy(forecasts, price_history, conn=conn)
+            acc = _get_cached_accuracy(conn, instrument['id'])
             acc = acc if (acc and not acc.get('pending')) else None
             calibration = accuracy.compute_calibration(forecasts, price_history, conn=conn)
             summaries.append({
@@ -1346,6 +1342,30 @@ def currency_exposure():
 
 
 TECHNICAL_CACHE_FRESHNESS_HOURS = 24
+
+# Cache de accuracy.compute_accuracy (ver conversacion, accuracy_cache en
+# schema.sql) -- mismo TTL diario que TECHNICAL_CACHE_FRESHNESS_HOURS arriba,
+# mismo motivo: el resultado no cambia mas de una vez por dia (depende de
+# price_history/forecasts, que se actualizan con el cierre del mercado).
+ACCURACY_CACHE_FRESHNESS_HOURS = 24
+
+
+def _get_cached_accuracy(conn, instrument_id):
+    cached = db.get_accuracy_cache(conn, instrument_id)
+    stale = True
+    if cached and cached.get('fetched_at'):
+        age_hours = (datetime.utcnow() - datetime.fromisoformat(cached['fetched_at'])).total_seconds() / 3600
+        stale = age_hours >= ACCURACY_CACHE_FRESHNESS_HOURS
+    if cached and not stale:
+        return json.loads(cached['result_json'])
+    # Las consultas pesadas (todo el historial de forecasts + price_history)
+    # solo corren en cache-miss -- antes corrian SIEMPRE, aunque el resultado
+    # fuera a salir cacheado igual.
+    forecasts = db.list_forecasts_for_instrument(conn, instrument_id)
+    price_history = db.get_price_history(conn, instrument_id)
+    acc = accuracy.compute_accuracy(forecasts, price_history, conn=conn)
+    db.upsert_accuracy_cache(conn, instrument_id, result_json=json.dumps(acc))
+    return acc
 
 
 def _compute_technical_cache_row(conn, instrument, config):

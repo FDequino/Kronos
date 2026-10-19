@@ -355,6 +355,21 @@ CREATE TABLE IF NOT EXISTS technical_cache (
     fetched_at TEXT NOT NULL
 );
 
+-- Cache de accuracy.compute_accuracy por instrumento (ver conversacion --
+-- mismo espiritu que technical_cache arriba, TTL diario): perfilado en vivo
+-- (py-spy dump contra el proceso real en kronos.deglia.xyz) mostro que
+-- dashboard_bundle recalculaba esto desde cero, en CPU (nunca red), por
+-- cada tenencia con un forecast -- con 24 tenencias eso solo ya explicaba
+-- ~24s de los 38-70s totales. compute_signal_validation (que SI depende de
+-- signal_config, a diferencia de compute_accuracy) nunca se cachea -- se
+-- recalcula fresco contra el resultado cacheado en cada request, es
+-- aritmetica sobre escalares, no el costo real.
+CREATE TABLE IF NOT EXISTS accuracy_cache (
+    instrument_id INTEGER PRIMARY KEY REFERENCES instruments(id) ON DELETE CASCADE,
+    result_json TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+);
+
 -- Preferencias de visualizacion (no son parametros de señales): moneda en la
 -- que se muestra la cartera y que variante de BNA se usa para convertir.
 CREATE TABLE IF NOT EXISTS app_settings (
