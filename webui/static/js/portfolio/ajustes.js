@@ -124,12 +124,39 @@ function initScannerControls() {
 // portfolio/config.py::get_active_risk_profile) -- nunca un flag separado
 // que pueda desincronizarse si alguien toca los sliders de abajo a mano.
 
+// FIX (ver auditoria 19/10/2026, hallazgo 1.4): antes esta tarjeta mostraba
+// un rango "expected_return_usd_low/high_pct" + "sharpe_low/high"
+// HARDCODEADO, nunca atado al backtest real -- Moderado prometía +23,6% a
+// +26,7% cuando el backtest real a esa misma asignación daba +5,3%. Ahora
+// backend/config.py::list_risk_profiles resuelve las métricas reales contra
+// el backtest guardado (dual_engine_backtest_summary); si no hay un
+// backtest corrido EXACTO a la asignación de este perfil,
+// backtest_validated viene en false y se muestra "Sin backtest a esta
+// mezcla" en vez de inventar un número.
 function profileCardHtml(profile, activeProfileId) {
     const isActive = profile.id === activeProfileId;
     const satellitePct = Math.round((100 - profile.core_pct) * 100) / 100;
-    const sharpeRange = profile.sharpe_low === profile.sharpe_high
-        ? fmt(profile.sharpe_low, 2)
-        : `${fmt(profile.sharpe_low, 2)} a ${fmt(profile.sharpe_high, 2)}`;
+    const resultMetricsHtml = profile.backtest_validated
+        ? `
+            <div class="mini-stat">
+                <div class="l">Retorno Anual USD (backtest)${INDICATOR_TOOLTIPS.retornoUsd}</div>
+                <div class="v">${profile.annualized_return_pct >= 0 ? '+' : ''}${fmt(profile.annualized_return_pct, 1)}%</div>
+            </div>
+            <div class="mini-stat">
+                <div class="l">Sharpe (backtest)${INDICATOR_TOOLTIPS.sharpe}</div>
+                <div class="v">${fmt(profile.sharpe_ratio, 2)}</div>
+            </div>
+            <div class="mini-stat">
+                <div class="l">Max Drawdown (backtest)${INDICATOR_TOOLTIPS.maxDrawdown}</div>
+                <div class="v">${fmt(profile.max_drawdown_pct, 1)}%</div>
+            </div>
+        `
+        : `
+            <div class="mini-stat span2">
+                <div class="l">Resultado esperado</div>
+                <div class="v"><span class="hint">Sin backtest corrido a esta asignación exacta — ver "Rendimiento Histórico" en Decisiones para las combinaciones ya validadas.</span></div>
+            </div>
+        `;
     // Un solo nivel (col-4 + panel en el MISMO div, ver conversación, Fase 5)
     // -- antes .col-4 envolvía un .panel aparte, lo que lo dejaba afuera de
     // la regla ".grid12 > .panel" (flex-column, alto parejo con el resto de
@@ -150,18 +177,7 @@ function profileCardHtml(profile, activeProfileId) {
                         <div class="l">Asignación</div>
                         <div class="v">Core ${fmt(profile.core_pct, 0)}% / Satélite ${fmt(satellitePct, 0)}%</div>
                     </div>
-                    <div class="mini-stat">
-                        <div class="l">Retorno Est. USD${INDICATOR_TOOLTIPS.dispersionP10P90}</div>
-                        <div class="v">+${fmt(profile.expected_return_usd_low_pct, 1)}% a +${fmt(profile.expected_return_usd_high_pct, 1)}%</div>
-                    </div>
-                    <div class="mini-stat">
-                        <div class="l">Sharpe${INDICATOR_TOOLTIPS.sharpe}</div>
-                        <div class="v">${sharpeRange}</div>
-                    </div>
-                    <div class="mini-stat">
-                        <div class="l">Max Drawdown${INDICATOR_TOOLTIPS.maxDrawdown}</div>
-                        <div class="v">${fmt(profile.max_drawdown_pct, 1)}%</div>
-                    </div>
+                    ${resultMetricsHtml}
                     <div class="mini-stat">
                         <div class="l">Stop Loss / Take Profit</div>
                         <div class="v">-${fmt(profile.stop_loss_pct, 1)}% / +${fmt(profile.take_profit_pct, 1)}%</div>

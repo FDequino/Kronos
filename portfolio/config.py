@@ -195,45 +195,24 @@ def get_core_params(conn):
 # consulta -- si no matchea ninguno (el usuario toco algo a mano despues de
 # activar un perfil), devuelve "personalizado" en vez de mentir.
 #
-# Las metricas esperadas (retorno/Sharpe/Max DD) de cada perfil son
-# INFORMATIVAS -- valores de referencia tal como los dio el enunciado de este
-# feature, NUNCA recalculadas en vivo (no hay un backtest por perfil
-# corriendo en cada carga de Ajustes). Se muestran como contexto para elegir
-# un perfil, no como una promesa de rendimiento futuro.
+# FIX (ver auditoria 19/10/2026, hallazgo 1.4 "los perfiles prometen 4-5x lo
+# que da el backtest"): este dict ANTES traia ademas expected_return_usd_low/
+# high_pct, sharpe_low/high y max_drawdown_pct hardcodeados -- "valores de
+# referencia tal como los dio el enunciado de este feature", nunca atados al
+# backtest real (textual, ver commit e72a4b4). Resultado medido: Moderado
+# prometia +23,6% a +26,7% / Sharpe 1,34-1,77 cuando el backtest real a esa
+# misma asignacion (20/80) da +5,3% / Sharpe 0,89 -- una promesa de
+# rendimiento 4-5x mayor a lo que la propia plataforma mide. Se saca esa
+# fantasia de aca: RISK_PROFILES ahora SOLO define los 3 parametros que
+# describen al perfil (asignacion + salidas), nunca metricas de resultado.
+# Las metricas de resultado las resuelve list_risk_profiles(conn) en vivo
+# contra el backtest real guardado (ver _backtest_metrics_for_core_pct) --
+# si no hay un backtest corrido exactamente a esa asignacion, el perfil
+# queda sin metricas en vez de inventar un numero.
 RISK_PROFILES = {
-    "conservador": {
-        "label": "Conservador",
-        "core_pct": 70.0,
-        "stop_loss_pct": 4.0,
-        "take_profit_pct": 3.5,
-        "expected_return_usd_low_pct": 8.5,
-        "expected_return_usd_high_pct": 12.0,
-        "sharpe_low": 0.95,
-        "sharpe_high": 0.95,
-        "max_drawdown_pct": -3.5,
-    },
-    "moderado": {
-        "label": "Moderado",
-        "core_pct": 20.0,
-        "stop_loss_pct": 9.0,
-        "take_profit_pct": 4.0,
-        "expected_return_usd_low_pct": 23.6,
-        "expected_return_usd_high_pct": 26.7,
-        "sharpe_low": 1.34,
-        "sharpe_high": 1.77,
-        "max_drawdown_pct": -7.6,
-    },
-    "agresivo": {
-        "label": "Agresivo",
-        "core_pct": 0.0,
-        "stop_loss_pct": 12.0,
-        "take_profit_pct": 6.0,
-        "expected_return_usd_low_pct": 30.6,
-        "expected_return_usd_high_pct": 33.9,
-        "sharpe_low": 1.46,
-        "sharpe_high": 1.77,
-        "max_drawdown_pct": -10.4,
-    },
+    "conservador": {"label": "Conservador", "core_pct": 70.0, "stop_loss_pct": 4.0, "take_profit_pct": 3.5},
+    "moderado": {"label": "Moderado", "core_pct": 20.0, "stop_loss_pct": 9.0, "take_profit_pct": 4.0},
+    "agresivo": {"label": "Agresivo", "core_pct": 0.0, "stop_loss_pct": 12.0, "take_profit_pct": 6.0},
 }
 # Orden de presentacion (Ajustes/Telegram) -- del mas defensivo al mas
 # agresivo, nunca el orden de insercion incidental de un dict.
@@ -242,10 +221,47 @@ DEFAULT_RISK_PROFILE = "moderado"  # coincide con DEFAULT_CORE_ALLOCATION_PCT=20
 _PROFILE_MATCH_TOLERANCE = 1e-6
 
 
-def list_risk_profiles():
-    """Lista ordenada de {"id": ..., **preset} -- copia (nunca el dict
-    interno de RISK_PROFILES, para que nadie mute el preset desde afuera)."""
-    return [{"id": pid, **RISK_PROFILES[pid]} for pid in RISK_PROFILE_ORDER]
+def _backtest_metrics_for_core_pct(summary, core_pct):
+    """Metricas REALES del backtest dual (ver portfolio/backtest.py,
+    db.get_dual_engine_backtest_summary) que corresponden EXACTO a una
+    asignacion core_pct dada -- None si nunca corrio un backtest a esa
+    mezcla puntual (nunca se interpola/inventa un numero intermedio sin
+    evidencia). satellite_metrics = la corrida a 0% Core (100% Satelite,
+    perfil "agresivo"); core_metrics = la corrida a 100% Core (ningun
+    perfil usa esto hoy); global_metrics = la corrida blendeada a la
+    asignacion vigente en capital_allocation (hoy 20/80, matchea
+    "moderado" -- si esa asignacion default cambia alguna vez, el perfil
+    que deja de tener backtest exacto simplemente pasa a mostrarse sin
+    metricas, nunca con una vieja desactualizada)."""
+    if summary is None:
+        return None
+    if abs(core_pct - 0.0) < _PROFILE_MATCH_TOLERANCE:
+        return summary.get("satellite_metrics")
+    if abs(core_pct - 100.0) < _PROFILE_MATCH_TOLERANCE:
+        return summary.get("core_metrics")
+    allocation = summary.get("capital_allocation")
+    if allocation and abs(core_pct - allocation.get("core_pct", -1)) < _PROFILE_MATCH_TOLERANCE:
+        return summary.get("global_metrics")
+    return None
+
+
+def list_risk_profiles(conn=None):
+    """Lista ordenada de {"id": ..., **preset, **metricas_reales_o_None} --
+    copia (nunca el dict interno de RISK_PROFILES, para que nadie mute el
+    preset desde afuera). conn=None (compatibilidad hacia atras / tests que
+    no necesitan metricas) deja annualized_return_pct/sharpe_ratio/
+    max_drawdown_pct/backtest_validated en None -- nunca un valor fantasma."""
+    summary = db.get_dual_engine_backtest_summary(conn) if conn is not None else None
+    profiles = []
+    for pid in RISK_PROFILE_ORDER:
+        preset = dict(RISK_PROFILES[pid])
+        metrics = _backtest_metrics_for_core_pct(summary, preset["core_pct"])
+        preset["backtest_validated"] = metrics is not None
+        preset["annualized_return_pct"] = metrics["annualized_return_pct"] if metrics else None
+        preset["sharpe_ratio"] = metrics["sharpe_ratio"] if metrics else None
+        preset["max_drawdown_pct"] = metrics["max_drawdown_pct"] if metrics else None
+        profiles.append({"id": pid, **preset})
+    return profiles
 
 
 def get_active_risk_profile(conn):

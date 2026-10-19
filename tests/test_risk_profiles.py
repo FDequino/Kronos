@@ -28,9 +28,18 @@ def test_list_risk_profiles_devuelve_los_3_en_orden():
     for p in profiles:
         assert set(p) >= {
             "id", "label", "core_pct", "stop_loss_pct", "take_profit_pct",
-            "expected_return_usd_low_pct", "expected_return_usd_high_pct",
-            "sharpe_low", "sharpe_high", "max_drawdown_pct",
+            "backtest_validated", "annualized_return_pct", "sharpe_ratio", "max_drawdown_pct",
         }
+
+
+def test_list_risk_profiles_sin_conn_nunca_inventa_metricas():
+    # ver auditoria 19/10/2026, hallazgo 1.4: sin un backtest real de donde
+    # sacar el numero, NUNCA se devuelve una metrica -- ni vieja ni fantasma.
+    for p in capital_config.list_risk_profiles():
+        assert p["backtest_validated"] is False
+        assert p["annualized_return_pct"] is None
+        assert p["sharpe_ratio"] is None
+        assert p["max_drawdown_pct"] is None
 
 
 def test_list_risk_profiles_devuelve_copia_nunca_el_preset_interno():
@@ -116,3 +125,78 @@ def test_persistencia_real_en_sqlite_entre_conexiones(tmp_path, monkeypatch):
         assert capital_config.get_capital_allocation(conn2)["core_pct"] == 0.0
     finally:
         conn2.close()
+
+
+# --- metricas de resultado atadas al backtest real (ver auditoria 19/10/2026, --
+# hallazgo 1.4: "los perfiles prometen 4-5x lo que da el backtest") -----------
+
+_FAKE_CORE_METRICS = {"annualized_return_pct": -3.7, "sharpe_ratio": -0.08, "max_drawdown_pct": -21.0}
+_FAKE_SATELLITE_METRICS = {"annualized_return_pct": 7.2, "sharpe_ratio": 1.48, "max_drawdown_pct": -2.8}
+_FAKE_GLOBAL_METRICS = {"annualized_return_pct": 5.3, "sharpe_ratio": 0.89, "max_drawdown_pct": -4.4}
+
+
+def _save_fake_backtest(conn, core_pct=20.0):
+    db.save_dual_engine_backtest_summary(
+        conn, run_at="2026-10-16T18:53:11", lookback_days=300,
+        core_metrics=_FAKE_CORE_METRICS, satellite_metrics=_FAKE_SATELLITE_METRICS,
+        global_metrics=_FAKE_GLOBAL_METRICS, capital_allocation={"core_pct": core_pct, "satellite_pct": 100 - core_pct},
+    )
+
+
+def test_perfil_moderado_usa_las_metricas_reales_del_global_metrics(temp_db):
+    # "moderado" es core_pct=20.0, que matchea la asignacion real guardada.
+    _save_fake_backtest(temp_db, core_pct=20.0)
+    by_id = {p["id"]: p for p in capital_config.list_risk_profiles(temp_db)}
+    moderado = by_id["moderado"]
+    assert moderado["backtest_validated"] is True
+    assert moderado["annualized_return_pct"] == 5.3
+    assert moderado["sharpe_ratio"] == 0.89
+    assert moderado["max_drawdown_pct"] == -4.4
+    # Nunca la fantasia vieja (+23,6% a +26,7% / Sharpe 1,34-1,77) que
+    # prometia 4-5x el resultado real.
+    assert moderado["annualized_return_pct"] != 23.6
+
+
+def test_perfil_agresivo_usa_satellite_metrics_siempre_core_pct_cero(temp_db):
+    # "agresivo" es core_pct=0.0 (100% Satelite) -- matchea satellite_metrics
+    # sin importar a que asignacion se corrio el backtest global.
+    _save_fake_backtest(temp_db, core_pct=20.0)
+    by_id = {p["id"]: p for p in capital_config.list_risk_profiles(temp_db)}
+    agresivo = by_id["agresivo"]
+    assert agresivo["backtest_validated"] is True
+    assert agresivo["annualized_return_pct"] == 7.2
+    assert agresivo["sharpe_ratio"] == 1.48
+    assert agresivo["max_drawdown_pct"] == -2.8
+
+
+def test_perfil_conservador_sin_backtest_exacto_queda_sin_validar(temp_db):
+    # "conservador" es core_pct=70.0 -- ningun backtest guardado corre a esa
+    # mezcla puntual (solo 0%, 20% y 100% tienen corrida real hoy), asi que
+    # NUNCA se interpola/inventa un numero intermedio.
+    _save_fake_backtest(temp_db, core_pct=20.0)
+    by_id = {p["id"]: p for p in capital_config.list_risk_profiles(temp_db)}
+    conservador = by_id["conservador"]
+    assert conservador["backtest_validated"] is False
+    assert conservador["annualized_return_pct"] is None
+    assert conservador["sharpe_ratio"] is None
+    assert conservador["max_drawdown_pct"] is None
+
+
+def test_perfil_core_100_usa_core_metrics_si_el_backtest_corrio_a_esa_mezcla(temp_db):
+    _save_fake_backtest(temp_db, core_pct=100.0)
+    by_id = {p["id"]: p for p in capital_config.list_risk_profiles(temp_db)}
+    # A 100% Core, "moderado" (core_pct=20) ya no matchea la asignacion
+    # global guardada -- queda sin validar en vez de usar un numero viejo.
+    assert by_id["moderado"]["backtest_validated"] is False
+    assert by_id["agresivo"]["backtest_validated"] is True  # satellite_metrics, independiente de la asignacion global
+
+
+def test_backtest_metrics_for_core_pct_none_sin_summary():
+    assert capital_config._backtest_metrics_for_core_pct(None, 20.0) is None
+
+
+def test_backtest_metrics_for_core_pct_sin_capital_allocation_guardado():
+    summary = {"core_metrics": _FAKE_CORE_METRICS, "satellite_metrics": _FAKE_SATELLITE_METRICS, "capital_allocation": None}
+    assert capital_config._backtest_metrics_for_core_pct(summary, 20.0) is None
+    assert capital_config._backtest_metrics_for_core_pct(summary, 0.0) == _FAKE_SATELLITE_METRICS
+    assert capital_config._backtest_metrics_for_core_pct(summary, 100.0) == _FAKE_CORE_METRICS
