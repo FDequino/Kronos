@@ -194,6 +194,18 @@ def _migrate(conn):
         # solo guarda la hora en punto, este pide minutos tambien, ej "09:30").
         "pdf_report_schedule": "TEXT NOT NULL DEFAULT 'morning'",
         "pdf_report_time": "TEXT NOT NULL DEFAULT '09:30'",
+        # Horario de la tarde, antes una constante fija (PDF_REPORT_AFTERNOON_TIME
+        # en portfolio/telegram_bot.py) -- ahora configurable igual que la mañana
+        # de arriba. Default '17:30' a proposito: una instalacion ya migrada no
+        # debe ver cambiar el horario de un dia para el otro solo por este agregado.
+        "pdf_report_time_afternoon": "TEXT NOT NULL DEFAULT '17:30'",
+        # Fin de semana: el PDF programado no tenia NINGUN gate de dia habil (a
+        # diferencia del scanner de Paper Trading, ver portfolio/monitor.py::
+        # is_trading_day) -- terminaba mandando un "Resultado del Dia" sabado/
+        # domingo sin rueda detras, dato viejo disfrazado de actual. Default 1
+        # (activado) porque ese comportamiento siempre fue un bug, no una
+        # eleccion deliberada del usuario.
+        "pdf_report_weekdays_only": "INTEGER NOT NULL DEFAULT 1",
         # Fecha (YYYY-MM-DD, hora Argentina) del ultimo envio exitoso por
         # franja -- el scheduler (ver portfolio/telegram_bot.py) corre cada
         # pocos minutos y consulta esto para no mandar el mismo reporte 2
@@ -302,6 +314,18 @@ def _migrate(conn):
         conn.commit()
     if "factor_allocation_pct" not in signal_config_cols:
         conn.execute("ALTER TABLE signal_config ADD COLUMN factor_allocation_pct REAL")
+        conn.commit()
+
+    # Sincronizacion autonoma de Propuestas (ver conversacion,
+    # portfolio/telegram_bot.py::_proposals_sync_job) -- columna A PROPOSITO
+    # separada de `estado`: una propuesta queda en estado='nueva' hasta que el
+    # USUARIO la ve/acepta/descarta desde la UI, pero el job de notificacion
+    # corre solo en segundo plano y no debe re-mandar la misma propuesta en
+    # cada corrida solo porque nadie la miro todavia. NULL = todavia no
+    # notificada por Telegram.
+    proposals_cols = {row["name"] for row in conn.execute("PRAGMA table_info(proposals)").fetchall()}
+    if "telegram_notified_at" not in proposals_cols:
+        conn.execute("ALTER TABLE proposals ADD COLUMN telegram_notified_at TEXT")
         conn.commit()
 
 

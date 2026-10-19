@@ -95,16 +95,18 @@ const LEGACY_HASH_REDIRECTS = {
     comparar: ['instrumentos', 'comparar'],
 };
 
-// "Motor" dejó de ser una subtab propia de Decisiones (ver portfolio.html,
-// pase de UX/UI) -- a diferencia de LEGACY_HASH_REDIRECTS de arriba (que
-// redirige por VISTA, primer segmento del hash), esto es un redirect de
-// SUBTAB dentro de una vista que sigue existiendo tal cual -- por eso es un
-// mapa aparte, keyeado por "vista/subtab". Un bookmark viejo a
-// #decisiones/motor ya caía en la subtab default (oportunidades, activa en
-// el markup) porque activateSubtab() no hace nada si el botón no existe --
-// pero no depender de esa casualidad: dejarlo explícito.
+// Subtabs que dejaron de existir pero la VISTA que las contiene sigue tal
+// cual (a diferencia de LEGACY_HASH_REDIRECTS de arriba, que redirige por
+// VISTA, primer segmento del hash) -- por eso es un mapa aparte, keyeado por
+// "vista/subtab". Un bookmark viejo a una de estas rutas ya caía en la
+// subtab default de esa vista (activateSubtab() no hace nada si el botón no
+// existe), pero no depender de esa casualidad: dejarlo explícito.
+// - decisiones/motor: "Motor" dejó de ser subtab propia (ver portfolio.html).
+// - ajustes/telegram, ajustes/conexiones: se fusionaron en "Integraciones".
 const LEGACY_SUBTAB_REDIRECTS = {
     'decisiones/motor': 'oportunidades',
+    'ajustes/telegram': 'integraciones',
+    'ajustes/conexiones': 'integraciones',
 };
 
 function activateView(hash) {

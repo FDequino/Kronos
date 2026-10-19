@@ -417,9 +417,8 @@
          pagina, es un toggle de clase CSS). -->
     <div class="subtabs" data-subtabs="ajustes">
         <button class="subtab-btn active" type="button" data-subtab-target="estrategia">Estrategia y Motores</button>
-        <button class="subtab-btn" type="button" data-subtab-target="telegram">Telegram y Accesos</button>
+        <button class="subtab-btn" type="button" data-subtab-target="integraciones">Integraciones</button>
         <button class="subtab-btn" type="button" data-subtab-target="moneda">Moneda y Referencias</button>
-        <button class="subtab-btn" type="button" data-subtab-target="conexiones">Conexiones</button>
         <button class="subtab-btn" type="button" data-subtab-target="notificaciones">Reporte PDF</button>
     </div>
 
@@ -494,7 +493,13 @@
         </div>
     </div>
 
-    <div class="subtab-panel" data-subtab-panel="telegram">
+    <!-- Integraciones (ver conversacion): fusion de "Telegram y Accesos" +
+         "Conexiones" -- ambas son, en el fondo, cuentas/servicios externos que
+         se conectan a esta instalacion (el bot de Telegram vs. una cuenta de
+         bróker), mismo patron de "varios .panel apilados bajo una sola subtab"
+         que ya usa "estrategia" arriba (cada .panel conserva su propio
+         .panel-header, lo que los sigue distinguiendo visualmente). -->
+    <div class="subtab-panel" data-subtab-panel="integraciones">
         <div class="panel">
             <div class="panel-sticky-head">
                 <div class="panel-header">
@@ -532,6 +537,27 @@
             <div class="panel-body flush" id="telegram-users-table-container">
                 <table>
                     <tbody>{{ skeleton_rows(3, 5) }}</tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-sticky-head">
+                <div class="panel-header">
+                    <div class="panel-header-text">
+                        <h2>Cuentas de bróker (Multi-Broker)</h2>
+                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker — nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano en esta instalación local y nunca se muestran completos, solo los últimos 4 caracteres.</p>
+                    </div>
+                </div>
+                <div class="view-toolbar">
+                    <div class="view-toolbar-actions">
+                        <button id="new-broker-account-btn" class="btn btn-secondary" type="button">+ Agregar cuenta</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel-body flush" id="broker-accounts-table-container">
+                <table>
+                    <tbody>{{ skeleton_rows(2, 6) }}</tbody>
                 </table>
             </div>
         </div>
@@ -583,29 +609,6 @@
                         </label>
                     </div>
                 </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="subtab-panel" data-subtab-panel="conexiones">
-        <div class="panel">
-            <div class="panel-sticky-head">
-                <div class="panel-header">
-                    <div class="panel-header-text">
-                        <h2>Cuentas de bróker (Multi-Broker)</h2>
-                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker — nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano en esta instalación local y nunca se muestran completos, solo los últimos 4 caracteres.</p>
-                    </div>
-                </div>
-                <div class="view-toolbar">
-                    <div class="view-toolbar-actions">
-                        <button id="new-broker-account-btn" class="btn btn-secondary" type="button">+ Agregar cuenta</button>
-                    </div>
-                </div>
-            </div>
-            <div class="panel-body flush" id="broker-accounts-table-container">
-                <table>
-                    <tbody>{{ skeleton_rows(2, 6) }}</tbody>
-                </table>
             </div>
         </div>
     </div>
@@ -675,10 +678,23 @@
                         <input type="time" id="ajustes-pdf-time-input">
                     </div>
                     <div class="field">
+                        <label for="ajustes-pdf-time-afternoon-input">Hora de la tarde</label>
+                        <input type="time" id="ajustes-pdf-time-afternoon-input">
+                    </div>
+                    <div class="field">
                         <button id="ajustes-pdf-test-send-btn" class="btn btn-secondary" type="button">Enviar Reporte de Prueba Ahora</button>
                     </div>
                 </div>
-                <p class="hint" style="margin-top: 8px;">La tarde es fija, 17:30 ART.</p>
+                <div class="field-row" style="margin-top: 10px;">
+                    <div class="field">
+                        <label>Solo días hábiles</label>
+                        <label class="switch">
+                            <input type="checkbox" id="ajustes-pdf-weekdays-only-switch">
+                            <span class="switch-track"><span class="switch-thumb"></span></span>
+                        </label>
+                        <span class="hint">Si está activo, el envío programado se salta sábados y domingos (no hubo rueda que resumir).</span>
+                    </div>
+                </div>
                 <div id="ajustes-pdf-test-send-result"></div>
             </div>
         </div>

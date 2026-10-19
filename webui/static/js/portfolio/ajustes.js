@@ -381,6 +381,8 @@ async function loadPdfReportControls() {
     $('ajustes-pdf-include-opportunities').checked = !!settings.pdf_include_opportunities;
     $('ajustes-pdf-schedule-select').value = settings.pdf_report_schedule;
     $('ajustes-pdf-time-input').value = settings.pdf_report_time;
+    $('ajustes-pdf-time-afternoon-input').value = settings.pdf_report_time_afternoon;
+    $('ajustes-pdf-weekdays-only-switch').checked = !!settings.pdf_report_weekdays_only;
 }
 
 function initPdfReportControls() {
@@ -408,6 +410,14 @@ function initPdfReportControls() {
         if (!e.target.value) return;
         await api.updateSettings({ pdf_report_time: e.target.value });
         showStatus('status-banner', 'success', 'Hora de envío actualizada');
+    });
+    $('ajustes-pdf-time-afternoon-input').addEventListener('change', async (e) => {
+        if (!e.target.value) return;
+        await api.updateSettings({ pdf_report_time_afternoon: e.target.value });
+        showStatus('status-banner', 'success', 'Hora de envío actualizada');
+    });
+    $('ajustes-pdf-weekdays-only-switch').addEventListener('change', async (e) => {
+        await api.updateSettings({ pdf_report_weekdays_only: e.target.checked ? 1 : 0 });
     });
 
     $('ajustes-pdf-test-send-btn').addEventListener('click', async () => {
