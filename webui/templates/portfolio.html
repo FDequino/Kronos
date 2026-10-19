@@ -118,7 +118,11 @@
                     <div class="mini-stat-grid row" id="proposals-summary"></div>
                 </div>
                 <div class="view-toolbar">
-                    <div id="proposals-search-bar"></div>
+                    <div id="proposals-search-bar" class="view-toolbar-grow"></div>
+                    <div class="view-toolbar-actions">
+                        <span class="hint" id="proposals-last-updated"></span>
+                        <button id="refresh-proposals-btn" class="btn btn-secondary" type="button">Actualizar</button>
+                    </div>
                 </div>
             </div>
             <div class="panel-body flush">
@@ -184,6 +188,9 @@
                 <div class="panel-header-text">
                     <h2>Backtest global Core / Satélite</h2>
                     <p class="panel-subtitle">Último walk-forward comparativo de ambos motores + el blend global según la asignación de capital vigente.</p>
+                </div>
+                <div class="panel-header-actions">
+                    <span class="hint" id="dual-engine-backtest-last-run"></span>
                 </div>
             </div>
             <div class="panel-body">

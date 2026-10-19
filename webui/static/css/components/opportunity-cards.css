@@ -75,3 +75,18 @@
     text-align: center;
     white-space: nowrap;
 }
+
+/* Misma accion que .opportunity-card-actions, pero para la celda "Acciones"
+   de la vista de lista (ver conversacion: "no me pongas los botones asi,
+   pone uno al lado del otro") -- ahi NO queremos flex:1 (partiria la celda
+   a la mitad aunque un boton tenga texto mas largo que el otro) ni
+   flex-wrap:wrap (hacia que "Operar en Paper Trading" tirara al de al lado
+   a una segunda linea apenas la columna se angostaba un poco). Cada boton
+   mide lo que necesita su texto; si no entran los dos, que la fila scrollee
+   horizontal (.table-scroll ya envuelve la tabla), nunca que se apilen. */
+.opportunity-row-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+}

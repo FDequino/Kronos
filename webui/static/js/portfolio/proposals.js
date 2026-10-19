@@ -47,12 +47,22 @@ let searchState = { query: '', activeFilters: new Set(['activas']), groupKey: nu
 const collapsedGroups = new Set();
 let signalConfig = null;
 
+// El sync corre completo en cada GET (ver portfolio/proposals.py::sync_proposals
+// -- no hay nada que cachear a nivel lista, solo las sub-consultas pesadas
+// por tenencia), asi que "ultima actualizacion" es simplemente el momento en
+// que ESTE fetch resolvio, no un timestamp que vuelva del backend.
+function renderLastUpdated() {
+    const el = $('proposals-last-updated');
+    if (el) el.textContent = `Última actualización: ${new Date().toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}`;
+}
+
 export async function loadProposals() {
     const [{ data }, { data: config }] = await Promise.all([api.proposals(), api.signalConfig()]);
     rows = data;
     signalConfig = config;
     renderTable();
     renderSummary();
+    renderLastUpdated();
 }
 
 // Fase 16: panel "Resumen" al costado, mismo patrón ya usado en el resto de
@@ -211,4 +221,18 @@ export function initProposalsView() {
         initialState: searchState,
         onChange: (state) => { searchState = state; renderTable(); },
     });
+
+    const refreshBtn = $('refresh-proposals-btn');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async () => {
+            refreshBtn.disabled = true;
+            refreshBtn.textContent = 'Actualizando…';
+            try {
+                await loadProposals();
+            } finally {
+                refreshBtn.disabled = false;
+                refreshBtn.textContent = 'Actualizar';
+            }
+        });
+    }
 }

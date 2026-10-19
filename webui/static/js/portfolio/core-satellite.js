@@ -178,7 +178,7 @@ function opportunityRowHtml(sig, enginePct, isCore, eventRiskNotes) {
             </td>
             <td class="num">${amount !== null ? fmtMoney(amount) : '—'}${suggestedAmountTooltip(isCore)}</td>
             <td>
-                <div class="opportunity-card-actions">
+                <div class="opportunity-row-actions">
                     <a href="${detailHref}" class="btn btn-secondary">Ver Gráfico</a>
                     <button type="button" class="btn btn-primary opportunity-paper-trading-btn">Operar en Paper Trading</button>
                 </div>
@@ -508,17 +508,27 @@ function metricsRowHtml(label, m) {
 
 async function loadBacktestSummary() {
     const container = $('dual-engine-backtest-container');
+    const lastRunSlot = $('dual-engine-backtest-last-run');
     if (!container) return;
     container.innerHTML = loadingHtml('Cargando backtest global…');
     try {
         const { data } = await api.dualEngineBacktestSummary();
         if (!data.available) {
             container.innerHTML = `<p class="table-empty">${data.message}</p>`;
+            if (lastRunSlot) lastRunSlot.textContent = '';
             return;
+        }
+        // Sin botón de refresco acá (a diferencia de Oportunidades/Propuestas,
+        // ver conversación) -- este backtest es un job de CLI de varios
+        // minutos que consulta a Chronos-Bolt (python3 -m portfolio.backtest
+        // dual), no algo que la web pueda disparar de forma segura en un
+        // request. Solo se muestra cuándo corrió la última vez.
+        if (lastRunSlot) {
+            lastRunSlot.textContent = `Último backtest: ${new Date(data.run_at).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })} (corre manualmente, no desde la web)`;
         }
         const alloc = data.capital_allocation;
         container.innerHTML = `
-            <p class="hint">Última corrida: ${new Date(data.run_at).toLocaleString('es-AR')} · ${data.lookback_days} ruedas · análisis y operatoria en USD CCL.
+            <p class="hint">${data.lookback_days} ruedas · análisis y operatoria en USD CCL.
             Retorno Anual ARS = el mismo resultado en USD recompuesto con la variación real del CCL del período.</p>
             <div class="table-scroll">
                 <table>

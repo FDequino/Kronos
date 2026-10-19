@@ -21,7 +21,7 @@ confiable)."""
 import json
 from datetime import timedelta
 
-from portfolio import accuracy, db, fixed_income, forecasting, indicators
+from portfolio import accuracy, db, fixed_income
 from portfolio.formatting import fmt_es
 from portfolio.tz import now_ar
 
@@ -145,10 +145,15 @@ def _rebalance_candidates(conn, holdings_display, cauciones, config):
 
 
 def _validated_signal_candidates(conn, holdings_native, config):
-    """Nunca una señal sin validar. El check de Kronos es barato (ya esta
-    guardado); el tecnico-con-edge recalcula el chart+backtest por holding,
-    mismo costo que ya paga Señales/Posiciones del lado frontend, aca hecho
-    server-side para que el motor de propuestas no dependa del browser."""
+    """Nunca una señal sin validar. El check de Kronos y el tecnico-con-edge
+    reusan las MISMAS cachés diarias que ya paga Resumen/Dashboard
+    (_get_cached_accuracy, _get_technical_row -- Fase 9/10, ver routes.py) en
+    vez de recalcular chart+backtest por holding en cada GET a este endpoint
+    -- antes esto era el costo real detras de "Propuestas carga lento" (ver
+    conversación): recalculaba todo de cero en cada entrada a la pestaña,
+    aunque Resumen ya lo hubiera calculado minutos antes para el mismo dia."""
+    from portfolio.routes import _get_cached_accuracy, _get_technical_row  # import tardío: evita ciclo routes<->proposals
+
     candidates = []
     for h in holdings_native:
         instrument = h['instrument']
@@ -156,9 +161,7 @@ def _validated_signal_candidates(conn, holdings_native, config):
             continue
         instrument_id = instrument['id']
 
-        forecasts = db.list_forecasts_for_instrument(conn, instrument_id)
-        price_history = db.get_price_history(conn, instrument_id)
-        acc = accuracy.compute_accuracy(forecasts, price_history, conn=conn)
+        acc = _get_cached_accuracy(conn, instrument_id)
         validation = accuracy.compute_signal_validation(acc, config)
         if validation.get('validated'):
             forecast_row = db.get_latest_forecast(conn, instrument_id=instrument_id)
@@ -174,24 +177,10 @@ def _validated_signal_candidates(conn, holdings_native, config):
                         'evidencia': validation['reason'],
                     })
 
-        if len(price_history) < indicators.BACKTEST_MIN_ROWS:
-            continue
-        try:
-            payload = forecasting.build_chart_payload(
-                conn, instrument_id=instrument_id, symbol=instrument['symbol'],
-                market=instrument['market'], asset_type=instrument['type'],
-                lookback=config['default_lookback'],
-            )
-        except Exception:
-            continue
-        tecnico, _ = indicators.latest_technical_signal(payload['indicators'], config)
+        technical = _get_technical_row(conn, instrument, config)
+        tecnico, edge, n = technical['tecnico'], technical['edge'], technical['n']
         if not tecnico or tecnico == 'mantener':
             continue
-        backtest = indicators.backtest_rsi_signal(price_history, config)
-        if backtest.get('pending'):
-            continue
-        bucket = backtest['by_signal'].get(tecnico)
-        edge = bucket['edge_vs_base_rate_pct'] if bucket else None
         # Edge NEGATIVO (no solo "no significativo"): seguir historicamente
         # esta señal salio peor que la tasa base -- no es una sugerencia
         # invertida valida (eso apostaria a una anti-correlacion nunca medida),
@@ -203,8 +192,8 @@ def _validated_signal_candidates(conn, holdings_native, config):
             'origen': 'senal',
             'symbol': instrument['symbol'],
             'tipo_sugerido': 'compra' if tecnico == 'comprar' else 'venta',
-            'texto': f"RSI técnico sugiere {tecnico} en {instrument['symbol']}: edge {fmt_es(edge, signed=True)}pts sobre {bucket['count']} casos.",
-            'evidencia': f"Backtest RSI vs. tasa base: edge {fmt_es(edge, signed=True)} puntos sobre {bucket['count']} señales pasadas.",
+            'texto': f"RSI técnico sugiere {tecnico} en {instrument['symbol']}: edge {fmt_es(edge, signed=True)}pts sobre {n} casos.",
+            'evidencia': f"Backtest RSI vs. tasa base: edge {fmt_es(edge, signed=True)} puntos sobre {n} señales pasadas.",
         })
     return candidates
 

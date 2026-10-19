@@ -1,5 +1,15 @@
+{# Placeholder inicial de un panel/sección entera mientras el JS todavía no
+   corrió (ver conversación: "no me pongas ese body cargando, quiero
+   spinners siempre centrados, en toda la plataforma") -- antes era un
+   bloque oscuro pulsante sin ningún indicio de que algo esté pasando;
+   ahora es el mismo spinner que ya usa loadingHtml() para las cargas
+   post-interacción, centrado en el bloque. skeleton_rows (shimmer de filas
+   de tabla) no cambia -- ahí sí tiene sentido anticipar la forma del
+   contenido que viene. #}
 {% macro skeleton_chart(height=240) %}
-<div class="skeleton skeleton-block" style="height: {{ height }}px;"></div>
+<div class="loading loading-block show" style="min-height: {{ height }}px;">
+    <div class="spinner"></div><span>Cargando&hellip;</span>
+</div>
 {% endmacro %}
 
 {% macro skeleton_rows(cols, rows=4) %}

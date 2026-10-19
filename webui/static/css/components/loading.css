@@ -1,10 +1,12 @@
 .loading {
     display: none;
     align-items: center;
+    justify-content: center;
     gap: 10px;
     padding: 14px 0;
     color: var(--text-secondary);
     font-size: var(--step--1);
+    width: 100%;
 }
 
 .loading.show {
@@ -16,6 +18,16 @@
    para que no haya salto de alto al pasar de uno a otro. */
 .loading.loading-panel {
     padding: 14px 20px;
+}
+
+/* Placeholder de un panel/seccion entera antes de la primera carga (ver
+   _skeleton.html::skeleton_chart) -- a diferencia de .loading-panel (una
+   franja angosta que reemplaza un toolbar), esto ocupa el alto completo del
+   bloque (min-height inline, mismo numero que antes tenia skeleton-block)
+   para que el spinner quede centrado tanto horizontal como verticalmente,
+   no pegado arriba. */
+.loading-block {
+    min-height: 120px;
 }
 
 .spinner {
@@ -59,10 +71,6 @@
     display: inline-block;
     height: 24px;
     width: 110px;
-}
-
-.skeleton-block {
-    width: 100%;
 }
 
 tr.skeleton-row td {
