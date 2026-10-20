@@ -164,6 +164,29 @@ def _resolve_underlying_model_df(conn, lookback_df, symbol):
     return df_real, True
 
 
+def get_underlying_price_rows_for_technical(conn, symbol, min_rows=UNDERLYING_MODEL_MIN_ROWS):
+    """Serie REAL completa del subyacente (sin alinear a ninguna ventana --
+    a diferencia de _resolve_underlying_model_df, acá no hace falta encajarla
+    contra un lookback puntual) en el formato fila-por-dia con clave
+    'timestamp' (singular) que esperan indicators.backtest_rsi_signal/
+    db.get_price_history -- pensado para el edge tecnico/RSI de Propuestas-
+    Comparador (ver portfolio/routes.py::_compute_technical_cache_row), que
+    hoy corre sobre la serie ruidosa del CEDEAR en vez de esta. Devuelve None
+    si falta cobertura suficiente (nunca se inventa un historico)."""
+    fetchers.ensure_underlying_ohlcv_history(conn, symbol)
+    df = fetchers.get_underlying_ohlcv_df(conn, symbol)
+    if len(df) < min_rows:
+        return None
+    return [
+        {
+            "timestamp": row.timestamps.strftime("%Y-%m-%dT00:00:00"),
+            "open": row.open, "high": row.high, "low": row.low,
+            "close": row.close, "volume": row.volume,
+        }
+        for row in df.itertuples()
+    ]
+
+
 def build_model_input(conn, lookback_df, asset_type, symbol=None):
     """Convierte el lookback a USD (via CCL historico) antes de alimentarlo a
     Kronos, para accion/cedear -- la serie en ARS cruda arrastra la tendencia

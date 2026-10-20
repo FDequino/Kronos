@@ -5,6 +5,7 @@ import queue
 import sqlite3
 from datetime import datetime
 
+import pandas as pd
 from flask import Blueprint, Response, jsonify, request, send_from_directory, stream_with_context
 
 from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, nlp_agent, paper_trading, projection, proposals, quote_worker, risk, trendlines, xirr
@@ -1481,26 +1482,44 @@ def _compute_technical_cache_row(conn, instrument, config):
     verdad (Señales sigue llamando esos mismos endpoints en vivo), esto solo
     orquesta ese mismo calculo una vez y lo cachea (ver technical_cache,
     Fase 9) para que el Dashboard no dispare ~3 requests por tenencia en cada
-    carga de pagina (antes: ~18-30s con 36 instrumentos)."""
+    carga de pagina (antes: ~18-30s con 36 instrumentos).
+
+    Para los CEDEARs ya mapeados a un subyacente real (ver conversacion:
+    "el edge tecnico de estos simbolos se mide sobre la serie ruidosa del
+    CEDEAR, con 5-30x menos muestra que la real disponible del subyacente")
+    el RSI/tecnico/edge se calculan sobre esa serie real en vez de
+    price_history -- MISMO criterio ya aplicado al forecasting de Kronos
+    (ver forecasting.build_model_input), pero el grafico que arma
+    build_chart_payload (historical+indicators para el candlestick de
+    Detalle) sigue en ARS/CEDEAR sin tocar, es solo display. latest_technical_signal
+    solo compara el valor de RSI contra umbrales (0-100, nivel/moneda-agnostico)
+    -- no hace falta reconvertir ningun precio."""
     instrument_id = instrument['id']
     rsi = None
     tecnico = None
+    underlying_rows = None
+    if instrument['type'] == 'cedear' and instrument['symbol'] in forecasting.CEDEAR_DIRECT_UNDERLYING_SYMBOLS:
+        underlying_rows = forecasting.get_underlying_price_rows_for_technical(conn, instrument['symbol'])
     try:
-        payload = forecasting.build_chart_payload(
-            conn, instrument_id=instrument_id, symbol=instrument['symbol'],
-            market=instrument['market'], asset_type=instrument['type'],
-            lookback=config['default_lookback'],
-        )
-        rsi_series = payload['indicators'].get('rsi_14') or []
+        if underlying_rows is not None:
+            indicators_dict = indicators.compute_all(pd.DataFrame(underlying_rows))
+        else:
+            payload = forecasting.build_chart_payload(
+                conn, instrument_id=instrument_id, symbol=instrument['symbol'],
+                market=instrument['market'], asset_type=instrument['type'],
+                lookback=config['default_lookback'],
+            )
+            indicators_dict = payload['indicators']
+        rsi_series = indicators_dict.get('rsi_14') or []
         rsi = rsi_series[-1] if rsi_series else None
-        tecnico, _ = indicators.latest_technical_signal(payload['indicators'], config)
+        tecnico, _ = indicators.latest_technical_signal(indicators_dict, config)
     except Exception:
         pass  # sin historico suficiente (ej. fondos) -- rsi/tecnico quedan None, nunca se inventa
 
     edge = None
     n = None
     if tecnico:
-        price_history = db.get_price_history(conn, instrument_id)
+        price_history = underlying_rows if underlying_rows is not None else db.get_price_history(conn, instrument_id)
         if len(price_history) >= indicators.BACKTEST_MIN_ROWS:
             backtest = indicators.backtest_rsi_signal(price_history, config)
             if not backtest.get('pending'):
