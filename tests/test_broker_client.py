@@ -51,8 +51,11 @@ def test_add_account_devuelve_credenciales_enmascaradas(manager, temp_db):
 
 
 def test_add_account_broker_invalido_rechaza(manager, temp_db):
+    # "Binance" dejo de servir como ejemplo de broker invalido desde que se
+    # agrego soporte real (ver conversacion/auditoria 2026-10-20) -- se usa
+    # un nombre que nunca va a ser un broker soportado.
     with pytest.raises(ValueError):
-        manager.add_account(temp_db, broker_name="Binance", api_key="x", api_secret="y")
+        manager.add_account(temp_db, broker_name="NoExiste", api_key="x", api_secret="y")
 
 
 def test_list_accounts_nunca_expone_secreto_completo(manager, temp_db):
@@ -424,6 +427,164 @@ def test_iol_cancel_order_llama_delete_con_el_numero_de_operacion(temp_db, manag
     result = adapter.cancel_order(order_id=555)
     assert result == {"numero": 555, "estado": "cancelada"}
     assert captured["url"].endswith("/api/v2/operaciones/555")
+
+
+# --- Binance -- carry trade de funding rate (ver conversacion/auditoria
+# 2026-10-20, "pensa como un fondo multiestrategia": portfolio/crypto_carry.py
+# tiene el backtest/evidencia real; esto es el adapter de ejecucion, NUNCA
+# probado contra una cuenta real ni siquiera testnet -- no hay credenciales
+# de Binance cargadas hoy) -------------------------------------------------
+
+def _binance_adapter(temp_db, manager):
+    account = manager.add_account(temp_db, broker_name="Binance", api_key="apikey123", api_secret="secretkey456")
+    return broker_client.BinanceAdapter(db.get_broker_account(temp_db, account["id"]))
+
+
+def test_binance_test_connection_firma_y_llama_api_v3_account(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_get(url, headers=None, timeout=None):
+        captured["url"] = url
+        captured["headers"] = headers
+        return _fake_response({"balances": []})
+
+    monkeypatch.setattr(broker_client.requests, "get", fake_get)
+    adapter = _binance_adapter(temp_db, manager)
+
+    result = adapter.test_connection()
+    assert result["status"] == broker_client.CONNECTION_OK
+    assert "/api/v3/account" in captured["url"]
+    assert "signature=" in captured["url"]
+    assert captured["headers"]["X-MBX-APIKEY"] == "apikey123"
+
+
+def test_binance_test_connection_falla_reporta_error(temp_db, manager, monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        raise RuntimeError("401 Unauthorized")
+
+    monkeypatch.setattr(broker_client.requests, "get", fake_get)
+    adapter = _binance_adapter(temp_db, manager)
+
+    result = adapter.test_connection()
+    assert result["status"] == broker_client.CONNECTION_FAILED
+
+
+def test_binance_get_balance_combina_spot_y_futuros(temp_db, manager, monkeypatch):
+    calls = []
+
+    def fake_get(url, headers=None, timeout=None):
+        calls.append(url)
+        if "/api/v3/account" in url:
+            return _fake_response({"balances": [
+                {"asset": "USDT", "free": "100.0", "locked": "0.0"},
+                {"asset": "BNB", "free": "0.0", "locked": "0.0"},
+            ]})
+        return _fake_response([{"asset": "USDT", "balance": "50.0"}])
+
+    monkeypatch.setattr(broker_client.requests, "get", fake_get)
+    adapter = _binance_adapter(temp_db, manager)
+
+    result = adapter.get_balance()
+    assert result["spot"] == [{"asset": "USDT", "free": "100.0", "locked": "0.0"}]  # BNB en 0 se excluye
+    assert result["futuros"] == [{"asset": "USDT", "balance": "50.0"}]
+    assert any("/fapi/v2/balance" in c for c in calls)
+
+
+def test_binance_get_holdings_excluye_posiciones_en_cero(temp_db, manager, monkeypatch):
+    def fake_get(url, headers=None, timeout=None):
+        if "/fapi/v2/account" in url:
+            return _fake_response({"positions": [
+                {"symbol": "BTCUSDT", "positionAmt": "-0.5"},
+                {"symbol": "ETHUSDT", "positionAmt": "0"},
+            ]})
+        return _fake_response({"balances": []})
+
+    monkeypatch.setattr(broker_client.requests, "get", fake_get)
+    adapter = _binance_adapter(temp_db, manager)
+
+    result = adapter.get_holdings()
+    assert result["futuros_posiciones"] == [{"symbol": "BTCUSDT", "positionAmt": "-0.5"}]
+
+
+def test_binance_get_order_budget_spot_vs_futuros_nunca_toca_la_red(temp_db, manager, monkeypatch):
+    def _debe_no_llamarse(*a, **kw):
+        raise AssertionError("Binance.get_order_budget no deberia tocar la red")
+    monkeypatch.setattr(broker_client.requests, "get", _debe_no_llamarse)
+    monkeypatch.setattr(broker_client.requests, "post", _debe_no_llamarse)
+
+    adapter = _binance_adapter(temp_db, manager)
+    spot = adapter.get_order_budget(symbol="BTCUSDT", asset_type="cripto", operation="Compra", quantity=0.01, price=65000)
+    futuros = adapter.get_order_budget(symbol="BTCUSDT", asset_type="futuro_perpetuo", operation="Venta", quantity=0.01, price=65000)
+
+    assert spot["market"] == "spot" and spot["comision_estimada_pct"] == pytest.approx(0.10)
+    assert futuros["market"] == "futuros" and futuros["comision_estimada_pct"] == pytest.approx(0.05)
+
+
+def test_binance_get_order_budget_asset_type_invalido_rechaza_explicito(temp_db, manager):
+    adapter = _binance_adapter(temp_db, manager)
+    with pytest.raises(ValueError, match="asset_type"):
+        adapter.get_order_budget(symbol="BTCUSDT", asset_type="accion", operation="Compra", quantity=1, price=100)
+
+
+def test_binance_confirm_order_spot_arma_payload_limit_correcto(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers=None, timeout=None):
+        captured["url"] = url
+        return _fake_response({"orderId": 1, "status": "FILLED"})
+
+    monkeypatch.setattr(broker_client.requests, "post", fake_post)
+    adapter = _binance_adapter(temp_db, manager)
+
+    result = adapter.confirm_order(
+        symbol="BTCUSDT", asset_type="cripto", operation="Compra", quantity=0.01, price=65000,
+        external_id="kronos-1-123", budget={},
+    )
+    assert result == {"orderId": 1, "status": "FILLED"}
+    assert captured["url"].startswith(f"{broker_client.BinanceAdapter.SPOT_BASE_URL}/api/v3/order?")
+    assert "side=BUY" in captured["url"] and "type=LIMIT" in captured["url"] and "timeInForce=GTC" in captured["url"]
+
+
+def test_binance_confirm_order_futuros_usa_fapi_v1_order(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_post(url, headers=None, timeout=None):
+        captured["url"] = url
+        return _fake_response({"orderId": 2, "status": "NEW"})
+
+    monkeypatch.setattr(broker_client.requests, "post", fake_post)
+    adapter = _binance_adapter(temp_db, manager)
+
+    adapter.confirm_order(
+        symbol="BTCUSDT", asset_type="futuro_perpetuo", operation="Venta", quantity=0.01, price=65000,
+        external_id="kronos-1-124", budget={},
+    )
+    assert captured["url"].startswith(f"{broker_client.BinanceAdapter.FUTURES_BASE_URL}/fapi/v1/order?")
+    assert "side=SELL" in captured["url"]
+
+
+def test_binance_confirm_order_operacion_invalida_rechaza_explicito(temp_db, manager):
+    adapter = _binance_adapter(temp_db, manager)
+    with pytest.raises(ValueError, match="Compra.*Venta"):
+        adapter.confirm_order(
+            symbol="BTCUSDT", asset_type="cripto", operation="comprar", quantity=0.01, price=65000,
+            external_id="x", budget={},
+        )
+
+
+def test_binance_cancel_order_spot_vs_futuros(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_delete(url, headers=None, timeout=None):
+        captured["url"] = url
+        return _fake_response({"status": "CANCELED"})
+
+    monkeypatch.setattr(broker_client.requests, "delete", fake_delete)
+    adapter = _binance_adapter(temp_db, manager)
+
+    adapter.cancel_order(order_id=999, symbol="BTCUSDT", asset_type="futuro_perpetuo")
+    assert captured["url"].startswith(f"{broker_client.BinanceAdapter.FUTURES_BASE_URL}/fapi/v1/order?")
+    assert "orderId=999" in captured["url"]
 
 
 # --- Cifrado en reposo de api_key/api_secret (ver conversacion/auditoria

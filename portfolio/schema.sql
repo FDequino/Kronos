@@ -757,7 +757,7 @@ CREATE TABLE IF NOT EXISTS calibration_cache (
 -- broker_client.py::_mask_secret).
 CREATE TABLE IF NOT EXISTS broker_accounts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    broker_name TEXT NOT NULL CHECK (broker_name IN ('PPI', 'IOL', 'Balanz', 'Matrix')),
+    broker_name TEXT NOT NULL CHECK (broker_name IN ('PPI', 'IOL', 'Balanz', 'Matrix', 'Binance')),
     alias TEXT,
     api_key TEXT,
     api_secret TEXT,

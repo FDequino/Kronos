@@ -1,6 +1,7 @@
 """Soporte Multi-Broker (ver conversacion) -- gestor unificado de cuentas de
-bróker EXTERNAS (PPI, IOL, Balanz, Matrix) con API propia, para consultar
-saldo y tenencias en vivo, agregados entre todas las cuentas activas.
+bróker EXTERNAS (PPI, IOL, Balanz, Matrix, Binance) con API propia, para
+consultar saldo y tenencias en vivo, agregados entre todas las cuentas
+activas.
 Distinto de portfolio/import_broker_report.py (que importa un Excel
 exportado a mano, sin credenciales, offline) -- esto es una conexión API en
 vivo, opcional, nunca requerida para que el resto de la app funcione.
@@ -32,6 +33,18 @@ no existe): se investigaron las 4 APIs públicas ANTES de escribir esto
     (búsqueda real, no asumido) -- quedan como stubs honestos que
     devuelven "integración pendiente, sin documentación pública
     verificada" en vez de fabricar un endpoint que no existe.
+  - Binance (agregado 2026-10-20, ver portfolio/crypto_carry.py -- carry
+    trade de funding rate): API REST pública, oficial y MUCHO mejor
+    documentada que las 3 anteriores (developers.binance.com, WebFetch
+    real) -- mecanismo de firma HMAC-SHA256 confirmado explícito en la doc
+    oficial (nunca hubo que inspeccionar un SDK de terceros como con PPI).
+    api_key/api_secret de broker_accounts son el par real de Binance (API
+    Key/Secret Key, no usuario+contraseña como IOL). NUNCA probado contra
+    una cuenta real NI SIQUIERA testnet -- hoy no hay ninguna credencial de
+    Binance cargada (confirmado, ver BinanceAdapter). Binance ofrece un
+    testnet real (testnet.binancefuture.com) como paso lógico siguiente
+    antes de una cuenta real -- no usado acá por falta de credenciales, ni
+    siquiera de testnet, no por limitación técnica.
 
 Seguridad (corregido 2026-10-20, ver conversación/auditoría -- antes
 guardaba api_key/api_secret en TEXTO PLANO, encontrado con credenciales
@@ -110,7 +123,7 @@ def compute_auto_trading_limit_ars(conn, patrimonio_ars):
     return patrimonio_ars * pct / 100.0
 
 
-BROKER_NAMES = ("PPI", "IOL", "Balanz", "Matrix")
+BROKER_NAMES = ("PPI", "IOL", "Balanz", "Matrix", "Binance")
 
 
 def _mask_secret(value):
@@ -650,6 +663,207 @@ class PPIAdapter(BrokerAdapter):
         return resp.json()
 
 
+class BinanceAdapter(BrokerAdapter):
+    """Binance (ver HONESTIDAD DECLARADA arriba del módulo) -- agregado para
+    el motor de Carry Trade de Funding Rate (ver portfolio/crypto_carry.py,
+    evidencia real con 7+ años de historial de funding que confirma edge
+    neto de costos, IS/OOS). api_key/api_secret de broker_accounts son el
+    par real ApiKey/SecretKey de Binance -- se firma cada request SIGNED con
+    HMAC-SHA256 sobre el query string (mecanismo confirmado explícito en la
+    documentación oficial, developers.binance.com/docs/binance-spot-api-docs/
+    rest-api/endpoint-security-type -- nunca hubo que inspeccionar un SDK de
+    terceros, a diferencia de PPI/IOL).
+
+    Cubre 2 mercados con bases/firmas separadas (mismo secret, distinto
+    host): SPOT (api.binance.com) y FUTUROS USDS-M (fapi.binance.com, donde
+    vive la pata corta del perpetuo que arma el carry trade). get_balance/
+    get_holdings devuelven AMBOS, nunca solo uno -- un carry trade a medio
+    armar (spot sin su cobertura en futuros, o viceversa) es justo el riesgo
+    que esta estrategia existe para evitar.
+
+    DIFERENCIA HONESTA importante para quien use esto desde fuera: una
+    posición de carry trade son 2 PATAS SIMULTÁNEAS (spot + futuro), cada
+    una su propio symbol/mercado -- confirm_order de acá ejecuta UNA pata
+    por llamada (igual que el resto de los adapters, misma firma genérica
+    que ya usa order_execution.py), nunca arma las 2 en un solo paso. Armar
+    la posición completa (abrir ambas patas, verificar que las 2 se
+    ejecutaron antes de considerar la posición hedgeada) es lógica de
+    orquestación de 2 órdenes que no existe todavía en
+    portfolio/order_execution.py (pensado para 1 instrumento/1 orden, ver su
+    docstring) -- queda fuera de este adapter a propósito, es una decisión
+    de diseño a tomar junto con el usuario antes de operar esto de verdad,
+    no algo para inventar acá.
+
+    NUNCA probado contra una cuenta real NI SIQUIERA testnet (ver
+    HONESTIDAD DECLARADA) -- no hay credenciales de Binance en
+    broker_accounts hoy, confirmado."""
+    broker_name = "Binance"
+    SPOT_BASE_URL = "https://api.binance.com"
+    FUTURES_BASE_URL = "https://fapi.binance.com"
+    TIMEOUT = 15
+
+    # Confirmado contra la doc oficial (ver HONESTIDAD DECLARADA) -- distingue
+    # qué base URL/mercado usa cada operación. "cripto" (el asset_type
+    # genérico que ya usa el resto del proyecto para BTCUSDT/ETHUSDT, ver
+    # portfolio/fetchers.py) se interpreta como SPOT por default; el carry
+    # trade pasa 'futuro_perpetuo' explícito para la pata corta.
+    _ASSET_TYPE_TO_MARKET = {"cripto": "spot", "futuro_perpetuo": "futuros"}
+
+    def _sign(self, params):
+        """HMAC-SHA256 sobre el query string armado de los params (orden de
+        inserción, igual que el ejemplo oficial) -- devuelve el query string
+        YA con &signature=... al final, listo para pegar a la URL."""
+        import hashlib
+        import hmac
+        from urllib.parse import urlencode
+
+        query = urlencode(params)
+        secret = (self.account.get("api_secret") or "").encode()
+        signature = hmac.new(secret, query.encode(), hashlib.sha256).hexdigest()
+        return f"{query}&signature={signature}"
+
+    def _headers(self):
+        return {"X-MBX-APIKEY": self.account.get("api_key") or ""}
+
+    def _signed_get(self, base_url, path, params=None):
+        import time as _time
+        params = dict(params or {})
+        params.setdefault("timestamp", int(_time.time() * 1000))
+        params.setdefault("recvWindow", 5000)
+        query = self._sign(params)
+        resp = requests.get(f"{base_url}{path}?{query}", headers=self._headers(), timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _signed_post(self, base_url, path, params=None):
+        import time as _time
+        params = dict(params or {})
+        params.setdefault("timestamp", int(_time.time() * 1000))
+        params.setdefault("recvWindow", 5000)
+        query = self._sign(params)
+        resp = requests.post(f"{base_url}{path}?{query}", headers=self._headers(), timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+
+    def _signed_delete(self, base_url, path, params=None):
+        import time as _time
+        params = dict(params or {})
+        params.setdefault("timestamp", int(_time.time() * 1000))
+        params.setdefault("recvWindow", 5000)
+        query = self._sign(params)
+        resp = requests.delete(f"{base_url}{path}?{query}", headers=self._headers(), timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        return resp.json()
+
+    def test_connection(self):
+        """GET /api/v3/account (SPOT, SIGNED) -- confirmado contra la doc
+        oficial como el endpoint estándar de "¿mi key/secret andan?"."""
+        try:
+            self._signed_get(self.SPOT_BASE_URL, "/api/v3/account")
+            return {"status": CONNECTION_OK, "detail": "GET /api/v3/account respondió correctamente (Binance)"}
+        except Exception as e:
+            return {"status": CONNECTION_FAILED, "detail": str(e)}
+
+    def get_balance(self):
+        """Combina SPOT (GET /api/v3/account, balances no-cero) + FUTUROS
+        USDS-M (GET /fapi/v2/balance) -- ver docstring de la clase, un carry
+        trade necesita ver las 2 patas juntas."""
+        spot = self._signed_get(self.SPOT_BASE_URL, "/api/v3/account")
+        spot_balances = [
+            b for b in spot.get("balances", [])
+            if float(b.get("free", 0)) > 0 or float(b.get("locked", 0)) > 0
+        ]
+        futures_balances = self._signed_get(self.FUTURES_BASE_URL, "/fapi/v2/balance")
+        return {"spot": spot_balances, "futuros": futures_balances}
+
+    def get_holdings(self):
+        """FUTUROS USDS-M (GET /fapi/v2/account, incluye posiciones -- ver
+        HONESTIDAD DECLARADA: confirmado que este endpoint trae posiciones,
+        el path de positionRisk no se confirmó contra la doc real en esta
+        pasada, se usa el que SÍ se confirmó) + SPOT (balances no-cero,
+        mismo criterio que get_balance) -- posiciones con positionAmt=0 se
+        excluyen (no es una posición real abierta)."""
+        futures_account = self._signed_get(self.FUTURES_BASE_URL, "/fapi/v2/account")
+        positions = [p for p in futures_account.get("positions", []) if float(p.get("positionAmt", 0)) != 0]
+        spot = self._signed_get(self.SPOT_BASE_URL, "/api/v3/account")
+        spot_holdings = [
+            b for b in spot.get("balances", [])
+            if float(b.get("free", 0)) > 0 or float(b.get("locked", 0)) > 0
+        ]
+        return {"futuros_posiciones": positions, "spot_balances": spot_holdings}
+
+    # --- Ejecución real de órdenes -- ver DIFERENCIA HONESTA en el
+    # docstring de la clase: cada llamada opera UNA pata (spot O futuro),
+    # nunca arma el carry trade completo en un solo paso.
+    #
+    # Ninguno de los 2 mercados de Binance tiene un endpoint de
+    # presupuesto/simulación real (confirmado: ni spot ni futuros USDS-M
+    # documentan algo así, misma situación que IOL) -- get_order_budget acá
+    # NUNCA toca la red, devuelve una estimación LOCAL con las tarifas
+    # reales confirmadas (ver portfolio/crypto_carry.py::SPOT_TAKER_FEE_PCT/
+    # FUTURES_TAKER_FEE_PCT). confirm_order es el único punto sin retorno.
+    _VALID_OPERATIONS = ("Compra", "Venta")
+
+    def _market_for(self, asset_type):
+        market = self._ASSET_TYPE_TO_MARKET.get(asset_type)
+        if market is None:
+            raise ValueError(
+                f"Binance: asset_type debe ser uno de {list(self._ASSET_TYPE_TO_MARKET)}, recibido {asset_type!r}"
+            )
+        return market
+
+    def get_order_budget(self, *, symbol, asset_type, operation, quantity, price,
+                          quantity_type="Papeles", operation_type="PRECIO-LIMITE",
+                          operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
+        from portfolio.crypto_carry import FUTURES_TAKER_FEE_PCT, SPOT_TAKER_FEE_PCT
+
+        if operation not in self._VALID_OPERATIONS:
+            raise ValueError(f"Binance: operation debe ser 'Compra' o 'Venta', recibido {operation!r}")
+        market = self._market_for(asset_type)
+        fee_pct = SPOT_TAKER_FEE_PCT if market == "spot" else FUTURES_TAKER_FEE_PCT
+        monto = quantity * price
+        return {
+            "estimated": True,
+            "market": market,
+            "monto_estimado": monto,
+            "comision_estimada": monto * fee_pct / 100.0,
+            "comision_estimada_pct": fee_pct,
+            "disclaimer": (
+                "Binance no expone un endpoint de presupuesto real en ninguno de sus 2 mercados -- "
+                "esto es una estimación LOCAL con la tarifa taker real confirmada, nunca una cotización "
+                "del exchange. confirm_order es el paso que de verdad ejecuta la orden en UNA pata."
+            ),
+        }
+
+    def confirm_order(self, *, symbol, asset_type, operation, quantity, price, external_id, budget,
+                       quantity_type="Papeles", operation_type="PRECIO-LIMITE",
+                       operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
+        """Ejecuta de verdad UNA pata -- POST /api/v3/order (spot) o
+        POST /fapi/v1/order (futuros USDS-M), confirmado contra la doc
+        oficial. operation_type='PRECIO-LIMITE'/'PRECIO-DE-MERCADO' (mismo
+        vocabulario genérico del proyecto) mapea a type=LIMIT/MARKET."""
+        if operation not in self._VALID_OPERATIONS:
+            raise ValueError(f"Binance: operation debe ser 'Compra' o 'Venta', recibido {operation!r}")
+        market = self._market_for(asset_type)
+        side = "BUY" if operation == "Compra" else "SELL"
+        order_type = "LIMIT" if operation_type == "PRECIO-LIMITE" else "MARKET"
+        params = {"symbol": symbol, "side": side, "type": order_type, "quantity": quantity, "newClientOrderId": external_id}
+        if order_type == "LIMIT":
+            params["price"] = price
+            params["timeInForce"] = "GTC"
+        base_url = self.SPOT_BASE_URL if market == "spot" else self.FUTURES_BASE_URL
+        path = "/api/v3/order" if market == "spot" else "/fapi/v1/order"
+        return self._signed_post(base_url, path, params)
+
+    def cancel_order(self, *, order_id, external_id=None, symbol=None, asset_type="cripto"):
+        """DELETE /api/v3/order (spot) o DELETE /fapi/v1/order (futuros) --
+        confirmado contra la doc oficial, ambos piden symbol + orderId."""
+        market = self._market_for(asset_type)
+        base_url = self.SPOT_BASE_URL if market == "spot" else self.FUTURES_BASE_URL
+        path = "/api/v3/order" if market == "spot" else "/fapi/v1/order"
+        return self._signed_delete(base_url, path, {"symbol": symbol, "orderId": order_id})
+
+
 class _PendingIntegrationAdapter(BrokerAdapter):
     """Balanz y Matrix (ver HONESTIDAD DECLARADA arriba): búsqueda real no
     encontró documentación pública de una API REST para ninguno de los 2 --
@@ -676,7 +890,9 @@ class MatrixAdapter(_PendingIntegrationAdapter):
     broker_name = "Matrix"
 
 
-_ADAPTERS_BY_BROKER = {cls.broker_name: cls for cls in (IOLAdapter, PPIAdapter, BalanzAdapter, MatrixAdapter)}
+_ADAPTERS_BY_BROKER = {
+    cls.broker_name: cls for cls in (IOLAdapter, PPIAdapter, BinanceAdapter, BalanzAdapter, MatrixAdapter)
+}
 
 
 def _adapter_for(account):

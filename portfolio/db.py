@@ -544,6 +544,41 @@ def _migrate(conn):
         """)
         conn.commit()
 
+    # Sumar 'Binance' al CHECK de broker_accounts.broker_name (ver
+    # conversacion/auditoria 2026-10-20, "pensá como un fondo multiestrategia"
+    # -- carry trade de funding rate, ver portfolio/crypto_carry.py y
+    # BinanceAdapter en portfolio/broker_client.py). A diferencia de
+    # strategy_signal_log, instruments.broker_account_id SÍ tiene una FK
+    # hacia esta tabla (ver mas arriba, migracion de instruments.type) --
+    # hace falta PRAGMA foreign_keys=OFF/ON alrededor del rebuild, mismo
+    # motivo ya documentado ahi (SQLite no deja cambiar el pragma dentro de
+    # una transaccion ya abierta por executescript). Las cuentas ya
+    # cargadas (IOL hoy) se preservan con su id intacto, para que la FK de
+    # instruments.broker_account_id siga apuntando a la fila correcta.
+    broker_accounts_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='broker_accounts'"
+    ).fetchone()
+    if broker_accounts_sql and "'Binance'" not in broker_accounts_sql[0]:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.executescript("""
+            CREATE TABLE broker_accounts_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                broker_name TEXT NOT NULL CHECK (broker_name IN ('PPI', 'IOL', 'Balanz', 'Matrix', 'Binance')),
+                alias TEXT,
+                api_key TEXT,
+                api_secret TEXT,
+                account_number TEXT,
+                is_active INTEGER NOT NULL DEFAULT 1,
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO broker_accounts_new (id, broker_name, alias, api_key, api_secret, account_number, is_active, created_at)
+            SELECT id, broker_name, alias, api_key, api_secret, account_number, is_active, created_at FROM broker_accounts;
+            DROP TABLE broker_accounts;
+            ALTER TABLE broker_accounts_new RENAME TO broker_accounts;
+        """)
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.commit()
+
 
 def _row_to_dict(row):
     return dict(row) if row is not None else None
