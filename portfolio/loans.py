@@ -9,6 +9,7 @@ import uuid
 from datetime import datetime
 
 from portfolio import db
+from portfolio.formatting import fmt_es
 from portfolio.tz import today_ar
 
 # Documentos (pagares, comprobantes) -- el archivo vive en disco, afuera de la
@@ -179,12 +180,15 @@ def compute_loan_status(conn, loan):
 
 
 def explain_loan_status(loan, status):
+    # fmt_es (ver conversación/auditoría: "'1,000,000.00 ARS' en el detalle
+    # de préstamo" -- el ":,.2f" de Python es formato US (coma de miles,
+    # punto decimal), inconsistente con el resto de la app en es-AR).
     verbo = "te debe" if loan.get("direccion", "prestado") == "prestado" else "le debés"
-    base = f"{loan['deudor']} {verbo} {status['capital_pendiente']:,.2f} {loan['moneda']} de capital pendiente."
+    base = f"{loan['deudor']} {verbo} {fmt_es(status['capital_pendiente'], decimals=2)} {loan['moneda']} de capital pendiente."
     if status["vencido_hace_dias"]:
         cuotas = status.get("cuotas_atrasadas") or 1
         detalle_cuotas = f" ({cuotas} cuotas impagas)" if cuotas > 1 else ""
         base += f" Atrasado {status['vencido_hace_dias']} día(s){detalle_cuotas}."
     elif status["proximo_vencimiento"]:
-        base += f" Próximo vencimiento {status['proximo_vencimiento']} por {status['proximo_monto']:,.2f}."
+        base += f" Próximo vencimiento {status['proximo_vencimiento']} por {fmt_es(status['proximo_monto'], decimals=2)}."
     return base
