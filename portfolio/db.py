@@ -514,6 +514,36 @@ def _migrate(conn):
         )
         conn.commit()
 
+    # Sumar 'canje' al CHECK de strategy_signal_log.strategy (ver
+    # conversacion/auditoria 2026-10-20, "empujar Canje a edge genuino" --
+    # ver portfolio/arbitrage.py::log_canje_snapshot). Mismo patron que la
+    # migracion de instruments.type mas arriba: SQLite no permite ALTER sobre
+    # un CHECK existente, hay que reconstruir la tabla. A diferencia de
+    # instruments, ninguna otra tabla tiene FK hacia strategy_signal_log.id
+    # (es un log append-only aislado), asi que no hace falta tocar
+    # PRAGMA foreign_keys. Las filas ya logueadas (carry_trade/
+    # synthetic_dollar) se preservan, nunca se recrea vacia.
+    strategy_signal_log_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='strategy_signal_log'"
+    ).fetchone()
+    if strategy_signal_log_sql and "'canje'" not in strategy_signal_log_sql[0]:
+        conn.executescript("""
+            CREATE TABLE strategy_signal_log_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                strategy TEXT NOT NULL CHECK (strategy IN ('carry_trade', 'synthetic_dollar', 'canje')),
+                best_spread_pct REAL,
+                payload_json TEXT NOT NULL,
+                logged_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO strategy_signal_log_new (id, strategy, best_spread_pct, payload_json, logged_at)
+            SELECT id, strategy, best_spread_pct, payload_json, logged_at FROM strategy_signal_log;
+            DROP TABLE strategy_signal_log;
+            ALTER TABLE strategy_signal_log_new RENAME TO strategy_signal_log;
+            CREATE INDEX IF NOT EXISTS idx_strategy_signal_log_strategy_logged
+                ON strategy_signal_log (strategy, logged_at DESC);
+        """)
+        conn.commit()
+
 
 def _row_to_dict(row):
     return dict(row) if row is not None else None

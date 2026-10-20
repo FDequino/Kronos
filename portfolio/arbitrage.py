@@ -1,40 +1,65 @@
-"""Arbitraje de Canje MEP/CCL (ver conversacion) -- AL30 y GD30 son el MISMO
-bono soberano, solo que de distinta ley: AL30 es ley argentina y GD30 es ley
-Nueva York. Cada uno tiene ademas su version "D" (AL30D/GD30D), que es el
-mismo bono pero liquidado en dolar cable en vez de pesos. Como AL30 y AL30D
-son literalmente el mismo titulo, el cociente precio_ARS/precio_USD de ese
-par ya es, por construccion, un dolar implicito (MEP via AL30, CCL via
-AL30D segun donde se liquide la pata vendedora) -- lo mismo para GD30/GD30D.
+"""Arbitraje de Canje MEP/CCL (ver conversacion) -- 2 bonos soberanos de
+distinta ley pero economicamente equivalentes (mismo flujo de fondos,
+distinta jurisdiccion: ley argentina vs. ley Nueva York) son, por
+construccion, el mismo activo visto desde 2 lados. Cada uno tiene ademas su
+version "D" (ej. AL30D/GD30D), que es el mismo bono pero liquidado en dolar
+cable en vez de pesos -- el cociente precio_ARS/precio_USD de un par
+ley-A/ley-A-D ya es, por construccion, un dolar implicito (MEP via la pata
+en pesos, CCL via la pata "D" segun donde se liquide la pata vendedora).
 
-Al ser AL30 y GD30 economicamente equivalentes (mismo flujo de fondos,
-distinta jurisdiccion), sus 2 dolares implicitos deberian moverse pegados.
-Cuando se separan mas de lo habitual es la "brecha de canje": conviene
-dolarizarse por la pata que da el dolar implicito mas barato y, si ya se
-tiene la tenencia cara, canjearla (swap) hacia la barata.
+Al ser las 2 leyes economicamente equivalentes, sus 2 dolares implicitos
+deberian moverse pegados. Cuando se separan mas de lo habitual es la
+"brecha de canje": conviene dolarizarse por la pata que da el dolar
+implicito mas barato y, si ya se tiene la tenencia cara, canjearla (swap)
+hacia la barata.
+
+PAR POR DEFECTO -- cambiado de AL30/GD30 a AL29/GD29 (ver conversacion/
+auditoria 2026-10-20, "empujar Canje a edge genuino"): un backtest contra el
+HISTORIAL COMPLETO disponible en data912 (1200+ ruedas desde 2021-09, no
+solo las 300 que usa el backtest unificado) partido 70/30 in-sample/
+out-of-sample, con la comision real del usuario (1.21%, ver
+CANJE_ROUND_TRIP_COMMISSION_PCT), dio:
+
+  Par         | Sharpe IS (2021-2025) | Sharpe OOS (~17 meses recientes) | Trades OOS
+  AL29/GD29   | 1.80                  | 0.73 (sigue vivo)                | 19 (74% ganadores)
+  AE38/GD38   | 1.51                  | 0.35                             | 20 (45%)
+  AL41/GD41   | 1.18                  | 0.17                             | 13 (46%)
+  AL30/GD30   | 0.92                  | -0.27 (murio)                    | 16 (19%)
+  AL35/GD35   | 1.40                  | -0.84 (murio)                    | 23 (17%)
+
+(log completo: .devlogs/canje_improvement_v1.log) AL30/GD30 -- el par mas
+liquido y conocido, el default anterior -- es justo el que se murio: lectura
+economica consistente con que el par mas transitado es el primero en ser
+arbitrado por otros participantes del mercado hasta desaparecer el edge.
+AL29/GD29 es el UNICO de los 5 que sostiene edge real y reciente con muestra
+decente, por eso pasa a ser el default. El motor sigue soportando CUALQUIER
+par (parametro `pair` en las 3 funciones publicas) -- nada fuerza AL29/GD29
+a nivel de codigo, es una eleccion de default basada en evidencia, no un
+hardcodeo nuevo en el lugar del viejo.
 
 Fuente de precios: portfolio/fetchers.py::fetch_data912_historical (misma
 fuente que el resto del proyecto, ya normaliza bonos a precio "por 1 unidad"
-dividiendo por 100). Simbolos confirmados reales contra data912 EN VIVO en
-esta conversacion (fetch_data912_live("arg_bonds")): AL30, AL30D, GD30,
-GD30D existen tal cual, sin sufijo adicional.
+dividiendo por 100).
 
 Z-score: reusa portfolio/features.py::_rolling_zscore (mismo mecanismo que
 portfolio/pairs_trading.py), pero con ventana de 20 dias -- PEDIDO EXPLICITO
 de este modulo ("promedio de 20 dias"), a diferencia de la ventana de 60
 dias que es el default general del resto del proyecto (features.ROLLING_NORM_WINDOW).
-No hace falta conexion a la base de datos: a diferencia de pairs_trading.py
-(que arrastra historial propio via portfolio/backtest.py::fetch_ticker_history
-para la serie en USD CCL de CEDEARs/acciones), este modulo solo necesita las
-4 series de precio de bonos que data912 ya sirve en vivo, nunca pasa por
-SQLite."""
+No hace falta conexion a la base de datos para el calculo de la señal/brecha
+-- a diferencia de pairs_trading.py (que arrastra historial propio via
+portfolio/backtest.py::fetch_ticker_history para la serie en USD CCL de
+CEDEARs/acciones), este modulo solo necesita las 4 series de precio de
+bonos que data912 ya sirve en vivo, nunca pasa por SQLite (conn solo se usa
+para leer signal_config.caucion_reference_tna y para loguear el snapshot
+diario, ver log_canje_snapshot)."""
 import pandas as pd
 
 from portfolio import db, features, yield_engine
 from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT
 from portfolio.fetchers import fetch_data912_historical
 
-CANJE_PAIR = ("AL30", "GD30")
-BOND_SYMBOLS = {"al30_ars": "AL30", "al30_usd": "AL30D", "gd30_ars": "GD30", "gd30_usd": "GD30D"}
+# Ver evidencia completa en el docstring del modulo arriba.
+CANJE_DEFAULT_PAIR = ("AL29", "GD29")
 
 # Pedido explicito ("promedio de 20 dias") -- distinto del default de 60
 # dias que usa el resto del proyecto (features.ROLLING_NORM_WINDOW), ver
@@ -64,12 +89,21 @@ CANJE_MAX_HOLD_DAYS = 30
 #     (iol.invertironline.com/servicios/tarifas).
 # CONFIRMADO con el usuario (2026-10-20): esta en el tramo mas bajo tanto en
 # IOL como en PPI -- 1.21% es la tarifa REAL vigente, no una estimacion
-# conservadora. Con esta tarifa el motor queda en -0.60% USD anual / Sharpe
-# -0.06 / 3 de 12 trades ganadores sobre la ventana de backtest -- lejos del
-# +12.3%/Sharpe 1.72 bruto, practicamente breakeven neto. Ajustar si el
-# tramo de comision real cambia (ej. si el volumen mensual operado sube a
-# Platinum/Black) -- declarado explicito aca, nunca un numero inventado.
+# conservadora. Con AL30/GD30 y esta tarifa el motor quedaba en -0.60% USD
+# anual / Sharpe -0.06 / 3 de 12 trades ganadores sobre la ventana estandar
+# de 300 ruedas -- practicamente breakeven neto (ver arriba, ese par ya
+# habia perdido su edge en ese tramo). Ajustar si el tramo de comision real
+# cambia (ej. si el volumen mensual operado sube a Platinum/Black) --
+# declarado explicito aca, nunca un numero inventado.
 CANJE_ROUND_TRIP_COMMISSION_PCT = 1.21
+
+
+def _bond_symbols_for_pair(pair):
+    """pair: tupla (ley_a, ley_b), ej. ("AL29", "GD29"). Devuelve las 4
+    series a pedirle a data912: cada ley en pesos y su version "D" (dolar
+    cable) -- ver docstring del modulo."""
+    law_a, law_b = pair
+    return {"a_ars": law_a, "a_usd": f"{law_a}D", "b_ars": law_b, "b_usd": f"{law_b}D"}
 
 
 def _fetch_bond_close_series(symbol):
@@ -84,13 +118,19 @@ def _fetch_bond_close_series(symbol):
     return series[~series.index.duplicated(keep="last")].sort_index()
 
 
-def compute_canje_brecha_series():
+def compute_canje_brecha_series(pair=CANJE_DEFAULT_PAIR):
     """DataFrame diario alineado (inner join por fecha entre las 4 patas)
-    con columns: implied_fx_al30, implied_fx_gd30, brecha_pct, zscore.
-    None si falta alguna de las 4 series o si, ya alineadas, no alcanzan
+    con columns: implied_fx_a, implied_fx_b, brecha_pct, zscore. None si
+    falta alguna de las 4 series o si, ya alineadas, no alcanzan
     CANJE_ZSCORE_MIN_PERIODS + 1 filas (el +1 es la fila de HOY que se
-    quiere puntuar, no cuenta como parte de la ventana que la normaliza)."""
-    closes = {key: _fetch_bond_close_series(symbol) for key, symbol in BOND_SYMBOLS.items()}
+    quiere puntuar, no cuenta como parte de la ventana que la normaliza).
+
+    pair: tupla (ley_a, ley_b) -- default CANJE_DEFAULT_PAIR, ver docstring
+    del modulo para la evidencia detras de esa eleccion. Cualquier otro par
+    con las 4 series disponibles en data912 (ley, ley+"D" de cada lado)
+    funciona igual."""
+    symbols = _bond_symbols_for_pair(pair)
+    closes = {key: _fetch_bond_close_series(symbol) for key, symbol in symbols.items()}
     if any(series is None or series.empty for series in closes.values()):
         return None
 
@@ -98,25 +138,25 @@ def compute_canje_brecha_series():
     if len(df) < CANJE_ZSCORE_MIN_PERIODS + 1:
         return None
 
-    df["implied_fx_al30"] = df["al30_ars"] / df["al30_usd"]
-    df["implied_fx_gd30"] = df["gd30_ars"] / df["gd30_usd"]
-    # brecha_pct > 0 => el dolar implicito de GD30 es MAS CARO que el de
-    # AL30 (AL30 da mas dolares por el mismo monto de pesos) => AL30 es la
-    # pata barata hoy. brecha_pct < 0 es el caso inverso.
-    df["brecha_pct"] = (df["implied_fx_gd30"] - df["implied_fx_al30"]) / df["implied_fx_al30"] * 100
+    df["implied_fx_a"] = df["a_ars"] / df["a_usd"]
+    df["implied_fx_b"] = df["b_ars"] / df["b_usd"]
+    # brecha_pct > 0 => el dolar implicito de la ley B es MAS CARO que el de
+    # la ley A (la ley A da mas dolares por el mismo monto de pesos) => la
+    # ley A es la pata barata hoy. brecha_pct < 0 es el caso inverso.
+    df["brecha_pct"] = (df["implied_fx_b"] - df["implied_fx_a"]) / df["implied_fx_a"] * 100
     df["zscore"] = features._rolling_zscore(
         df["brecha_pct"], window=CANJE_ZSCORE_WINDOW, min_periods=CANJE_ZSCORE_MIN_PERIODS,
     )
     return df
 
 
-def compute_canje_arbitrage_signal():
+def compute_canje_arbitrage_signal(pair=CANJE_DEFAULT_PAIR):
     """Punto de entrada unico (ver portfolio/live_signals.py) -- None si no
     hay datos suficientes o si el z-score de hoy esta dentro de
     +-CANJE_ZSCORE_ENTRY_THRESHOLD (sin oportunidad), dict de señal si lo
     supera. Sin parametro `conn`: a diferencia de pairs_trading.scan_pairs,
     esto no necesita la base de datos (ver docstring del modulo)."""
-    df = compute_canje_brecha_series()
+    df = compute_canje_brecha_series(pair=pair)
     if df is None:
         return None
 
@@ -125,18 +165,18 @@ def compute_canje_arbitrage_signal():
     if pd.isna(z) or abs(z) <= CANJE_ZSCORE_ENTRY_THRESHOLD:
         return None
 
-    cheap_leg, expensive_leg = CANJE_PAIR if last["brecha_pct"] > 0 else CANJE_PAIR[::-1]
+    cheap_leg, expensive_leg = pair if last["brecha_pct"] > 0 else pair[::-1]
     return {
-        "pair": CANJE_PAIR,
+        "pair": pair,
         "zscore": round(float(z), 3),
         "brecha_pct": round(float(last["brecha_pct"]), 3),
         "cheap_leg": cheap_leg,
         "expensive_leg": expensive_leg,
-        "implied_fx_al30": round(float(last["implied_fx_al30"]), 2),
-        "implied_fx_gd30": round(float(last["implied_fx_gd30"]), 2),
+        "implied_fx_a": round(float(last["implied_fx_a"]), 2),
+        "implied_fx_b": round(float(last["implied_fx_b"]), 2),
         "as_of": df.index[-1].date().isoformat(),
         "note": (
-            f"La brecha de canje {CANJE_PAIR[0]}/{CANJE_PAIR[1]} se desvio "
+            f"La brecha de canje {pair[0]}/{pair[1]} se desvio "
             f"{round(float(last['brecha_pct']), 2)}% (z={round(float(z), 2)}) de su promedio de "
             f"{CANJE_ZSCORE_WINDOW} dias -- el dolar implicito es mas barato via {cheap_leg}. "
             f"Si ya se tiene tenencia en {expensive_leg}, evaluar canjearla hacia {cheap_leg}; "
@@ -145,7 +185,27 @@ def compute_canje_arbitrage_signal():
     }
 
 
-def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS, commission_pct=0.0):
+def log_canje_snapshot(conn, pair=CANJE_DEFAULT_PAIR):
+    """Log diario en vivo (ver conversacion/auditoria 2026-10-20, mismo
+    patron ya usado por portfolio/fixed_income.py::log_carry_trade_snapshot
+    y portfolio/synthetic_dollar.py::log_synthetic_dollar_snapshot) --
+    persiste el snapshot de HOY en strategy_signal_log con
+    strategy='canje'. El backtest con historial completo ya mostro que
+    AL29/GD29 sostiene edge out-of-sample (ver docstring del modulo), pero
+    eso es evidencia RETROSPECTIVA -- este log junta evidencia hacia
+    ADELANTE (walk-forward real) para confirmar que el edge sigue vivo HOY,
+    no solo en el promedio historico, antes de confiar en el con mas
+    capital o ejecucion automatica.
+
+    best_spread_pct=None (no 0.0) si no hay señal hoy (z-score dentro del
+    umbral, o falta algun dato) -- "sin oportunidad hoy" es un dato real,
+    se loguea igual, nunca se omite la corrida."""
+    signal = compute_canje_arbitrage_signal(pair=pair)
+    best = signal["brecha_pct"] if signal else None
+    return db.insert_strategy_signal_log(conn, strategy="canje", payload=signal, best_spread_pct=best)
+
+
+def simulate_canje_arbitrage_engine(conn=None, pair=CANJE_DEFAULT_PAIR, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS, commission_pct=0.0):
     """Backtest historico del Motor de Arbitraje de Canje (ver conversacion,
     'backtest unificado') -- mismo shape de salida que simulate_pairs_engine/
     simulate_factor_engine: {"engine": "canje", "daily_returns_pct": pd.Series,
@@ -169,11 +229,12 @@ def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKB
     (no el calculo del z-score) a los ultimos `lookback_days` para ser
     comparable con los demas motores del backtest unificado.
 
-    commission_pct (ver CANJE_ROUND_TRIP_COMMISSION_PCT, Fase 4 del plan de
-    unificacion): costo de transaccion restado UNA VEZ al cerrar la posicion
-    -- default 0.0 para no romper ningun llamador que todavia no lo pase
-    explicito."""
-    df = compute_canje_brecha_series()
+    pair: tupla (ley_a, ley_b) -- default CANJE_DEFAULT_PAIR (ver docstring
+    del modulo). commission_pct (ver CANJE_ROUND_TRIP_COMMISSION_PCT, Fase 4
+    del plan de unificacion): costo de transaccion restado UNA VEZ al cerrar
+    la posicion -- default 0.0 para no romper ningun llamador que todavia no
+    lo pase explicito."""
+    df = compute_canje_brecha_series(pair=pair)
     if df is None:
         empty = pd.Series(dtype=float)
         return {"engine": "canje", "daily_returns_pct": empty, "idle_weight": empty, "trades": []}
@@ -214,7 +275,7 @@ def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKB
                 position["cum_return_pct"] -= commission_pct
                 contributions[date] -= commission_pct
                 trades.append({
-                    "engine": "canje", "pair": CANJE_PAIR, "direction": position["direction"],
+                    "engine": "canje", "pair": pair, "direction": position["direction"],
                     "entry_date": position["entry_date"], "exit_date": date.date().isoformat(),
                     "hold_days": position["hold_days"], "return_pct": round(position["cum_return_pct"], 3),
                     "exit_reason": "time_stop" if position["hold_days"] >= CANJE_MAX_HOLD_DAYS else "reversion",
