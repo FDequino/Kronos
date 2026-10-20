@@ -56,7 +56,9 @@ import pandas as pd
 
 from portfolio import db, features, yield_engine
 from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT
-from portfolio.fetchers import fetch_data912_historical
+from portfolio.fetchers import (
+    ensure_underlying_ohlcv_history, fetch_data912_historical, get_underlying_ohlcv_df,
+)
 
 # Ver evidencia completa en el docstring del modulo arriba.
 CANJE_DEFAULT_PAIR = ("AL29", "GD29")
@@ -292,3 +294,191 @@ def simulate_canje_arbitrage_engine(conn=None, pair=CANJE_DEFAULT_PAIR, lookback
     returns = pd.Series(contributions, dtype=float).reindex(master_dates)
     idle_weight = pd.Series(idle_flags, dtype=float).reindex(master_dates)
     return {"engine": "canje", "daily_returns_pct": returns, "idle_weight": idle_weight, "trades": trades}
+
+
+# --- Arbitraje CEDEAR/subyacente real (ver conversacion/auditoria 2026-10-20,
+# "profundizar en mas opciones de Canje") -------------------------------------
+#
+# Misma idea economica que el Canje de bonos de arriba (2 instrumentos que
+# DEBERIAN implicar el mismo dolar, operados por separado, divergen y
+# revierten), aplicada a un activo distinto: para los 10 CEDEARs con
+# subyacente real verificado (ver forecasting.py::CEDEAR_DIRECT_UNDERLYING_SYMBOLS,
+# migracion de esta misma sesion), el CEDEAR cotiza en ARS en BYMA y el
+# subyacente cotiza en USD en EEUU -- el cociente precio_cedear_ARS /
+# precio_subyacente_USD es, salvo un factor constante (el ratio real de
+# conversion CEDEAR/accion, ej. "10 CEDEARs = 1 accion", que varia por
+# simbolo y NO esta sourceado en este proyecto), un "CCL implicito por
+# CEDEAR". Si ese CCL implicito se separa del CCL REAL de mercado
+# (fx_rate_history, misma fuente que ya usa build_model_input) mas de lo
+# habitual, es una brecha de arbitraje -- misma logica de reversion a la
+# media que Canje de bonos.
+#
+# CLAVE: no hace falta conocer el ratio real de conversion para MEDIR la
+# señal -- es una constante multiplicativa, invariante al z-score de la
+# serie (ratio_pct = implied_ccl/ccl_real) contra su propio promedio
+# rolling, igual que el signal de Canje no depende de saber el precio
+# "correcto" de un bono, solo de su desvio relativo a su propia historia.
+#
+# EVIDENCIA (historial completo disponible via data912 + yfinance,
+# split 70/30 in-sample/out-of-sample, comision real 1.21% como piso -- ver
+# GAP DE EJECUCION abajo, este costo es una referencia, no esta confirmado
+# para esta operatoria puntual): .devlogs/cedear_arb_explore_v1.log
+#
+#   Simbolo | Sharpe IS   | Sharpe OOS       | Trades OOS
+#   AAPL    | 1.04        | 0.63 (vivo)      | 41 (59%)
+#   MSFT    | 0.96        | 0.66 (vivo)      | 32 (66%)
+#   GOOGL   | 0.75        | 0.73 (vivo)      | 43 (53%)
+#   TSLA    | 0.68        | 0.42 (debil)     | 19 (37%)
+#   MELI    | 0.67        | 0.36 (debil)     | 27 (59%)
+#   AMZN    | 1.15        | 0.19 (debil)     | 19 (47%)
+#   META    | 0.69        | 0.23 (debil)     | 24 (46%)
+#   SPY     | 0.85        | -1.31 (murio)    | 13 (8%)
+#   QQQ     | 0.86        | -1.20 (murio)    | 13 (8%)
+#
+# Mismo patron que Canje de bonos: los 2 instrumentos mas liquidos/arbitrados
+# (SPY/QQQ, los ETFs mas transitados del universo) murieron OOS -- otros
+# participantes ya arbitran esa brecha. AAPL/MSFT/GOOGL sostienen edge real y
+# reciente con muestra decente. NVDA sin historial local suficiente
+# (underlying_price_history vacia), no evaluado.
+#
+# GAP DE EJECUCION -- POR QUE ESTO ES UNA SEÑAL PARA SEGUIR INVESTIGANDO,
+# NO UN MOTOR LISTO PARA OPERAR CON CAPITAL REAL COMO SI LO ES CANJE DE
+# BONOS (declarado explicito, nunca ocultado):
+#   1. El ratio real CEDEAR/accion (necesario para dimensionar una orden
+#      real, aunque no para medir la señal) NO esta sourceado en este
+#      proyecto -- haria falta confirmarlo contra una fuente real (BYMA/CNV
+#      publica esta tabla) antes de operar.
+#   2. A diferencia del Canje de bonos (AL30/GD30, ambas patas operables en
+#      la MISMA cuenta/mercado, BYMA), esto requiere ejecutar 2 patas en 2
+#      MERCADOS distintos (BYMA en ARS + NYSE/NASDAQ en USD) de forma
+#      coordinada -- no esta confirmado que IOL o PPI permitan esto desde
+#      la misma cuenta sin fricciones adicionales (PPI menciona una cuenta
+#      "PPI Global" separada para mercado internacional, sin confirmar
+#      todavia si opera coordinado con la cuenta local).
+#   3. El costo real de este tipo de operacion (2 mercados, 2 monedas) no
+#      esta confirmado -- 1.21% (la tarifa de Canje de bonos) es un PISO de
+#      referencia, probablemente optimista para una operatoria mas compleja
+#      con 2 patas en 2 paises.
+# Hasta confirmar 1-3, esto se deja como funcion de backtest/investigacion
+# (simulate_cedear_underlying_arbitrage_engine), nunca conectado a
+# log_canje_snapshot/strategy_signal_log ni al backtest unificado.
+
+CEDEAR_ARBITRAGE_SYMBOLS = ("SPY", "QQQ", "AAPL", "TSLA", "MSFT", "AMZN", "GOOGL", "META", "MELI")
+CEDEAR_ARBITRAGE_ZSCORE_WINDOW = 20
+CEDEAR_ARBITRAGE_ZSCORE_MIN_PERIODS = 20
+CEDEAR_ARBITRAGE_ENTRY_THRESHOLD = 2.0
+CEDEAR_ARBITRAGE_EXIT_ZSCORE = 0.5
+CEDEAR_ARBITRAGE_MAX_HOLD_DAYS = 30
+
+
+def compute_cedear_underlying_brecha_series(conn, symbol):
+    """DataFrame diario alineado (inner join por fecha entre CEDEAR, el
+    subyacente real, y el CCL real) con columns: implied_ccl, ratio_pct
+    (implied_ccl/ccl_real * 100), zscore. None si falta alguna serie o si,
+    ya alineadas, no alcanzan CEDEAR_ARBITRAGE_ZSCORE_MIN_PERIODS + 1 filas.
+
+    No requiere el ratio real CEDEAR/accion -- ver nota de GAP DE EJECUCION
+    arriba del modulo, el z-score de ratio_pct contra su propio promedio
+    rolling es invariante a esa constante."""
+    try:
+        cedear_df = fetch_data912_historical(symbol, "cedear")
+    except Exception:
+        return None
+    cedear_close = cedear_df.set_index(cedear_df["timestamps"].dt.normalize())["close"]
+    cedear_close = cedear_close[~cedear_close.index.duplicated(keep="last")].sort_index()
+
+    ensure_underlying_ohlcv_history(conn, symbol)
+    underlying_df = get_underlying_ohlcv_df(conn, symbol)
+    if underlying_df.empty:
+        return None
+    underlying_close = underlying_df.set_index(underlying_df["timestamps"].dt.normalize())["close"]
+    underlying_close = underlying_close[~underlying_close.index.duplicated(keep="last")].sort_index()
+
+    ccl_rate_map = db.get_fx_rate_history(conn, "contadoconliqui")  # {fecha: venta}
+    ccl_series = pd.Series({
+        pd.Timestamp(fecha).normalize(): venta for fecha, venta in ccl_rate_map.items() if venta is not None
+    }).sort_index()
+
+    df = pd.DataFrame({
+        "cedear_ars": cedear_close, "underlying_usd": underlying_close, "ccl_real": ccl_series,
+    }).dropna(how="any")
+    if len(df) < CEDEAR_ARBITRAGE_ZSCORE_MIN_PERIODS + 1:
+        return None
+
+    df["implied_ccl"] = df["cedear_ars"] / df["underlying_usd"]
+    df["ratio_pct"] = (df["implied_ccl"] / df["ccl_real"]) * 100
+    df["zscore"] = features._rolling_zscore(
+        df["ratio_pct"], window=CEDEAR_ARBITRAGE_ZSCORE_WINDOW, min_periods=CEDEAR_ARBITRAGE_ZSCORE_MIN_PERIODS,
+    )
+    return df
+
+
+def simulate_cedear_underlying_arbitrage_engine(conn, symbol, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS, commission_pct=0.0):
+    """Backtest historico -- mismo shape de salida y misma mecanica de
+    entrada/salida por z-score que simulate_canje_arbitrage_engine (ver esa
+    funcion para el detalle de la logica compartida). direction apuesta a
+    que ratio_pct REVIERTE hacia su media (z>0 => se asume que va a bajar,
+    direction=-1 sobre el NIVEL de ratio_pct; z<0 => direction=+1).
+
+    El retorno diario se mide como variacion PORCENTUAL de ratio_pct (no en
+    puntos absolutos como brecha_pct de Canje de bonos) -- ratio_pct no esta
+    acotado al mismo rango entre simbolos (depende del ratio real de
+    conversion de cada CEDEAR, ver GAP DE EJECUCION arriba), asi que medirlo
+    en puntos no seria comparable entre simbolos; en % si lo es.
+
+    Capital ocioso (sin posicion abierta) NO rinde Caucion aca a proposito
+    (a diferencia de Canje de bonos) -- esta funcion todavia no se conecta a
+    ningun blend de capital real (ver GAP DE EJECUCION), mezclar con
+    Caucion fingiria una asignacion de capital que no existe."""
+    df = compute_cedear_underlying_brecha_series(conn, symbol)
+    if df is None:
+        empty = pd.Series(dtype=float)
+        return {"engine": "cedear_arb", "symbol": symbol, "daily_returns_pct": empty, "idle_weight": empty, "trades": []}
+
+    master_dates = list(df.index)[-lookback_days:]
+    if len(master_dates) < 2:
+        empty = pd.Series(dtype=float)
+        return {"engine": "cedear_arb", "symbol": symbol, "daily_returns_pct": empty, "idle_weight": empty, "trades": []}
+
+    contributions = {d: 0.0 for d in master_dates}
+    idle_flags = {d: 1.0 for d in master_dates}
+    position = None
+    trades = []
+
+    for i, date in enumerate(master_dates):
+        ratio_now = float(df.loc[date, "ratio_pct"])
+        z_now = df.loc[date, "zscore"]
+
+        if position is not None:
+            ratio_prev = float(df.loc[master_dates[i - 1], "ratio_pct"])
+            day_return_pct = position["direction"] * (ratio_now - ratio_prev) / ratio_prev * 100
+            contributions[date] = day_return_pct
+            idle_flags[date] = 0.0
+            position["hold_days"] += 1
+            position["cum_return_pct"] = (1 + position["cum_return_pct"] / 100) * (1 + day_return_pct / 100) * 100 - 100
+
+            should_exit = (
+                position["hold_days"] >= CEDEAR_ARBITRAGE_MAX_HOLD_DAYS
+                or (not pd.isna(z_now) and abs(float(z_now)) <= CEDEAR_ARBITRAGE_EXIT_ZSCORE)
+            )
+            if should_exit:
+                position["cum_return_pct"] -= commission_pct
+                contributions[date] -= commission_pct
+                trades.append({
+                    "engine": "cedear_arb", "symbol": symbol, "direction": position["direction"],
+                    "entry_date": position["entry_date"], "exit_date": date.date().isoformat(),
+                    "hold_days": position["hold_days"], "return_pct": round(position["cum_return_pct"], 3),
+                    "exit_reason": "time_stop" if position["hold_days"] >= CEDEAR_ARBITRAGE_MAX_HOLD_DAYS else "reversion",
+                })
+                position = None
+            continue
+
+        if not pd.isna(z_now) and abs(float(z_now)) > CEDEAR_ARBITRAGE_ENTRY_THRESHOLD:
+            position = {
+                "direction": -1.0 if z_now > 0 else 1.0,
+                "entry_date": date.date().isoformat(), "hold_days": 0, "cum_return_pct": 0.0,
+            }
+
+    returns = pd.Series(contributions, dtype=float).reindex(master_dates)
+    idle_weight = pd.Series(idle_flags, dtype=float).reindex(master_dates)
+    return {"engine": "cedear_arb", "symbol": symbol, "daily_returns_pct": returns, "idle_weight": idle_weight, "trades": trades}

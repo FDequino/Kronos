@@ -379,3 +379,108 @@ def test_log_canje_snapshot_sin_oportunidad_hoy_loguea_con_spread_none(monkeypat
     assert len(rows) == 1
     assert rows[0]["best_spread_pct"] is None
     assert rows[0]["payload"] is None
+
+
+# --- Arbitraje CEDEAR/subyacente real (ver conversacion/auditoria 2026-10-20,
+# "profundizar en mas opciones de Canje" -- ver docstring de arbitrage.py
+# para la evidencia completa y el GAP DE EJECUCION declarado) ---------------
+
+def _mock_cedear_arb(monkeypatch, cedear_ars, underlying_usd, ccl_real, dates=None, symbol="AAPL",
+                      missing_cedear=False, missing_underlying=False, missing_ccl=False):
+    """Parchea las 3 fuentes que compute_cedear_underlying_brecha_series lee:
+    fetch_data912_historical (cedear), get_underlying_ohlcv_df (subyacente),
+    db.get_fx_rate_history (CCL real)."""
+    n = len(cedear_ars)
+    dates = dates if dates is not None else _dates(n)
+
+    def fake_fetch(sym, asset_type):
+        assert asset_type == "cedear"
+        assert sym == symbol
+        if missing_cedear:
+            raise ValueError(f"{sym} no encontrado")
+        return _bond_df(dates, cedear_ars)
+
+    monkeypatch.setattr(arbitrage, "fetch_data912_historical", fake_fetch)
+    monkeypatch.setattr(arbitrage, "ensure_underlying_ohlcv_history", lambda conn, sym: None)
+
+    if missing_underlying:
+        empty = pd.DataFrame(columns=["timestamps", "open", "high", "low", "close", "volume"])
+        monkeypatch.setattr(arbitrage, "get_underlying_ohlcv_df", lambda conn, sym: empty)
+    else:
+        underlying_df = pd.DataFrame({"timestamps": dates, "close": underlying_usd})
+        monkeypatch.setattr(arbitrage, "get_underlying_ohlcv_df", lambda conn, sym: underlying_df)
+
+    ccl_map = {} if missing_ccl else {d.strftime("%Y-%m-%d"): v for d, v in zip(dates, ccl_real)}
+    monkeypatch.setattr(db, "get_fx_rate_history", lambda conn, casa: ccl_map)
+
+
+def test_cedear_brecha_series_sin_senal_ratio_estable(monkeypatch):
+    n = 25
+    rng = np.random.default_rng(7)
+    cedear_ars = 1000.0 + rng.normal(0, 1, n)
+    underlying_usd = 100.0 + rng.normal(0, 0.1, n)
+    ccl_real = np.full(n, 1000.0 / 100.0)  # consistente con el ratio implicito, sin desvio
+    _mock_cedear_arb(monkeypatch, cedear_ars, underlying_usd, ccl_real)
+
+    df = arbitrage.compute_cedear_underlying_brecha_series(conn=None, symbol="AAPL")
+    assert df is not None
+    assert abs(df["zscore"].iloc[-1]) < arbitrage.CEDEAR_ARBITRAGE_ENTRY_THRESHOLD
+
+
+def test_cedear_brecha_series_detecta_desvio_fuerte(monkeypatch):
+    n = 30
+    cedear_ars = np.full(n, 1000.0)
+    underlying_usd = np.full(n, 100.0)
+    ccl_real = np.full(n, 10.0)  # ratio implicito = 1000/100 = 10, igual al real -> estable
+    # ultimo dia: el CEDEAR salta fuerte sin que el subyacente ni el CCL se muevan -- brecha real.
+    cedear_ars[-1] = 1300.0
+    _mock_cedear_arb(monkeypatch, cedear_ars, underlying_usd, ccl_real)
+
+    df = arbitrage.compute_cedear_underlying_brecha_series(conn=None, symbol="AAPL")
+    assert df is not None
+    assert abs(df["zscore"].iloc[-1]) > arbitrage.CEDEAR_ARBITRAGE_ENTRY_THRESHOLD
+
+
+def test_cedear_brecha_series_sin_historial_subyacente_devuelve_none(monkeypatch):
+    n = 25
+    cedear_ars = np.full(n, 1000.0)
+    underlying_usd = np.full(n, 100.0)
+    ccl_real = np.full(n, 10.0)
+    _mock_cedear_arb(monkeypatch, cedear_ars, underlying_usd, ccl_real, missing_underlying=True)
+
+    assert arbitrage.compute_cedear_underlying_brecha_series(conn=None, symbol="AAPL") is None
+
+
+def test_cedear_brecha_series_sin_ccl_devuelve_none(monkeypatch):
+    n = 25
+    cedear_ars = np.full(n, 1000.0)
+    underlying_usd = np.full(n, 100.0)
+    ccl_real = np.full(n, 10.0)
+    _mock_cedear_arb(monkeypatch, cedear_ars, underlying_usd, ccl_real, missing_ccl=True)
+
+    assert arbitrage.compute_cedear_underlying_brecha_series(conn=None, symbol="AAPL") is None
+
+
+def test_simulate_cedear_underlying_arbitrage_abre_y_cierra_posicion(monkeypatch):
+    # Rampa: ratio_pct se desvia fuerte y despues revierte -- debe abrir y cerrar 1 trade.
+    n = 60
+    cedear_ars = np.full(n, 1000.0)
+    underlying_usd = np.full(n, 100.0)
+    ccl_real = np.full(n, 10.0)
+    # Dispara el desvio desde el dia 25 (despues del warmup de 20) y lo sostiene unos dias, despues revierte.
+    cedear_ars[25:35] = 1400.0
+    _mock_cedear_arb(monkeypatch, cedear_ars, underlying_usd, ccl_real, dates=_dates(n))
+
+    result = arbitrage.simulate_cedear_underlying_arbitrage_engine(conn=None, symbol="AAPL", lookback_days=n, commission_pct=0.5)
+    assert result["engine"] == "cedear_arb"
+    assert result["symbol"] == "AAPL"
+    assert len(result["trades"]) >= 1
+    # direction debe apostar a reversion: ratio subio (z>0) -> direction -1
+    assert result["trades"][0]["direction"] == -1.0
+
+
+def test_simulate_cedear_underlying_arbitrage_sin_datos_devuelve_vacio(monkeypatch):
+    _mock_cedear_arb(monkeypatch, np.full(25, 1000.0), np.full(25, 100.0), np.full(25, 10.0), missing_cedear=True)
+    result = arbitrage.simulate_cedear_underlying_arbitrage_engine(conn=None, symbol="AAPL")
+    assert result["trades"] == []
+    assert len(result["daily_returns_pct"]) == 0
