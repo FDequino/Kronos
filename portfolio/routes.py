@@ -690,6 +690,20 @@ def get_forecast(forecast_id):
     return jsonify(response)
 
 
+@bp.route('/model-reliability')
+def model_reliability():
+    """Conteo agregado de instrumentos con acierto direccional < 50% hoy
+    (ver conversación/auditoría: "la baja confiabilidad del modelo...
+    visible en TODAS las pantallas de señales") -- usado por Comparador y
+    Detalle para un banner informativo, no reemplaza el "Sin validar" por
+    instrumento que ya mostraba cada uno."""
+    conn = db.get_connection()
+    try:
+        return jsonify(accuracy.compute_model_reliability_summary(conn))
+    finally:
+        conn.close()
+
+
 @bp.route('/instruments/<int:instrument_id>/accuracy')
 def instrument_accuracy(instrument_id):
     conn = db.get_connection()

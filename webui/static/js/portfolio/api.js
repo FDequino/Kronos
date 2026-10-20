@@ -28,6 +28,7 @@ export const api = {
     updateSettings: (payload) => axios.put(`${BASE}/settings`, payload),
     portfolioRisk: () => axios.get(`${BASE}/portfolio-risk`),
     instrumentAccuracy: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/accuracy`),
+    modelReliability: () => axios.get(`${BASE}/model-reliability`),
     instrumentRisk: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/risk`),
     forecastsHistory: (params) => axios.get(`${BASE}/forecasts-history`, { params }),
     instrumentChart: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/chart`),

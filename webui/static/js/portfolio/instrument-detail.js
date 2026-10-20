@@ -16,6 +16,7 @@ import { createSorter, wireSortableHeaders } from '../shared/sortable-table.js';
 import { headerCellHtml, updateSortIndicators } from '../shared/table-chrome.js';
 import { loadingHtml } from '../shared/loading.js';
 import { openModal, closeModal } from '../shared/modal.js';
+import { modelReliabilityBannerHtml } from '../shared/model-reliability.js';
 
 const SIGNAL_LABEL = { comprar: 'Comprar', mantener: 'Mantener', vender: 'Vender' };
 // tag-signal-buy/sell (acento), nunca tag-positive/tag-negative -- es una
@@ -184,6 +185,7 @@ function shellHtml(symbol, tabs) {
                                         </div>
                                     </div>
                                     <div class="panel-body">
+                                        <div id="detail-model-reliability-banner"></div>
                                         <p class="hint" id="detail-kronos-status"></p>
                                         <div class="mini-stat-grid" id="detail-forecast-kpis"></div>
                                     </div>
@@ -963,6 +965,24 @@ async function loadModelMetrics(instrumentId) {
         analysisTiles.model = '';
     }
     renderAnalysisCard();
+    loadModelReliabilityBanner();
+}
+
+// Banner agregado (ver shared/model-reliability.js) -- independiente del
+// instrumento que se esté viendo, por eso no depende de instrumentId ni se
+// mete en analysisTiles (esa grilla sí es por-instrumento).
+async function loadModelReliabilityBanner() {
+    const el = $('detail-model-reliability-banner');
+    if (!el) return;
+    try {
+        const { data } = await api.modelReliability();
+        const html = modelReliabilityBannerHtml(data).trim();
+        el.innerHTML = html;
+        el.style.display = html ? '' : 'none';
+    } catch {
+        el.innerHTML = '';
+        el.style.display = 'none';
+    }
 }
 
 function accuracyStatStripHtml(data, currentPredLen) {

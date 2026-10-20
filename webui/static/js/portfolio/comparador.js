@@ -7,6 +7,7 @@ import { api } from './api.js';
 import { fetchInstrumentsList } from './instruments.js';
 import { instrumentClase } from './instrument-clase.js';
 import { glossaryTerm } from '../shared/glossary.js';
+import { modelReliabilityBannerHtml } from '../shared/model-reliability.js';
 import { evaluateFundamental } from './instrument-detail.js';
 import { EDGE_SIGNIFICANT_PTS, SIGNAL_LABEL } from './technical-signal.js';
 
@@ -16,6 +17,10 @@ let selected = [];
 // Config real de Preferencias (umbral de P/E, margen) -- se pide una sola vez,
 // no por columna, para no repetir la misma llamada 4 veces.
 let signalConfig = null;
+// Banner de confiabilidad agregada (ver conversación/auditoría: "la baja
+// confiabilidad del modelo... visible en TODAS las pantallas de señales, no
+// solo internamente") -- se pide UNA vez en loadComparador, no por columna.
+let modelReliability = null;
 
 function tagHtml(text, cls) {
     return `<span class="tag ${cls}">${text}</span>`;
@@ -261,6 +266,7 @@ async function renderComparador() {
     const columns = await Promise.all(selected.map(getColumnData));
 
     container.innerHTML = `
+        ${modelReliabilityBannerHtml(modelReliability)}
         <div class="table-scroll">
             <table>
                 <thead>
@@ -301,9 +307,10 @@ export function initComparadorView() {
 }
 
 export async function loadComparador() {
-    [allInstruments, signalConfig] = await Promise.all([
+    [allInstruments, signalConfig, modelReliability] = await Promise.all([
         fetchInstrumentsList(),
         api.signalConfig().then((r) => r.data).catch(() => null),
+        api.modelReliability().then((r) => r.data).catch(() => null),
     ]);
     await renderComparador();
 }

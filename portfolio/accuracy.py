@@ -9,6 +9,7 @@ None -- nunca un numero inventado.
 import json
 from datetime import datetime, timezone
 
+from portfolio import db
 from portfolio.formatting import fmt_es
 
 
@@ -311,3 +312,36 @@ def compute_signal_validation(accuracy, config):
         "validated": True,
         "reason": f"{fmt_es(hit)}% de acierto direccional sobre {n} pronósticos no superpuestos.",
     }
+
+
+def compute_model_reliability_summary(conn):
+    """Conteo agregado de cuántos instrumentos tienen, HOY, un acierto
+    direccional por debajo de la mitad (peor que cara-o-ceca) -- ver
+    conversación/auditoría: "la baja confiabilidad del modelo... visible en
+    TODAS las pantallas de señales, no solo internamente". Deliberadamente
+    MÁS simple y más estricto que compute_signal_validation/"Sin validar"
+    (que exige además un mínimo de pronósticos no superpuentos configurado
+    en Ajustes): acá no importa el umbral de "validado", solo si el acierto
+    ya calculado es peor que 50% -- esa es la pregunta honesta que el
+    usuario hizo, independiente de cuántos pronósticos hagan falta para
+    confiar en el número.
+
+    Solo lee accuracy_cache (nunca recalcula en vivo) -- esto alimenta un
+    banner informativo, no justifica pagar el costo de compute_accuracy
+    para cada instrumento en cada carga de Comparador/Detalle. Un
+    instrumento sin cache todavía (nunca se abrió su detalle) se omite del
+    conteo, no se cuenta como bueno ni como malo."""
+    evaluated = 0
+    low_accuracy = 0
+    for instrument in db.list_instruments(conn):
+        cached = db.get_accuracy_cache(conn, instrument["id"])
+        if not cached:
+            continue
+        acc = json.loads(cached["result_json"])
+        hit = acc.get("directional_hit_pct")
+        if hit is None:
+            continue
+        evaluated += 1
+        if hit < 50.0:
+            low_accuracy += 1
+    return {"evaluated_count": evaluated, "low_accuracy_count": low_accuracy}
