@@ -28,12 +28,19 @@ no existe): se investigaron las 4 APIs públicas ANTES de escribir esto
     devuelven "integración pendiente, sin documentación pública
     verificada" en vez de fabricar un endpoint que no existe.
 
-Seguridad declarada: api_key/api_secret se guardan en TEXTO PLANO en
-broker_accounts (mismo criterio ya aceptado en este proyecto para
-signal_config.openai_api_key/anthropic_api_key -- app local de un solo
-usuario, sin esquema de cifrado-en-reposo todavía) -- nunca se devuelven
-sin enmascarar desde ninguna función pensada para mostrarse (ver
-_mask_secret/list_accounts_masked).
+Seguridad (corregido 2026-10-20, ver conversación/auditoría -- antes
+guardaba api_key/api_secret en TEXTO PLANO, encontrado con credenciales
+reales de IOL en la fila activa): portfolio/db.py cifra/descifra
+api_key/api_secret de forma transparente en el borde de
+add_broker_account/update_broker_account/get_broker_account/
+list_broker_accounts (ver portfolio/secrets_crypto.py, Fernet con clave en
+.env, fuera de portfolio.db) -- este módulo siempre trabaja con el valor ya
+en texto plano EN MEMORIA (nunca ve el valor cifrado), igual que antes;
+nunca se devuelven sin enmascarar desde ninguna función pensada para
+mostrarse (ver _mask_secret/list_accounts_masked). signal_config.
+openai_api_key/anthropic_api_key/finnhub_api_key TODAVÍA se guardan en texto
+plano -- mismo problema, no resuelto en esta pasada (fuera de alcance,
+queda pendiente).
 
 Arquitectura: cada broker implementa la MISMA interfaz (BrokerAdapter:
 test_connection/get_balance/get_holdings) para que MultiBrokerManager

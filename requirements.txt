@@ -16,6 +16,7 @@ stable-baselines3
 reportlab
 openpyxl
 python-dotenv
+cryptography
 python-telegram-bot[job-queue]
 
 einops==0.8.1

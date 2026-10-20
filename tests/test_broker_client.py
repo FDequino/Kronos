@@ -294,3 +294,82 @@ def test_iol_get_current_price_ok_mockeado(temp_db, manager, monkeypatch):
     adapter = broker_client.IOLAdapter(db.get_broker_account(temp_db, account["id"]))
     result = adapter.get_current_price("GGAL", "accion")
     assert result == {"price": 50.5, "bid": 50.0, "ask": 51.0}
+
+
+# --- Cifrado en reposo de api_key/api_secret (ver conversacion/auditoria
+# 2026-10-20: se guardaban en TEXTO PLANO, confirmado con credenciales
+# reales de IOL en la fila activa; ver portfolio/secrets_crypto.py) --------
+
+def test_add_broker_account_no_guarda_el_secreto_en_texto_plano(temp_db):
+    db.add_broker_account(temp_db, broker_name="IOL", alias="IOL", api_key="usuario@real.com",
+                           api_secret="ContraseñaRealSecreta123")
+    raw = temp_db.execute("SELECT api_key, api_secret FROM broker_accounts").fetchone()
+    # La fila CRUDA de sqlite nunca debe contener el valor original -- si
+    # alguien abre portfolio.db con un visor de sqlite, no tiene que poder
+    # leer la contraseña mirando la tabla.
+    assert "usuario@real.com" not in raw["api_key"]
+    assert "ContraseñaRealSecreta123" not in raw["api_secret"]
+    assert raw["api_key"].startswith("enc:v1:")
+    assert raw["api_secret"].startswith("enc:v1:")
+
+
+def test_get_y_list_broker_account_devuelven_el_secreto_real_descifrado(temp_db):
+    account_id = db.add_broker_account(temp_db, broker_name="PPI", api_key="miusuario",
+                                        api_secret="mipassword")
+    fetched = db.get_broker_account(temp_db, account_id)
+    assert fetched["api_key"] == "miusuario"
+    assert fetched["api_secret"] == "mipassword"
+
+    listed = db.list_broker_accounts(temp_db)
+    assert listed[0]["api_key"] == "miusuario"
+    assert listed[0]["api_secret"] == "mipassword"
+
+
+def test_update_broker_account_re_cifra_el_secreto_nuevo(temp_db):
+    account_id = db.add_broker_account(temp_db, broker_name="IOL", api_key="viejo", api_secret="viejopass")
+    db.update_broker_account(temp_db, account_id, api_secret="passwordnuevo")
+
+    raw = temp_db.execute("SELECT api_secret FROM broker_accounts WHERE id = ?", (account_id,)).fetchone()
+    assert raw["api_secret"].startswith("enc:v1:")
+    assert "passwordnuevo" not in raw["api_secret"]
+    assert db.get_broker_account(temp_db, account_id)["api_secret"] == "passwordnuevo"
+
+
+def test_migracion_re_cifra_una_fila_legada_en_texto_plano(temp_db):
+    """Simula una fila de una instalacion vieja (pre-cifrado) insertada
+    directo por SQL, sin pasar por add_broker_account -- _migrate (ver
+    portfolio/db.py::get_connection) tiene que detectarla y re-cifrarla la
+    proxima vez que se abra una conexion, sin que el usuario haga nada."""
+    temp_db.execute(
+        "INSERT INTO broker_accounts (broker_name, alias, api_key, api_secret, is_active) "
+        "VALUES ('IOL', 'legado', 'usuario_legado', 'password_legado_texto_plano', 1)"
+    )
+    temp_db.commit()
+
+    # Reabrir la conexion (mismo db_path) dispara _migrate de nuevo.
+    db_path = temp_db.execute("PRAGMA database_list").fetchone()["file"]
+    temp_db.close()
+    reopened = db.get_connection(db_path)
+
+    raw = reopened.execute("SELECT api_key, api_secret FROM broker_accounts WHERE alias = 'legado'").fetchone()
+    assert raw["api_key"].startswith("enc:v1:")
+    assert "usuario_legado" not in raw["api_key"]
+    assert "password_legado_texto_plano" not in raw["api_secret"]
+
+    account = db.list_broker_accounts(reopened)[0]
+    assert account["api_key"] == "usuario_legado"
+    assert account["api_secret"] == "password_legado_texto_plano"
+    reopened.close()
+
+
+def test_mask_account_sigue_enmascarando_el_valor_ya_descifrado(temp_db, manager):
+    """broker_client.mask_account trabaja sobre el dict YA descifrado que
+    devuelve db.get_broker_account -- nunca debe filtrar el secreto real ni
+    mostrar el token cifrado en su lugar."""
+    account_id = manager.add_account(temp_db, broker_name="IOL", api_key="usuario_real",
+                                      api_secret="password_real")["id"]
+    masked = broker_client.mask_account(db.get_broker_account(temp_db, account_id))
+    assert masked["api_key"] != "usuario_real"
+    assert "enc:v1:" not in masked["api_key"]
+    assert "usuario_real" not in masked["api_key"]
+    assert "password_real" not in masked["api_secret"]

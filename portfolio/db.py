@@ -3,6 +3,8 @@ import os
 import sqlite3
 from datetime import datetime, timedelta
 
+from portfolio import secrets_crypto
+
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "portfolio.db")
 SCHEMA_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "schema.sql")
 
@@ -467,6 +469,28 @@ def _migrate(conn):
         conn.execute("PRAGMA foreign_keys=ON")
         conn.commit()
 
+    # Cifrado en reposo de broker_accounts (ver conversacion/auditoria
+    # 2026-10-20: api_key/api_secret se guardaban en TEXTO PLANO, confirmado
+    # con credenciales reales de IOL en la fila activa). Re-cifra in-place
+    # cualquier fila legada -- se detecta por NO tener el prefijo
+    # secrets_crypto.ENC_PREFIX (nunca se re-cifra una fila que ya lo tiene,
+    # ver encrypt_secret). Corre en cada get_connection() pero es barato
+    # (SELECT + UPDATE solo de las filas legadas, 0 filas en instalaciones
+    # ya migradas).
+    legacy_rows = conn.execute(
+        "SELECT id, api_key, api_secret FROM broker_accounts "
+        "WHERE (api_key IS NOT NULL AND api_key NOT LIKE ?) "
+        "OR (api_secret IS NOT NULL AND api_secret NOT LIKE ?)",
+        (secrets_crypto.ENC_PREFIX + "%", secrets_crypto.ENC_PREFIX + "%"),
+    ).fetchall()
+    for row in legacy_rows:
+        conn.execute(
+            "UPDATE broker_accounts SET api_key = ?, api_secret = ? WHERE id = ?",
+            (secrets_crypto.encrypt_secret(row["api_key"]), secrets_crypto.encrypt_secret(row["api_secret"]), row["id"]),
+        )
+    if legacy_rows:
+        conn.commit()
+
 
 def _row_to_dict(row):
     return dict(row) if row is not None else None
@@ -905,23 +929,34 @@ def delete_loan_document(conn, document_id):
 
 def add_broker_account(conn, *, broker_name, alias=None, api_key=None, api_secret=None,
                         account_number=None, is_active=True):
+    # Cifrado en reposo (ver portfolio/secrets_crypto.py) -- nunca se guarda
+    # api_key/api_secret en texto plano en portfolio.db.
     cur = conn.execute(
         """INSERT INTO broker_accounts (broker_name, alias, api_key, api_secret, account_number, is_active)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (broker_name, alias, api_key, api_secret, account_number, int(is_active)),
+        (broker_name, alias, secrets_crypto.encrypt_secret(api_key),
+         secrets_crypto.encrypt_secret(api_secret), account_number, int(is_active)),
     )
     conn.commit()
     return cur.lastrowid
 
 
+def _decrypt_broker_account_dict(d):
+    if d is None:
+        return d
+    d["api_key"] = secrets_crypto.decrypt_secret(d.get("api_key"))
+    d["api_secret"] = secrets_crypto.decrypt_secret(d.get("api_secret"))
+    return d
+
+
 def list_broker_accounts(conn):
     rows = conn.execute("SELECT * FROM broker_accounts ORDER BY created_at DESC").fetchall()
-    return [_row_to_dict(r) for r in rows]
+    return [_decrypt_broker_account_dict(_row_to_dict(r)) for r in rows]
 
 
 def get_broker_account(conn, account_id):
     row = conn.execute("SELECT * FROM broker_accounts WHERE id = ?", (account_id,)).fetchone()
-    return _row_to_dict(row)
+    return _decrypt_broker_account_dict(_row_to_dict(row))
 
 
 def update_broker_account(conn, account_id, **fields):
@@ -929,6 +964,10 @@ def update_broker_account(conn, account_id, **fields):
         return get_broker_account(conn, account_id)
     if "is_active" in fields:
         fields["is_active"] = int(bool(fields["is_active"]))
+    if "api_key" in fields:
+        fields["api_key"] = secrets_crypto.encrypt_secret(fields["api_key"])
+    if "api_secret" in fields:
+        fields["api_secret"] = secrets_crypto.encrypt_secret(fields["api_secret"])
     columns = ", ".join(f"{k} = ?" for k in fields)
     conn.execute(f"UPDATE broker_accounts SET {columns} WHERE id = ?", (*fields.values(), account_id))
     conn.commit()
