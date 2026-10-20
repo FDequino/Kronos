@@ -1263,6 +1263,25 @@ def instrument_news(instrument_id):
         conn.close()
 
 
+@bp.route('/instruments/<int:instrument_id>/news-history')
+def instrument_news_history(instrument_id):
+    """Historial de los últimos N días de evaluaciones de ESTE instrumento
+    (ver conversación: "las noticias no se guardan en ningún lado?" --
+    SÍ se guardan, news_sentiment_log es append-only, pero hasta ahora
+    db.list_recent_sentiment no tenía ninguna ruta que la expusiera --
+    código muerto, aunque ya probado). ?days= (default 7, ver
+    db.list_recent_sentiment) -- incluye la evaluación de HOY si ya corrió."""
+    conn = db.get_connection()
+    try:
+        instrument = db.get_instrument(conn, instrument_id)
+        if not instrument:
+            return jsonify({'error': 'Instrumento no encontrado'}), 404
+        days = request.args.get('days', default=7, type=int)
+        return jsonify(db.list_recent_sentiment(conn, instrument['symbol'], days=days))
+    finally:
+        conn.close()
+
+
 @bp.route('/news-today')
 def news_today():
     """Subtab "Noticias" de Decisiones (ver conversación) -- agrega la

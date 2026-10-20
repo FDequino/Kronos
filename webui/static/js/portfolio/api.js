@@ -37,6 +37,8 @@ export const api = {
         axios.get(`${BASE}/instruments/${instrumentId}/fundamentals`, { params: refresh ? { refresh: 1 } : {} }),
     instrumentNews: (instrumentId, refresh) =>
         axios.get(`${BASE}/instruments/${instrumentId}/news`, { params: refresh ? { refresh: 1 } : {} }),
+    instrumentNewsHistory: (instrumentId, days = 7) =>
+        axios.get(`${BASE}/instruments/${instrumentId}/news-history`, { params: { days } }),
     newsToday: () => axios.get(`${BASE}/news-today`),
     portfolioHistory: () => axios.get(`${BASE}/history`),
     portfolioHistoryReconstructed: () => axios.get(`${BASE}/history/reconstructed`),

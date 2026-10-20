@@ -810,13 +810,42 @@ function newsHtml(data) {
     `;
 }
 
+// Historial de evaluaciones pasadas (ver conversación: "las noticias no se
+// guardan en ningún lado? no deberían guardarse?" -- SÍ se guardan,
+// news_sentiment_log es append-only, pero hasta ahora no había ninguna
+// pantalla que lo mostrara -- db.list_recent_sentiment existía probada
+// pero sin ninguna ruta que la expusiera). Una fila por evaluación corrida
+// (puede haber más de una por día si se re-evaluó), más reciente primero.
+function historyRowHtml(row) {
+    const riskTag = `<span class="tag ${NEWS_RISK_TAG_CLASS[row.risk_level] || 'tag-neutral'}">${row.risk_level}</span>`;
+    const fecha = row.created_at ? row.created_at.slice(0, 10) : null;
+    return `
+        <li>
+            <div class="hint">${fecha ? fmtDate(fecha) : '—'} ${riskTag} <span class="num">score ${fmt(row.sentiment_score, 2)}</span></div>
+            ${row.summary ? `<div>${row.summary}</div>` : ''}
+        </li>
+    `;
+}
+
+function newsHistoryHtml(rows) {
+    return `
+        <div class="stat-detail-label" style="margin-top:16px;">Historial (últimos 7 días)</div>
+        ${rows.length
+            ? `<ul class="detail-news-list">${rows.map(historyRowHtml).join('')}</ul>`
+            : '<p class="table-empty">Sin evaluaciones registradas en los últimos 7 días.</p>'}
+    `;
+}
+
 async function loadNews(instrumentId, ticker) {
     const root = $('detail-news');
     if (!root) return;
     root.innerHTML = loadingHtml('Buscando noticias…');
     try {
-        const { data } = await api.instrumentNews(instrumentId);
-        root.innerHTML = newsHtml(data);
+        const [{ data }, { data: history }] = await Promise.all([
+            api.instrumentNews(instrumentId),
+            api.instrumentNewsHistory(instrumentId, 7),
+        ]);
+        root.innerHTML = newsHtml(data) + newsHistoryHtml(history);
         root.addEventListener('click', (e) => {
             if (e.target.closest('.detail-news-source-link')) return;
             const item = e.target.closest('.detail-news-item');
