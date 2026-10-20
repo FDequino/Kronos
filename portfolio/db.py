@@ -433,6 +433,14 @@ def _migrate(conn):
         conn.execute("ALTER TABLE proposals ADD COLUMN cantidad_sugerida REAL")
         conn.commit()
 
+    # Fase 5 de unificacion (ver conversacion): trazabilidad propuesta->
+    # transaccion -- NULL en filas ya existentes (no se puede reconstruir
+    # retroactivo que transaccion vino de que propuesta).
+    transactions_cols = {row["name"] for row in conn.execute("PRAGMA table_info(transactions)").fetchall()}
+    if "proposal_id" not in transactions_cols:
+        conn.execute("ALTER TABLE transactions ADD COLUMN proposal_id INTEGER REFERENCES proposals(id) ON DELETE SET NULL")
+        conn.commit()
+
     # Fase 3 de unificacion (ver conversacion): accuracy_cache tenia
     # instrument_id como PRIMARY KEY -- cada corrida pisaba (upsert) la fila
     # anterior, imposible ver si el acierto de un instrumento viene cayendo
@@ -520,11 +528,14 @@ def delete_instrument(conn, instrument_id):
 
 # --- Transacciones ----------------------------------------------------------
 
-def add_transaction(conn, instrument_id, fecha, tipo, cantidad, precio, comision=0, notas=None):
+def add_transaction(conn, instrument_id, fecha, tipo, cantidad, precio, comision=0, notas=None, proposal_id=None):
+    """proposal_id (ver conversacion, Fase 5 del plan de unificacion): link a
+    la Propuesta que origino esta transaccion, si vino de "Aceptar" una --
+    None para cualquier transaccion cargada directo, sin pasar por eso."""
     cur = conn.execute(
-        """INSERT INTO transactions (instrument_id, fecha, tipo, cantidad, precio, comision, notas)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (instrument_id, fecha, tipo, cantidad, precio, comision, notas),
+        """INSERT INTO transactions (instrument_id, fecha, tipo, cantidad, precio, comision, notas, proposal_id)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (instrument_id, fecha, tipo, cantidad, precio, comision, notas, proposal_id),
     )
     conn.commit()
     return cur.lastrowid

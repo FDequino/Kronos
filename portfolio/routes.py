@@ -114,6 +114,11 @@ def portfolio_transactions():
                     precio=float(data['precio']),
                     comision=float(data.get('comision', 0)),
                     notas=data.get('notas'),
+                    # Fase 5 del plan de unificacion (ver conversacion):
+                    # trazabilidad propuesta->transaccion, solo si vino de
+                    # "Aceptar" una propuesta y el usuario no cambio de
+                    # instrumento despues (ver transactions.js).
+                    proposal_id=data.get('proposal_id'),
                 )
             except Exception as e:
                 return jsonify({'error': str(e)}), 400

@@ -364,11 +364,24 @@ export function openTransactionModal(tx = null) {
     // viejo (`if (tx)`) caia en la rama de "editar" -- tanto el titulo como,
     // mas grave, onSubmit intentaba updateTransaction(undefined, ...).
     const isEdit = !!tx?.id;
+    // Trazabilidad a la Propuesta de origen (ver conversación, Fase 5 del
+    // plan de unificación) -- viaja desde proposals.js::accept() junto con
+    // instrument_id/tipo/fecha/precio/cantidad precargados. Si el usuario
+    // cambia de instrumento en el <select> antes de confirmar, el link ya no
+    // tiene sentido (quedaría apuntando a una propuesta de otro símbolo) y se
+    // limpia -- nunca se envía en modo edición, una transacción ya cargada no
+    // tiene relación con "Aceptar" una propuesta.
+    let proposalId = !isEdit ? (tx?.proposal_id ?? null) : null;
     openModal({
         title: isEdit ? 'Editar transacción' : 'Nueva transacción',
         bodyHtml: txFormFieldsHtml(tx || {}),
         onMount: (form) => {
             if (!tx?.fecha) form.querySelector('#tx-fecha').value = todayLocalISO();
+            if (proposalId) {
+                form.querySelector('#tx-instrument').addEventListener('change', (e) => {
+                    if (String(e.target.value) !== String(tx.instrument_id)) proposalId = null;
+                });
+            }
         },
         onSubmit: async (form) => {
             const payload = {
@@ -378,6 +391,7 @@ export function openTransactionModal(tx = null) {
                 cantidad: form.querySelector('#tx-cantidad').value,
                 precio: form.querySelector('#tx-precio').value,
                 comision: form.querySelector('#tx-comision').value,
+                proposal_id: proposalId,
             };
             if (isEdit) {
                 await api.updateTransaction(tx.id, payload);

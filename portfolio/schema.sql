@@ -43,6 +43,13 @@ CREATE TABLE IF NOT EXISTS transactions (
     precio REAL NOT NULL CHECK (precio >= 0),
     comision REAL NOT NULL DEFAULT 0,
     notas TEXT,
+    -- Trazabilidad a la Propuesta que originó esta transacción (ver
+    -- conversacion, Fase 5 del plan de unificacion) -- NULL para cualquier
+    -- transaccion cargada directamente, sin pasar por "Aceptar" en una
+    -- propuesta. Nunca se fuerza: si el usuario cambia de instrumento en el
+    -- formulario despues de llegar desde una propuesta, el link ya no tiene
+    -- sentido y se limpia (ver transactions.js::openTransactionModal).
+    proposal_id INTEGER REFERENCES proposals(id) ON DELETE SET NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

@@ -159,6 +159,10 @@ async function accept(id) {
             // unificación) -- el usuario revisa y confirma antes de enviar,
             // igual que ya pasa con fecha/precio precargados arriba.
             cantidad: p.cantidad_sugerida ?? undefined,
+            // Trazabilidad (ver conversación, Fase 5 del plan de unificación)
+            // -- transactions.js lo limpia solo si el usuario cambia de
+            // instrumento en el formulario antes de confirmar.
+            proposal_id: p.id,
         });
     }
     showStatus('status-banner', 'success', 'Propuesta aceptada — revisá y confirmá la transacción.');
