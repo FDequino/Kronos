@@ -236,6 +236,27 @@ th.sortable:active {
        bastante ancha para exponer que faltaba esto (bug real, no solo de
        Propuestas: cualquier tabla ancha futura lo hubiera pisado igual). */
     overflow-x: auto;
+    /* Sombra de scroll horizontal (ver auditoría: "columna angosta en
+       Oportunidades→Lista con botón 'Operar en Paper Trading' cortado") --
+       .opportunity-row-actions a propósito NO apila los 2 botones de la
+       columna "Acciones" (ver su comentario), así que en una tabla angosta
+       el segundo queda fuera de vista y el usuario depende de la barra de
+       scroll para encontrarlo -- pero en Mac/trackpad esa barra es overlay
+       (invisible en reposo), sin ninguna pista de que hay más contenido a
+       la derecha. Truco CSS puro (sin JS): 2 capas que tapan los bordes
+       scrolleando CON el contenido (local) + 2 capas de sombra fijas al
+       borde del contenedor (scroll) -- la sombra solo se nota cuando el
+       gradiente de tapado de ESE lado todavía no llegó al borde, es decir,
+       exactamente cuando ese lado tiene más contenido para scrollear. No
+       tiene efecto visible en ninguna tabla que ya entre completa. */
+    background:
+        linear-gradient(to right, var(--bg-elevated) 50%, transparent) left,
+        linear-gradient(to left, var(--bg-elevated) 50%, transparent) right,
+        linear-gradient(to right, rgba(0, 0, 0, 0.35), transparent) left,
+        linear-gradient(to left, rgba(0, 0, 0, 0.35), transparent) right;
+    background-repeat: no-repeat;
+    background-size: 24px 100%, 24px 100%, 10px 100%, 10px 100%;
+    background-attachment: local, local, scroll, scroll;
 }
 
 /* Lista apilada de rebalanceo (panel "Asignacion por tipo", 1 de 3 columnas

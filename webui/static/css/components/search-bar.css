@@ -352,6 +352,13 @@
 
     .view-toolbar-actions {
         order: -1;
+        /* Sin wrap, una combinación larga (ej. toggle Tarjetas/Lista + botón
+           "Actualizar señales de hoy" en Oportunidades) desborda la página en
+           viewports angostos -- ver auditoría, "overflow a 256px de ancho".
+           .view-toolbar ya es columna acá, así que envolver no rompe el
+           layout de una sola fila de desktop (esa regla vive fuera de este
+           media query). */
+        flex-wrap: wrap;
     }
 
     .search-bar-slot {

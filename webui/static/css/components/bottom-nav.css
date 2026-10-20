@@ -43,6 +43,12 @@
 
     .bottom-nav-item {
         flex: 1;
+        /* min-width:0 (ver auditoría: "overflow a 256px de ancho") -- un flex
+           item sin esto nunca se achica por debajo del ancho de su contenido
+           (acá, la etiqueta sin espacios "Transacciones"), así flex:1 nunca
+           alcanzaba a repartir el ancho real entre los 5 items en viewports
+           angostos y la fila entera desbordaba la página. */
+        min-width: 0;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -74,6 +80,11 @@
         font-size: 0.65rem;
         font-weight: 600;
         white-space: nowrap;
+        /* Trunca con "…" en vez de desbordar -- ver min-width:0 arriba en
+           .bottom-nav-item, mismo hallazgo de auditoría. */
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
     }
 
     .bottom-nav-sheet {

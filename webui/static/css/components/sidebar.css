@@ -271,6 +271,20 @@
         flex-shrink: 0;
     }
 
+    /* min-width:0 + ellipsis (ver auditoría: "overflow a 256px de ancho") --
+       "Notificaciones"/"Preferencias" son una sola palabra sin donde cortar;
+       sin esto, un flex item nunca se achica por debajo del ancho de su
+       contenido y la fila desbordaba la página en viewports muy angostos. */
+    .sidebar-actions .nav-item-action {
+        min-width: 0;
+    }
+
+    .sidebar-actions .nav-item-action .nav-item-label {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
     .sidebar .notifications-panel,
     .sidebar .user-menu-panel {
         bottom: auto;
