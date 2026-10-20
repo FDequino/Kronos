@@ -59,13 +59,16 @@ CANJE_MAX_HOLD_DAYS = 30
 #     = ~1.21% -- UNA sola comision para todo el swap, no por pata
 #     (portfoliopersonal.com/Contenido/comisiones).
 #   - IOL: sin tarifa especial de canje -- se ejecuta como 2 operaciones de
-#     bonos a la comision estandar del tramo GOLD (tramo de entrada, hasta
-#     $7.5M/mes operados): 0.50% + IVA por pata x 2 patas = ~1.21% (coincide
-#     con PPI). Si el volumen mensual entra en PLATINUM/BLACK el costo real
-#     baja (0.30%/0.10% + IVA por pata) -- 1.21% es el escenario conservador
-#     de entrada, no el mejor caso (iol.invertironline.com/servicios/tarifas).
-# Ajustar si el tramo de comision real del usuario cambia -- declarado
-# explicito aca, nunca un numero inventado.
+#     bonos a la comision estandar del tramo GOLD: 0.50% + IVA por pata x 2
+#     patas = ~1.21% (coincide con PPI)
+#     (iol.invertironline.com/servicios/tarifas).
+# CONFIRMADO con el usuario (2026-10-20): esta en el tramo mas bajo tanto en
+# IOL como en PPI -- 1.21% es la tarifa REAL vigente, no una estimacion
+# conservadora. Con esta tarifa el motor queda en -0.60% USD anual / Sharpe
+# -0.06 / 3 de 12 trades ganadores sobre la ventana de backtest -- lejos del
+# +12.3%/Sharpe 1.72 bruto, practicamente breakeven neto. Ajustar si el
+# tramo de comision real cambia (ej. si el volumen mensual operado sube a
+# Platinum/Black) -- declarado explicito aca, nunca un numero inventado.
 CANJE_ROUND_TRIP_COMMISSION_PCT = 1.21
 
 
