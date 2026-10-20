@@ -1583,6 +1583,10 @@ def signal_config():
         for field in ('openai_api_key', 'anthropic_api_key', 'finnhub_api_key'):
             config[f'{field}_set'] = bool(config.get(field))
             config[field] = broker_client._mask_secret(config.get(field))
+        # Sugerencia de TNA de caución desde las cauciones reales del
+        # usuario (ver conversación/auditoría, hallazgo 2.2) -- computada,
+        # nunca se guarda sola: caucion_reference_tna sigue siendo manual.
+        config['caucion_reference_tna_suggested'] = db.compute_caucion_reference_tna(conn)
         return jsonify(config)
     finally:
         conn.close()

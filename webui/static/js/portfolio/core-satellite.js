@@ -410,7 +410,12 @@ function renderOpportunityCards() {
     // el botón de refresco y los KPIs.
     let note = '';
     if (!lastSignals.spy_above_ema50) {
-        note += '<div class="status warning show">SPY está por debajo de su propia EMA(50) — filtro de régimen no favorable: el Motor Core no opera hoy, el capital queda 100% en Caución.</div>';
+        // "el capital queda 100% en Caución" afirmaba una colocación real
+        // que no necesariamente existe (ver conversación/auditoría, hallazgo
+        // 2.2: con 0 cauciones vigentes y poca caja libre, el mensaje sonaba
+        // a que SÍ había plata puesta en Caución) -- ahora describe la regla
+        // del motor sin afirmar un estado que puede no ser cierto hoy.
+        note += '<div class="status warning show">SPY está por debajo de su propia EMA(50) — filtro de régimen no favorable: el Motor Core no abre posiciones nuevas hoy (su capital libre va a Caución solo si hay efectivo sin asignar).</div>';
     }
     if (lastSignals.market_regime === 'alta_volatilidad') {
         note += '<div class="status warning show">Régimen de alta volatilidad (VIX disparado) — el Motor Satélite no abre posiciones nuevas hoy.</div>';
@@ -437,7 +442,7 @@ function renderOpportunityCards() {
                 <tbody>${allItems.join('')}</tbody>
             </table></div>`
             : `<div class="opportunity-cards-grid">${allItems.join('')}</div>`)
-        : '<p class="table-empty">Ninguna oportunidad hoy — el capital queda en Caución.</p>';
+        : '<p class="table-empty">Ninguna oportunidad hoy.</p>';
 
     container.innerHTML = `
         <div class="mini-stat-grid row">

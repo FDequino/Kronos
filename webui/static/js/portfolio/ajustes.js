@@ -478,6 +478,26 @@ async function loadPreferencesControls() {
     if (config.caucion_reference_tna !== null && config.caucion_reference_tna !== undefined) {
         $('ajustes-caucion-reference-input').value = config.caucion_reference_tna;
     }
+    // Sugerencia desde cauciones reales (ver conversación/auditoría,
+    // hallazgo 2.2) -- solo se muestra si difiere de lo cargado a mano (si
+    // ya coinciden, no hay nada que sugerir).
+    const suggestedHint = $('ajustes-caucion-suggested-hint');
+    if (suggestedHint) {
+        const suggested = config.caucion_reference_tna_suggested;
+        const current = config.caucion_reference_tna;
+        if (suggested !== null && suggested !== undefined && suggested !== current) {
+            suggestedHint.hidden = false;
+            suggestedHint.innerHTML = `Según tus cauciones reales: ${fmt(suggested, 1)}% <a href="#" id="ajustes-caucion-use-suggested">usar</a>`;
+            suggestedHint.querySelector('#ajustes-caucion-use-suggested').addEventListener('click', (e) => {
+                e.preventDefault();
+                const input = $('ajustes-caucion-reference-input');
+                input.value = suggested;
+                input.dispatchEvent(new Event('input'));
+            });
+        } else {
+            suggestedHint.hidden = true;
+        }
+    }
 
     // API keys de IA (ver conversación, "APIs de IA" en Integraciones) --
     // el input SIEMPRE arranca vacío (nunca se re-llena con la key real ni

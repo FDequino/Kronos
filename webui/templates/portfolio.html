@@ -766,6 +766,10 @@
                     <div class="field">
                         <label for="ajustes-caucion-reference-input" class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera (y el backtest Core/Satélite) contra "invertir en cauciones" — no existe una fuente pública gratuita de esta tasa.</span></label>
                         <input type="number" id="ajustes-caucion-reference-input" step="0.1" min="0" placeholder="sin configurar">
+                        <!-- Sugerencia desde cauciones reales (ver conversación/auditoría,
+                             hallazgo 2.2: "tasa fija en 38% cuando las reales fueron 20-26%")
+                             -- nunca pisa el campo manual sola, el usuario decide si la usa. -->
+                        <span class="hint" id="ajustes-caucion-suggested-hint" hidden></span>
                     </div>
                     <div class="field">
                         <label class="glossary-term" tabindex="0">Ajustar ARS por inflación<span class="glossary-term-panel">Si está activo, los montos en ARS se muestran ajustados por inflación acumulada ("pesos de hoy") en vez de pesos nominales de cada fecha.</span></label>

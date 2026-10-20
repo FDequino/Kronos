@@ -666,6 +666,23 @@ def delete_caucion(conn, caucion_id):
     conn.commit()
 
 
+def compute_caucion_reference_tna(conn):
+    """TNA sugerida a partir de las cauciones REALES que el usuario ya
+    cargó (ver conversación/auditoría 19/10/2026, hallazgo 2.2: "la tasa de
+    referencia está fija en 38% TNA, pero las cauciones reales del usuario
+    fueron de 20% a 26%, inflando el benchmark") -- promedio simple de
+    `tasa` sobre TODAS las cauciones cargadas (vigentes y finalizadas, son
+    igual de válidas como evidencia de a qué tasa opera este usuario de
+    verdad). None si todavía no cargó ninguna caución -- nunca se inventa
+    un número sin evidencia. Es solo una SUGERENCIA mostrada en Ajustes, no
+    pisa signal_config.caucion_reference_tna sola -- ese campo sigue siendo
+    manual por diseño (no hay una fuente pública de esta tasa)."""
+    cauciones = list_cauciones(conn)
+    if not cauciones:
+        return None
+    return round(sum(c["tasa"] for c in cauciones) / len(cauciones), 2)
+
+
 def get_cauciones_resumen(conn, as_of=None):
     """Devengado proporcional al tiempo transcurrido sobre el interes bruto pactado."""
     as_of = as_of or datetime.now().date()

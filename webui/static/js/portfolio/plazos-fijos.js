@@ -65,7 +65,7 @@ const CAUCION_SEARCH_CONFIG = {
     favoritesKey: 'kronos-cauciones-favorites',
     filters: [
         { key: 'activa', label: 'Vigentes', block: 'Estado', test: (r) => !r.vencido },
-        { key: 'vencida', label: 'Vencidas', block: 'Estado', test: (r) => r.vencido },
+        { key: 'vencida', label: 'Finalizadas', block: 'Estado', test: (r) => r.vencido },
         { key: 'ars', label: 'ARS', block: 'Moneda', test: (r) => r.caucion.moneda === 'ARS' },
         { key: 'usd', label: 'USD', block: 'Moneda', test: (r) => r.caucion.moneda === 'USD' },
     ],
@@ -250,8 +250,11 @@ function caucionColumnsWithAggregates(baseColumns) {
 
 function caucionRowHtml(r, columns) {
     const c = r.caucion;
+    // "Vencida" (tag rojo) sonaba a que algo salió mal -- una caución que
+    // llega a su plazo es el desenlace NORMAL, no una alerta (ver
+    // conversación/auditoría, hallazgo 2.2). "Finalizada" + tag neutro.
     const estado = r.vencido
-        ? '<span class="tag tag-negative">Vencida</span>'
+        ? '<span class="tag tag-neutral">Finalizada</span>'
         : '<span class="tag tag-positive">Activa</span>';
     const cells = columns.map((col) => {
         switch (col.key) {
