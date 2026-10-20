@@ -197,3 +197,71 @@ def test_rebalance_candidates_default_ars_si_no_se_pasa_moneda(temp_db):
     ]
     candidates = proposals._rebalance_candidates(temp_db, holdings_display, [], config)
     assert "aprox. ARS" in candidates[0]["texto"]
+
+
+# --- _suggest_cantidad: Fase 2 del plan de unificacion (monto sugerido) -------
+
+def _insert_price_history(conn, instrument_id, closes, start="2026-01-01"):
+    import pandas as pd
+
+    dates = pd.date_range(start, periods=len(closes))
+    for d, c in zip(dates, closes):
+        conn.execute(
+            "INSERT INTO price_history (instrument_id, timestamp, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (instrument_id, d.isoformat(), c, c * 1.02, c * 0.98, c, 1000),
+        )
+    conn.commit()
+
+
+def _holding(instrument_id, cantidad=10.0, precio_actual=100.0, type_="cedear"):
+    valor_actual = cantidad * precio_actual if precio_actual else None
+    return {
+        "instrument": {"id": instrument_id, "type": type_},
+        "cantidad": cantidad,
+        "precio_actual": precio_actual,
+        "valor_actual": valor_actual,
+    }
+
+
+def test_suggest_cantidad_venta_es_la_tenencia_real_completa(temp_db):
+    instrument_id = _add_holding(temp_db, "IBM")
+    h = _holding(instrument_id, cantidad=7.0)
+    assert proposals._suggest_cantidad(temp_db, h, "venta") == 7.0
+
+
+def test_suggest_cantidad_compra_sin_precio_no_inventa_nada(temp_db):
+    instrument_id = _add_holding(temp_db, "IBM")
+    h = _holding(instrument_id, precio_actual=None)
+    assert proposals._suggest_cantidad(temp_db, h, "compra") is None
+
+
+def test_suggest_cantidad_compra_sin_historico_suficiente_no_inventa_nada(temp_db):
+    instrument_id = _add_holding(temp_db, "IBM")
+    _insert_price_history(temp_db, instrument_id, [100.0] * 5)  # menos que _ATR_MIN_ROWS
+    h = _holding(instrument_id)
+    assert proposals._suggest_cantidad(temp_db, h, "compra") is None
+
+
+def test_suggest_cantidad_compra_con_historico_da_cantidad_positiva(temp_db):
+    instrument_id = _add_holding(temp_db, "IBM")
+    closes = [100.0 + (i % 5) for i in range(30)]  # algo de ATR real, sin tendencia
+    _insert_price_history(temp_db, instrument_id, closes)
+    h = _holding(instrument_id, cantidad=10.0, precio_actual=100.0, type_="bono")  # bono: fraccionable
+    cantidad = proposals._suggest_cantidad(temp_db, h, "compra")
+    assert cantidad is not None
+    assert cantidad > 0
+
+
+def test_suggest_cantidad_compra_redondea_entero_para_accion_cedear(temp_db):
+    instrument_id = _add_holding(temp_db, "IBM")
+    closes = [100.0 + (i % 5) for i in range(30)]
+    _insert_price_history(temp_db, instrument_id, closes)
+    h = _holding(instrument_id, cantidad=10.0, precio_actual=100.0, type_="cedear")
+    cantidad = proposals._suggest_cantidad(temp_db, h, "compra")
+    assert cantidad is None or cantidad == float(int(cantidad))
+
+
+def test_suggest_cantidad_otro_tipo_no_sugiere_nada(temp_db):
+    instrument_id = _add_holding(temp_db, "IBM")
+    h = _holding(instrument_id)
+    assert proposals._suggest_cantidad(temp_db, h, "mantener") is None

@@ -29,6 +29,7 @@ export const api = {
     portfolioRisk: () => axios.get(`${BASE}/portfolio-risk`),
     instrumentAccuracy: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/accuracy`),
     modelReliability: () => axios.get(`${BASE}/model-reliability`),
+    suggestedAllocation: () => axios.get(`${BASE}/suggested-allocation`),
     instrumentRisk: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/risk`),
     forecastsHistory: (params) => axios.get(`${BASE}/forecasts-history`, { params }),
     instrumentChart: (instrumentId) => axios.get(`${BASE}/instruments/${instrumentId}/chart`),

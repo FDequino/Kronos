@@ -704,6 +704,32 @@ def model_reliability():
         conn.close()
 
 
+@bp.route('/suggested-allocation')
+def suggested_allocation():
+    """Fase 0 del plan de unificacion (ver conversacion): asignacion de
+    capital OPTIMA SUGERIDA entre motores (Risk Parity/Min. Varianza/Max.
+    Sharpe sobre la covarianza real entre ellos, ver
+    portfolio/risk.py::compute_dynamic_strategy_allocation), junto con la
+    asignacion ACTUALMENTE CONFIGURADA -- para que el usuario pueda comparar,
+    nunca para auto-aplicar nada. 'suggestion' es None si todavia no corrio
+    nunca `python3 -m portfolio.backtest allocation` (nunca se inventa un
+    resultado). 'current_weights' se recalcula FRESCO en cada request (es
+    barato, solo lee signal_config) para reflejar la configuracion de HOY
+    aunque haya cambiado desde la ultima corrida pesada."""
+    conn = db.get_connection()
+    try:
+        suggestion = db.get_suggested_allocation(conn)
+        allocation = capital_config.get_capital_allocation(conn)
+        current_weights = {
+            "core": allocation["core_pct"], "satellite": allocation["satellite_pct"],
+            "pairs": capital_config.get_pairs_allocation_pct(conn),
+            "factor": capital_config.get_factor_allocation_pct(conn),
+        }
+        return jsonify({"suggestion": suggestion, "current_weights": current_weights})
+    finally:
+        conn.close()
+
+
 @bp.route('/instruments/<int:instrument_id>/accuracy')
 def instrument_accuracy(instrument_id):
     conn = db.get_connection()

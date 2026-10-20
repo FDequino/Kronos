@@ -426,6 +426,13 @@ def _migrate(conn):
         conn.execute("ALTER TABLE proposals ADD COLUMN telegram_notified_at TEXT")
         conn.commit()
 
+    # Fase 2 de unificacion (ver conversacion): monto/cantidad sugerida en
+    # propuestas reales -- antes solo daban direccion (compra/venta), nunca
+    # tamano. NULL en filas ya existentes (nunca se recalcula retroactivo).
+    if "cantidad_sugerida" not in proposals_cols:
+        conn.execute("ALTER TABLE proposals ADD COLUMN cantidad_sugerida REAL")
+        conn.commit()
+
     # Fase 3 de unificacion (ver conversacion): accuracy_cache tenia
     # instrument_id como PRIMARY KEY -- cada corrida pisaba (upsert) la fila
     # anterior, imposible ver si el acierto de un instrumento viene cayendo
@@ -1439,6 +1446,35 @@ def get_dual_engine_backtest_summary(conn):
     return data
 
 
+# --- Asignacion dinamica sugerida entre motores (Fase 0, ver conversacion) ----
+
+def save_suggested_allocation(conn, *, run_at, method, result, configured_weights):
+    """Sobreescribe la fila unica (id=1) -- mismo patron que
+    save_dual_engine_backtest_summary arriba."""
+    conn.execute(
+        """INSERT INTO suggested_allocation (id, run_at, method, result_json, configured_weights_json)
+           VALUES (1, ?, ?, ?, ?)
+           ON CONFLICT(id) DO UPDATE SET
+               run_at = excluded.run_at, method = excluded.method,
+               result_json = excluded.result_json,
+               configured_weights_json = excluded.configured_weights_json""",
+        (run_at, method, json.dumps(result), json.dumps(configured_weights)),
+    )
+    conn.commit()
+
+
+def get_suggested_allocation(conn):
+    """None si todavia no corrio nunca python3 -m portfolio.backtest allocation
+    (nunca se inventa un resultado -- ver GET /api/portfolio/suggested-allocation)."""
+    row = conn.execute("SELECT * FROM suggested_allocation WHERE id = 1").fetchone()
+    if row is None:
+        return None
+    data = _row_to_dict(row)
+    data["result"] = json.loads(data.pop("result_json"))
+    data["configured_weights_at_run"] = json.loads(data.pop("configured_weights_json"))
+    return data
+
+
 # --- Cache de "Oportunidades del Dia" (ver schema.sql, GET /api/signals) ------
 
 def save_dual_engine_signals_cache(conn, *, run_at, result):
@@ -1645,11 +1681,12 @@ def list_pending_forecasts(conn):
 
 # --- Propuestas (Fase 8) --------------------------------------------------------
 
-def add_proposal(conn, *, origen, symbol, texto, evidencia, tipo_sugerido=None, estado='nueva', cooldown_until=None):
+def add_proposal(conn, *, origen, symbol, texto, evidencia, tipo_sugerido=None, estado='nueva',
+                  cooldown_until=None, cantidad_sugerida=None):
     cur = conn.execute(
-        """INSERT INTO proposals (origen, symbol, tipo_sugerido, texto, evidencia, estado, cooldown_until)
-           VALUES (?, ?, ?, ?, ?, ?, ?)""",
-        (origen, symbol, tipo_sugerido, texto, evidencia, estado, cooldown_until),
+        """INSERT INTO proposals (origen, symbol, tipo_sugerido, texto, evidencia, estado, cooldown_until, cantidad_sugerida)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+        (origen, symbol, tipo_sugerido, texto, evidencia, estado, cooldown_until, cantidad_sugerida),
     )
     conn.commit()
     return cur.lastrowid

@@ -48,6 +48,37 @@ async function loadQuantControls() {
             $('ajustes-factor-allocation-input').value = data.factor_allocation_pct;
         }
     } catch { /* idem */ }
+
+    renderSuggestedAllocationHint();
+}
+
+// Fase 0 del plan de unificacion (ver conversacion): asignacion OPTIMA
+// SUGERIDA entre motores (Risk Parity/Min. Varianza/Max. Sharpe sobre la
+// covarianza real entre ellos) vs. la configurada arriba -- puramente
+// informativo, nunca toca los inputs/sliders de este panel. Vacio si
+// "python3 -m portfolio.backtest allocation" todavia no corrio nunca.
+async function renderSuggestedAllocationHint() {
+    const el = $('ajustes-suggested-allocation-hint');
+    if (!el) return;
+    try {
+        const { data } = await api.suggestedAllocation();
+        const { suggestion, current_weights } = data;
+        if (!suggestion || !suggestion.result?.available) {
+            el.textContent = '';
+            return;
+        }
+        const { weights } = suggestion.result;
+        const label = (pct) => `${fmt(pct, 0)}%`;
+        const sugeridoTxt = Object.entries(weights)
+            .map(([engine, w]) => `${engine} ${label(w * 100)}`)
+            .join(' / ');
+        const configuradoTxt = Object.entries(current_weights)
+            .map(([engine, pct]) => `${engine} ${label(pct)}`)
+            .join(' / ');
+        el.textContent = `Asignación óptima sugerida hoy (${suggestion.method}, sobre ${suggestion.result.n_obs} ruedas en común): ${sugeridoTxt}. Configurada actualmente: ${configuradoTxt}. Solo informativo — no se aplica sola.`;
+    } catch {
+        el.textContent = '';
+    }
 }
 
 // Breakeven win rate (ver conversación/auditoría, hallazgo 2.10: "con TP 4%/

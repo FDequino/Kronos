@@ -2096,6 +2096,52 @@ def simulate_unified_backtest(universe=UNIVERSE, conn=None, lookback_days=CORE_B
             conn.close()
 
 
+def run_suggested_allocation_report(conn=None, method="max_sharpe"):
+    """Fase 0 del plan de unificacion (ver conversacion: "la asignacion
+    dinamica de capital por motor, ya construida en
+    risk.py::compute_dynamic_strategy_allocation, nunca se conecto a nada").
+    Corre los mismos 5 motores que simulate_unified_backtest, les pasa su
+    daily_returns_pct real a compute_dynamic_strategy_allocation, y guarda el
+    resultado junto con la asignacion ACTUALMENTE CONFIGURADA (_unified_weights,
+    la misma base de comparacion que ya usa este reporte) para poder mostrar
+    "sugerido vs. configurado" sin correr nada en el momento de la consulta.
+
+    'yield' (el sleeve de Caucion pura, 0% exposicion de mercado) se excluye
+    a proposito de los motores a optimizar -- no es una ESTRATEGIA con la que
+    competir por capital, es el destino por defecto del capital ocioso de las
+    demas; compute_dynamic_strategy_allocation(risk_parity/min_variance/
+    max_sharpe) asume que todos los inputs son estrategias de riesgo
+    comparable, incluirlo sesgaria la optimizacion hacia asignarle todo el
+    peso (retorno positivo con volatilidad ~0).
+
+    Pensado para correrse manualmente (python3 -m portfolio.backtest
+    allocation), nunca sincronico en un request HTTP -- implica correr
+    simulate_unified_backtest completo (5 motores, puede tardar varios
+    minutos). Puramente informativo: NUNCA escribe core_allocation_pct/
+    pairs_allocation_pct/factor_allocation_pct, eso lo sigue decidiendo el
+    usuario a mano en Ajustes."""
+    own_conn = conn is None
+    conn = conn or db.get_connection()
+    try:
+        from portfolio import risk  # import tardio -- mismo criterio que arbitrage/factor_investing/pairs_trading mas arriba
+
+        unified = simulate_unified_backtest(conn=conn)
+        returns_by_engine = {
+            name: r["daily_returns_pct"] for name, r in unified["per_engine"].items()
+            if name != "yield" and len(r["daily_returns_pct"])
+        }
+        result = risk.compute_dynamic_strategy_allocation(returns_by_engine, method=method)
+        configured_weights = {k: v for k, v in unified["weights"].items() if k != "yield"}
+        db.save_suggested_allocation(
+            conn, run_at=datetime.now().isoformat(), method=method,
+            result=result, configured_weights=configured_weights,
+        )
+        return result
+    finally:
+        if own_conn:
+            conn.close()
+
+
 def _cpcv_blended_paths(dates, n_groups=UNIFIED_CPCV_GROUPS, n_select=UNIFIED_CPCV_TEST_GROUPS,
                          embargo_days=UNIFIED_CPCV_EMBARGO_DAYS):
     """Genera C(n_groups, n_select) 'caminos' -- cada uno, la concatenacion
@@ -2263,5 +2309,7 @@ if __name__ == "__main__":
         run_lora_hmm_oos_validation()
     elif "unified" in sys.argv[1:]:
         run_unified_cpcv_backtest()
+    elif "allocation" in sys.argv[1:]:
+        run_suggested_allocation_report()
     else:
         run_full_report()

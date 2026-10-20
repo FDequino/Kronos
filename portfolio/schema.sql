@@ -551,6 +551,15 @@ CREATE TABLE IF NOT EXISTS proposals (
     origen TEXT NOT NULL,              -- sl_tp / evento / rebalanceo / senal
     symbol TEXT NOT NULL,              -- ticker real, o una etiqueta de clase para rebalanceo (sin instrumento puntual)
     tipo_sugerido TEXT,                -- compra/venta para precargar el formulario; NULL = solo informativa
+    -- Cantidad sugerida (ver conversacion, Fase 2 del plan de unificacion):
+    -- solo se completa para senal_kronos/senal_tecnica (ver proposals.py::
+    -- _validated_signal_candidates) -- venta = la tenencia real completa,
+    -- compra = volatility targeting sobre esa misma tenencia. NULL para
+    -- sl_tp/evento/rebalanceo (nunca se inventa un numero sin una formula
+    -- real detras) y para cualquier senal donde falte precio/historico.
+    -- SOLO sugerencia editable -- "Aceptar" precarga el formulario, nunca
+    -- ejecuta nada.
+    cantidad_sugerida REAL,
     texto TEXT NOT NULL,
     evidencia TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'nueva' CHECK (estado IN ('nueva','vista','aceptada','descartada','expirada')),
@@ -600,6 +609,23 @@ CREATE TABLE IF NOT EXISTS dual_engine_signals_cache (
     id INTEGER PRIMARY KEY CHECK (id = 1),
     run_at TEXT NOT NULL,
     result_json TEXT NOT NULL
+);
+
+-- Ultimo resultado de portfolio/backtest.py::run_suggested_allocation_report
+-- (Fase 0 del plan de unificacion, ver conversacion: "la asignacion dinamica
+-- de capital por motor, ya construida en risk.py::compute_dynamic_strategy_allocation,
+-- nunca se conecto a nada") -- mismo patron que dual_engine_backtest_summary:
+-- fila UNICA (id=1), se sobreescribe en cada corrida MANUAL (python3 -m
+-- portfolio.backtest allocation), nunca se recalcula sincronicamente en un
+-- request HTTP porque implica correr simulate_unified_backtest completo
+-- (5 motores, varios minutos). Puramente INFORMATIVO -- GET /api/portfolio/
+-- suggested-allocation nunca auto-aplica estos pesos a la configuracion real.
+CREATE TABLE IF NOT EXISTS suggested_allocation (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    run_at TEXT NOT NULL,
+    method TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    configured_weights_json TEXT NOT NULL
 );
 
 -- Soporte multi-usuario del bot de Telegram (ver conversacion) -- reemplaza

@@ -155,6 +155,10 @@ async function accept(id) {
             tipo: p.tipo_sugerido === 'compra' ? 'compra' : 'venta',
             fecha: todayLocalISO(),
             precio,
+            // Solo sugerencia editable (ver conversación, Fase 2 del plan de
+            // unificación) -- el usuario revisa y confirma antes de enviar,
+            // igual que ya pasa con fecha/precio precargados arriba.
+            cantidad: p.cantidad_sugerida ?? undefined,
         });
     }
     showStatus('status-banner', 'success', 'Propuesta aceptada — revisá y confirmá la transacción.');
@@ -200,6 +204,14 @@ function proposalCardHtml(p) {
     // en vez de otro fetch acá, igual que `eventRiskNotes` y el signalConfig
     // de más arriba.
     const eventNote = p.origen !== 'rebalanceo' ? getEventRiskNotes()[p.symbol] : null;
+    // Cantidad sugerida (ver conversación, Fase 2 del plan de unificación) --
+    // solo senal_kronos/senal_tecnica la traen (sl_tp/evento/rebalanceo nunca
+    // inventan un numero sin formula real detras, ver proposals.py::
+    // _suggest_cantidad). Texto explicito de que es sugerencia editable, no
+    // un monto que se vaya a ejecutar tal cual.
+    const cantidadHint = p.cantidad_sugerida
+        ? `<p class="hint">Cantidad sugerida: ${fmt(p.cantidad_sugerida, 2)} (editable al aceptar, nunca se ejecuta sola).</p>`
+        : '';
     return `
         <div class="proposal-card${p.estado === 'nueva' ? ' proposal-card-new' : ''}" data-id="${p.id}">
             <div class="proposal-card-head">
@@ -212,6 +224,7 @@ function proposalCardHtml(p) {
             </div>
             <p class="proposal-card-text">${p.texto}</p>
             <p class="proposal-card-evidence hint">${p.evidencia}</p>
+            ${cantidadHint}
         </div>
     `;
 }

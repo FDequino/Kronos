@@ -25,8 +25,12 @@ confiable)."""
 import json
 from datetime import timedelta
 
-from portfolio import accuracy, db, fixed_income
+import pandas as pd
+
+from portfolio import accuracy, db, fixed_income, indicators
 from portfolio.formatting import fmt_es
+from portfolio.paper_trading import WHOLE_UNIT_ASSET_TYPES
+from portfolio.short_term_engine import compute_satellite_position_weight
 from portfolio.tz import now_ar
 
 COOLDOWN_DAYS = 7
@@ -152,6 +156,47 @@ def _rebalance_candidates(conn, holdings_display, cauciones, config, display_cur
     return candidates
 
 
+# ATR% minimo de ventana (ver portfolio/indicators.py::atr) para que el
+# calculo no sea ruido de 1-2 velas -- mismo piso que otros backtests de este
+# proyecto usan para "suficiente historico" (ver BACKTEST_MIN_ROWS).
+_ATR_MIN_ROWS = 20
+
+
+def _suggest_cantidad(conn, h, tipo_sugerido):
+    """Cantidad sugerida para una senal YA VALIDADA sobre una tenencia real
+    (ver conversacion, Fase 2 del plan de unificacion) -- NUNCA inventa un
+    numero: 'venta' es exactamente la tenencia real (una senal de venta es
+    una señal de SALIDA, no de sizing parcial); 'compra' es volatility
+    targeting (misma formula que ya usa portfolio/short_term_engine.py para
+    el Motor Satelite, compute_satellite_position_weight -- solo necesita
+    ATR%, a diferencia de compute_core_position_weight que ademas pide un
+    dispersion_ratio de Chronos que no existe para una senal tecnica/RSI)
+    aplicado sobre el VALOR YA EN CARTERA de ese mismo instrumento, no sobre
+    el patrimonio total (evita tener que convertir entre monedas distintas
+    de holdings en moneda nativa). Devuelve None si falta algun dato real
+    (precio, historico) -- nunca una cantidad aproximada sin base."""
+    if tipo_sugerido == 'venta':
+        return h['cantidad']
+    if tipo_sugerido != 'compra':
+        return None
+    precio_actual = h.get('precio_actual')
+    valor_actual = h.get('valor_actual')
+    if not precio_actual or not valor_actual:
+        return None
+    rows = db.get_price_history(conn, h['instrument']['id'])
+    if len(rows) < _ATR_MIN_ROWS:
+        return None
+    df = pd.DataFrame(rows)
+    atr_pct_value = indicators.atr_pct(df).iloc[-1]
+    if pd.isna(atr_pct_value) or atr_pct_value <= 0:
+        return None
+    position_weight = compute_satellite_position_weight(atr_pct_value, max_slot_weight=1.0)
+    cantidad = (position_weight * valor_actual) / precio_actual
+    if h['instrument']['type'] in WHOLE_UNIT_ASSET_TYPES:
+        cantidad = float(int(cantidad))
+    return cantidad if cantidad > 0 else None
+
+
 def _validated_signal_candidates(conn, holdings_native, config):
     """Nunca una señal sin validar. El check de Kronos y el tecnico-con-edge
     reusan las MISMAS cachés diarias que ya paga Resumen/Dashboard
@@ -194,6 +239,7 @@ def _validated_signal_candidates(conn, holdings_native, config):
                         'tipo_sugerido': signal,
                         'texto': f"Kronos validado sugiere {signal} en {instrument['symbol']}.",
                         'evidencia': validation['reason'],
+                        'cantidad_sugerida': _suggest_cantidad(conn, h, signal),
                     })
 
         technical = _get_technical_row(conn, instrument, config)
@@ -207,14 +253,16 @@ def _validated_signal_candidates(conn, holdings_native, config):
         # cuando el edge es positivo Y significativo.
         if edge is None or edge < EDGE_SIGNIFICANT_PTS:
             continue
+        tipo_tecnico = 'compra' if tecnico == 'comprar' else 'venta'
         candidates.append({
             # 'senal_tecnica', distinto del candidato Kronos de arriba --
             # ver comentario en ese bloque (hallazgo 1.3 de la auditoria).
             'origen': 'senal_tecnica',
             'symbol': instrument['symbol'],
-            'tipo_sugerido': 'compra' if tecnico == 'comprar' else 'venta',
+            'tipo_sugerido': tipo_tecnico,
             'texto': f"RSI técnico sugiere {tecnico} en {instrument['symbol']}: edge {fmt_es(edge, signed=True)}pts sobre {n} casos.",
             'evidencia': f"Backtest RSI vs. tasa base: edge {fmt_es(edge, signed=True)} puntos sobre {n} señales pasadas.",
+            'cantidad_sugerida': _suggest_cantidad(conn, h, tipo_tecnico),
         })
     return candidates
 
@@ -277,8 +325,16 @@ def sync_proposals(conn):
         seen_keys.add(key)
         if key in active_by_key:
             p = active_by_key[key]
-            if p['texto'] != c['texto'] or p['evidencia'] != c['evidencia']:
-                db.update_proposal(conn, p['id'], texto=c['texto'], evidencia=c['evidencia'])
+            # cantidad_sugerida se recalcula cada corrida (precio/ATR cambian
+            # dia a dia) -- se actualiza aunque texto/evidencia no hayan
+            # cambiado, para que la sugerencia nunca quede vieja mientras la
+            # propuesta sigue vigente.
+            if (p['texto'] != c['texto'] or p['evidencia'] != c['evidencia']
+                    or p['cantidad_sugerida'] != c.get('cantidad_sugerida')):
+                db.update_proposal(
+                    conn, p['id'], texto=c['texto'], evidencia=c['evidencia'],
+                    cantidad_sugerida=c.get('cantidad_sugerida'),
+                )
             continue
         cooldown = cooldown_by_key.get(key)
         if cooldown and cooldown['cooldown_until'] > now.isoformat():
@@ -287,6 +343,7 @@ def sync_proposals(conn):
             conn, origen=c['origen'], symbol=c['symbol'], texto=c['texto'],
             evidencia=c['evidencia'], tipo_sugerido=c.get('tipo_sugerido'),
             cooldown_until=(now + timedelta(days=COOLDOWN_DAYS)).isoformat(),
+            cantidad_sugerida=c.get('cantidad_sugerida'),
         )
 
     for key, p in active_by_key.items():
