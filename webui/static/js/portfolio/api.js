@@ -76,6 +76,10 @@ export const api = {
     telegramBotStatus: () => axios.get(`${BASE}/settings/telegram/status`),
     telegramTestMessage: () => axios.post(`${BASE}/settings/telegram/test-message`),
     telegramTestPdfReport: () => axios.post(`${BASE}/settings/telegram/test-pdf-report`),
+    // responseType 'blob' (ver conversación/auditoría, hallazgo 2.6: "no hay
+    // vista previa ni descarga, solo envío por Telegram") -- puede tardar
+    // ~1 minuto, el caller (ajustes.js) muestra el aviso mientras espera.
+    downloadPdfReport: () => axios.get(`${BASE}/reports/pdf/download`, { responseType: 'blob' }),
     explorerSearch: (q, type, limit = 2000) => axios.get(`${BASE}/explorer/search`, { params: { q, type, limit } }),
     explorerForecast: (symbol, type, sampleCount) =>
         axios.post(`${BASE}/explorer/forecast`, { symbol, type, sample_count: sampleCount }),

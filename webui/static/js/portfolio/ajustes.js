@@ -624,6 +624,42 @@ function initPdfReportControls() {
             btn.disabled = false;
         }
     });
+
+    // Descarga directa (ver conversación/auditoría, hallazgo 2.6) -- misma
+    // generación lenta (~1 min, arma gráficos + tablas con reportlab) que el
+    // envío por Telegram, así que se avisa igual mientras se espera.
+    $('ajustes-pdf-download-btn').addEventListener('click', async () => {
+        const btn = $('ajustes-pdf-download-btn');
+        const result = $('ajustes-pdf-test-send-result');
+        btn.disabled = true;
+        result.innerHTML = '<p class="hint">Generando el PDF — puede tardar hasta 1 minuto...</p>';
+        try {
+            const response = await api.downloadPdfReport();
+            const blobUrl = URL.createObjectURL(response.data);
+            const link = document.createElement('a');
+            link.href = blobUrl;
+            link.download = `kronos_reporte_${new Date().toISOString().slice(0, 10)}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(blobUrl);
+            result.innerHTML = '<p class="hint">PDF descargado.</p>';
+        } catch (error) {
+            // responseType 'blob' hace que un error 500 (JSON) tambien
+            // llegue como Blob -- hay que leerlo como texto para mostrar el
+            // motivo real en vez de "[object Blob]".
+            let message = error.message;
+            if (error.response?.data instanceof Blob) {
+                try {
+                    const text = await error.response.data.text();
+                    message = JSON.parse(text).error || message;
+                } catch { /* si ni eso se puede parsear, se queda con error.message */ }
+            }
+            result.innerHTML = `<p class="hint">${message}</p>`;
+        } finally {
+            btn.disabled = false;
+        }
+    });
 }
 
 export function initAjustesView() {

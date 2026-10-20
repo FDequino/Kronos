@@ -144,10 +144,10 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Paper Trading</h2>
-                        <p class="panel-subtitle">Simulación con dinero ficticio de las señales de ambos motores — valida el edge real sin arriesgar capital. Patrimonio virtual en USD al dólar CCL real del día, siempre, independiente de tu preferencia de cotización en Ajustes → Moneda (esa preferencia solo afecta cómo se muestra tu patrimonio real).</p>
+                        <p class="panel-subtitle">Simulación con dinero ficticio de las señales de los motores Core y Satélite (los únicos 2 que Paper Trading opera — Pairs, Factor, Arbitraje, Dólar Sintético y Carry no abren posiciones acá) — valida el edge real sin arriesgar capital. Patrimonio virtual en USD al dólar CCL real del día, siempre, independiente de tu preferencia de cotización en Ajustes → Moneda (esa preferencia solo afecta cómo se muestra tu patrimonio real).</p>
                     </div>
                     <div class="user-menu-row" style="padding: 0;">
-                        <span class="hint">Activado — recién toma efecto al tocar "Guardar", más abajo</span>
+                        <span class="hint">El cambio recién toma efecto al tocar "Guardar", más abajo</span>
                         <label class="switch">
                             <input type="checkbox" id="paper-trading-enabled-toggle">
                             <span class="switch-track"><span class="switch-thumb"></span></span>
@@ -285,7 +285,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Comparar</h2>
-                    <p class="panel-subtitle">Pronóstico, riesgo, técnico, fundamental y confiabilidad histórica de hasta 4 instrumentos, lado a lado — estén o no en tu cartera.</p>
+                    <p class="panel-subtitle">Pronóstico, riesgo, técnico, fundamental y confiabilidad histórica de hasta 4 instrumentos, lado a lado — no hace falta tener posición en ellos, pero sí tenerlos cargados en Instrumentos primero (agregalos ahí si no están en la lista de abajo).</p>
                 </div>
             </div>
             <div class="panel-body flush" id="comparador-table-container">
@@ -849,6 +849,12 @@
                     </div>
                     <div class="field">
                         <button id="ajustes-pdf-test-send-btn" class="btn btn-secondary" type="button">Enviar Reporte de Prueba Ahora</button>
+                    </div>
+                    <div class="field">
+                        <!-- Descarga directa (ver conversación/auditoría, hallazgo 2.6:
+                             "no hay vista previa ni descarga, solo envío por Telegram")
+                             -- misma generación que el envío, sin depender de Telegram. -->
+                        <button id="ajustes-pdf-download-btn" class="btn btn-secondary" type="button">Descargar PDF</button>
                     </div>
                 </div>
                 <div class="field-row" style="margin-top: 10px;">

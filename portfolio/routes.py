@@ -1914,18 +1914,47 @@ def telegram_test_pdf_report():
     return jsonify(result)
 
 
+@bp.route('/reports/pdf/download')
+def pdf_report_download():
+    """Descarga directa del Reporte PDF desde la web (ver conversación/
+    auditoría 19/10/2026, hallazgo 2.6: "no hay vista previa ni descarga,
+    solo envío por Telegram") -- misma generación que usa el envío por
+    Telegram (pdf_report.generate_portfolio_pdf con la config ACTUAL de
+    app_settings), sin depender de tener Telegram configurado. Puede tardar
+    ~1 minuto (arma gráficos + tablas con reportlab), el frontend avisa eso
+    mientras espera."""
+    from portfolio import pdf_report
+    conn = db.get_connection()
+    try:
+        pdf_bytes = pdf_report.generate_portfolio_pdf(conn)
+    except Exception as e:
+        return jsonify({'error': f'Fallo la generación del PDF: {e}'}), 500
+    finally:
+        conn.close()
+    filename = f"kronos_reporte_{today_ar().isoformat()}.pdf"
+    return Response(
+        pdf_bytes, mimetype='application/pdf',
+        headers={'Content-Disposition': f'attachment; filename="{filename}"'},
+    )
+
+
 # --- Explorador BYMA ------------------------------------------------------------
 
 @bp.route('/explorer/search')
 def explorer_search():
+    query = request.args.get('q', '')
+    type_filter = request.args.get('type')
+    limit = request.args.get('limit', default=20, type=int)
     try:
-        results = byma_universe.search(
-            request.args.get('q', ''),
-            type_filter=request.args.get('type'),
-            limit=request.args.get('limit', default=20, type=int),
-        )
+        results = byma_universe.search(query, type_filter=type_filter, limit=limit)
     except Exception as e:
         return jsonify({'error': f'data912 no respondió: {e}'}), 502
+
+    conn = db.get_connection()
+    try:
+        results = byma_universe.augment_with_catalog_name_matches(conn, results, query, type_filter, limit)
+    finally:
+        conn.close()
     return jsonify(results)
 
 
