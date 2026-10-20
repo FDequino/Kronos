@@ -24,11 +24,15 @@ correspondiente -- SIEMPRE se persiste un registro en auto_trading_orders
 después de ese punto (confirmada o error), nunca se descarta un intento
 real sin dejar rastro para auditar después.
 
-Solo PPI tiene ejecución real implementada hoy (ver
-broker_client.py::PPIAdapter) -- IOL/Balanz/Matrix dejan
-NotImplementedError explícito (ver BrokerAdapter base), mismo criterio
-honesto que el resto del proyecto: nunca fabricar una integración que no
-existe.
+PPI e IOL tienen ejecución real implementada (ver broker_client.py::
+PPIAdapter/IOLAdapter, esta última agregada 2026-10-20) -- Balanz/Matrix
+siguen dejando NotImplementedError explícito (ver BrokerAdapter base),
+mismo criterio honesto que el resto del proyecto: nunca fabricar una
+integración que no existe. Nota: IOL no tiene un endpoint de presupuesto
+real (ver IOLAdapter.get_order_budget) -- su "presupuesto" es una
+estimación local, nunca una cotización del bróker como sí lo es la de PPI;
+quien llame a este módulo no debería tratar `budget` como equivalente
+entre brokers.
 
 Sin UI ni ruta HTTP todavía que llame esto -- "Aceptar" en una Propuesta
 sigue siendo 100% manual (ver proposals.js::accept). Conectar esto a un

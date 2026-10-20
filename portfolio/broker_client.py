@@ -10,10 +10,15 @@ no existe): se investigaron las 4 APIs públicas ANTES de escribir esto
 (WebSearch/WebFetch reales, no de memoria):
   - IOL (InvertirOnline): API REST pública y documentada CONFIRMADA
     (api.invertironline.com, token en la raíz /token, recursos bajo
-    /api/v2/...). Adapter implementado de buena fe contra esa
-    documentación pública, pero NUNCA PROBADO con credenciales reales (no
-    se tienen) -- declarado en el docstring del adapter, nunca se afirma
-    que "funciona de verdad".
+    /api/v2/...). test_connection/get_balance/get_holdings CONFIRMADOS
+    2026-10-20 contra la cuenta real del usuario (login, saldo y tenencias
+    respondieron correctamente). Ejecución real de órdenes (get_order_budget/
+    confirm_order/cancel_order, agregada la misma fecha) confirmada contra
+    documentación pública + el código fuente real del SDK `iol-api` (PyPI,
+    `pip download iol-api`) -- mismo criterio que PPI más abajo -- pero
+    TODAVÍA sin probar contra una orden real (ver docstring de IOLAdapter).
+    IOL no tiene un endpoint de presupuesto real como sí tiene PPI -- el
+    "budget" de IOL es una estimación local, declarado explícito.
   - PPI (Portfolio Personal Inversiones): API REST pública y documentada
     CONFIRMADA (itatppi.github.io/ppi-official-api-docs). La documentación
     pública sola no alcanzaba para confirmar el mecanismo de autenticación
@@ -173,16 +178,39 @@ class BrokerAdapter:
 
 
 class IOLAdapter(BrokerAdapter):
-    """InvertirOnline -- ver HONESTIDAD DECLARADA arriba del módulo:
-    implementado contra documentación pública real, NUNCA probado con
-    credenciales reales. api_key/api_secret de broker_accounts se
-    interpretan aquí como username/password (el login real de IOL es
-    usuario+contraseña de la cuenta, no un par key/secret clásico -- se
-    reusan esos 2 campos genéricos de la tabla para no duplicar el esquema
-    por broker)."""
+    """InvertirOnline -- ver HONESTIDAD DECLARADA arriba del módulo.
+    test_connection/get_balance/get_holdings YA CONFIRMADOS contra la cuenta
+    real del usuario (2026-10-20: login, saldo y tenencias respondieron
+    correctamente) -- dejan de ser "nunca probado". get_order_budget/
+    confirm_order/cancel_order (agregados en esta misma fecha) SÍ siguen sin
+    probar contra la red real (ver disclaimer de cada uno) -- confirmados
+    solo contra documentación pública + el código fuente real del SDK
+    `iol-api` (PyPI, ver docstring de confirm_order), nunca contra una orden
+    real (eso requeriría ejecutar de verdad, fuera de alcance de una
+    auditoría). api_key/api_secret de broker_accounts se interpretan aquí
+    como username/password (el login real de IOL es usuario+contraseña de
+    la cuenta, no un par key/secret clásico -- se reusan esos 2 campos
+    genéricos de la tabla para no duplicar el esquema por broker)."""
     broker_name = "IOL"
     BASE_URL = "https://api.invertironline.com"
     TIMEOUT = 15
+
+    # Confirmado contra el tarifario público de IOL (ver conversación
+    # 2026-10-20) y contra iol_api/constants.py::Tarifas (SDK real,
+    # coincide): Gold 0.50%, Platinum 0.30%, Black 0.10%, todos + IVA (21%).
+    # El usuario confirmó que opera en el tramo más bajo (Gold) tanto acá
+    # como en PPI -- usado SOLO para la estimación local de get_order_budget
+    # (ver ese método: IOL no tiene un endpoint real de presupuesto).
+    _GOLD_COMMISSION_PCT = 0.50 * 1.21
+
+    # plazo/tipoOrden confirmados contra el código fuente real del SDK
+    # `iol-api` (PyPI, iol_api/constants.py::Plazo/TipoDeOrden) -- NUNCA
+    # adivinados. Mapean desde el vocabulario genérico de este proyecto
+    # (settlement/operation_type, el mismo que ya usa PPIAdapter) al
+    # vocabulario propio de IOL.
+    _SETTLEMENT_TO_PLAZO = {"INMEDIATA": "t0", "A-24HS": "t1", "A-48HS": "t2"}
+    _OPERATION_TYPE_TO_TIPO_ORDEN = {"PRECIO-LIMITE": "precioLimite", "PRECIO-DE-MERCADO": "precioMercado"}
+    _VALID_OPERATIONS = ("Compra", "Venta")
 
     def _get_token(self):
         resp = requests.post(
@@ -252,6 +280,159 @@ class IOLAdapter(BrokerAdapter):
         bid = punta.get("precioCompra") if isinstance(punta, dict) else None
         ask = punta.get("precioVenta") if isinstance(punta, dict) else None
         return {"price": price, "bid": bid, "ask": ask}
+
+    # --- Ejecución real de órdenes (ver portfolio/order_execution.py) --------
+    #
+    # Confirmado 2026-10-20 contra DOS fuentes reales (nunca de memoria):
+    # 1. iol.apidocs.ar (WebFetch real) -- confirma que existen operaciones
+    #    "POST Comprar"/"POST Vender" bajo la sección "Operar", con un
+    #    payload {mercado, simbolo, cantidad, precio, plazo, validez,
+    #    tipoOrden, monto, idFuente} y respuesta {ok, messages}.
+    # 2. El código FUENTE REAL del paquete `iol-api` (PyPI, `pip download
+    #    iol-api` -- mismo criterio que ya se usó para PPIAdapter con
+    #    `ppi_client`) -- confirma el path EXACTO (api/v2/operar/Comprar,
+    #    api/v2/operar/Vender -- bajo /api/v2/, NO /api/operar/ como sugería
+    #    el resumen de la página de docs: se prioriza el SDK real sobre el
+    #    resumen de una página, mismo criterio que "nunca de memoria ni
+    #    adivinado"), los valores reales de plazo ('t0'/'t1'/'t2') y
+    #    tipoOrden ('precioLimite'/'precioMercado'), que 'cantidad' y 'monto'
+    #    son MUTUAMENTE EXCLUYENTES en una compra (nunca los 2 juntos), que
+    #    una venta SIEMPRE es por 'cantidad' (la API no admite 'monto' para
+    #    vender), que 'validez' es un timestamp ISO completo (no un enum --
+    #    el SDK por defecto usa el fin del día de hoy, se replica igual acá),
+    #    y que 'idFuente' NO aparece en el payload real que arma ese SDK --
+    #    se omite en vez de inventar un valor para un campo no confirmado.
+    #    El mismo SDK confirma además GET/DELETE api/v2/operaciones/{numero}
+    #    para consultar/cancelar una orden ya enviada.
+    #
+    # DIFERENCIA HONESTA con PPI, importante para quien use esto desde
+    # order_execution.py: IOL NO TIENE un endpoint de presupuesto/simulación
+    # real (ninguna de las 2 fuentes confirma uno bajo "operar") -- Comprar/
+    # Vender ES el único paso, y ya ejecuta de verdad. Por eso
+    # get_order_budget() de acá NUNCA toca la red: devuelve una estimación
+    # LOCAL (monto + comisión estimada al tramo Gold, el que confirmó el
+    # usuario que usa) marcada explícita como estimación, nunca como una
+    # cotización real del bróker -- a diferencia de PPI, en IOL no existe
+    # forma de "consultar sin comprometerse", el único punto sin retorno es
+    # confirm_order.
+    #
+    # NUNCA probado contra una cuenta real (ejecutar una orden real para
+    # "probar que funciona" no es aceptable) -- mismo disclaimer que el
+    # resto de los métodos de ejecución de este proyecto hasta que alguien
+    # lo valide a propósito con una orden mínima real.
+
+    def _validez_fin_de_dia(self):
+        """Default del SDK real `iol-api` (OrdenCompra/OrdenVenta.set_validez):
+        hoy a las 23:59:59, formateado como ISO con milisegundos + 'Z'. No
+        hay un caller hoy que pase una validez propia -- se podría exponer
+        como parámetro más adelante si hace falta, nunca se inventa un valor
+        'sin vencimiento' que la API no documenta."""
+        from datetime import datetime
+        dt = datetime.now()
+        fin_de_dia = datetime(dt.year, dt.month, dt.day, 23, 59, 59, 999000)
+        return fin_de_dia.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+    def _map_settlement_to_plazo(self, settlement):
+        plazo = self._SETTLEMENT_TO_PLAZO.get(settlement)
+        if plazo is None:
+            raise ValueError(
+                f"IOL: sin mapeo de settlement={settlement!r} a plazo (t0/t1/t2) -- "
+                f"valores soportados: {list(self._SETTLEMENT_TO_PLAZO)}"
+            )
+        return plazo
+
+    def _map_operation_type_to_tipo_orden(self, operation_type):
+        tipo_orden = self._OPERATION_TYPE_TO_TIPO_ORDEN.get(operation_type)
+        if tipo_orden is None:
+            raise ValueError(
+                f"IOL: sin mapeo de operation_type={operation_type!r} a tipoOrden -- "
+                f"valores soportados: {list(self._OPERATION_TYPE_TO_TIPO_ORDEN)}"
+            )
+        return tipo_orden
+
+    def get_order_budget(self, *, symbol, asset_type, operation, quantity, price,
+                          quantity_type="Papeles", operation_type="PRECIO-LIMITE",
+                          operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
+        """IOL no tiene un endpoint de presupuesto real -- ver nota arriba de
+        la clase. Nunca toca la red: devuelve una estimación LOCAL (monto =
+        cantidad*precio, comisión estimada al tramo Gold confirmado del
+        usuario) explícitamente marcada como estimación, no una cotización
+        del bróker. confirm_order es el único punto sin retorno para IOL."""
+        if operation not in self._VALID_OPERATIONS:
+            raise ValueError(f"IOL: operation debe ser 'Compra' o 'Venta', recibido {operation!r}")
+        monto = quantity * price
+        comision_estimada = monto * self._GOLD_COMMISSION_PCT / 100.0
+        return {
+            "estimated": True,
+            "monto_estimado": monto,
+            "comision_estimada": comision_estimada,
+            "comision_estimada_pct": self._GOLD_COMMISSION_PCT,
+            "disclaimer": (
+                "IOL no expone un endpoint de presupuesto real (confirmado contra "
+                "documentación pública y el código fuente del SDK oficial 'iol-api') "
+                "-- esto es una estimación LOCAL con la comisión del tramo Gold, "
+                "nunca una cotización real del bróker. confirm_order es el paso que "
+                "de verdad ejecuta la orden."
+            ),
+        }
+
+    def confirm_order(self, *, symbol, asset_type, operation, quantity, price, external_id, budget,
+                       quantity_type="Papeles", operation_type="PRECIO-LIMITE",
+                       operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
+        """Ejecuta de verdad -- POST api/v2/operar/Comprar o .../Vender (API
+        real de IOL, ver nota de confirmación arriba de la clase). A
+        diferencia de PPI, acá NO hay un budget previo que "confirmar": este
+        es el ÚNICO paso que toca la red para una orden de IOL, así que es
+        el punto sin retorno real. `external_id`/`budget` se reciben por la
+        misma firma compartida con PPI (ver order_execution.py) pero IOL no
+        tiene un campo equivalente confirmado para ninguno de los 2 -- se
+        reciben y se ignoran a propósito, nunca se inventa dónde mandarlos."""
+        if operation not in self._VALID_OPERATIONS:
+            raise ValueError(f"IOL: operation debe ser 'Compra' o 'Venta', recibido {operation!r}")
+        plazo = self._map_settlement_to_plazo(settlement)
+        tipo_orden = self._map_operation_type_to_tipo_orden(operation_type)
+        body = {
+            "mercado": "bCBA",  # ver get_current_price -- todo lo que maneja esta app es BYMA/Argentina
+            "simbolo": symbol, "precio": price, "plazo": plazo, "tipoOrden": tipo_orden,
+            "validez": self._validez_fin_de_dia(),
+        }
+        if operation == "Compra":
+            # 'cantidad' y 'monto' son mutuamente excluyentes en una compra
+            # real de IOL (confirmado contra el SDK) -- este proyecto solo
+            # tiene un caller real hoy (quantity_type="Papeles" fijo en
+            # order_execution.py), 'Dinero' no se adivina sin un caller que
+            # lo ejercite de verdad.
+            if quantity_type != "Papeles":
+                raise ValueError(
+                    f"IOL: quantity_type={quantity_type!r} no soportado todavía para compra -- "
+                    "solo 'Papeles' (cantidad de títulos) está confirmado contra un caller real."
+                )
+            body["cantidad"] = quantity
+            path = "api/v2/operar/Comprar"
+        else:
+            if quantity_type != "Papeles":
+                raise ValueError("IOL: una venta siempre es por cantidad de papeles -- la API no admite 'monto' para vender.")
+            body["cantidad"] = quantity
+            path = "api/v2/operar/Vender"
+
+        resp = requests.post(f"{self.BASE_URL}/{path}", json=body, headers=self._headers(), timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        data = resp.json()
+        if isinstance(data, dict) and data.get("ok") is False:
+            raise ValueError(f"IOL rechazó la orden: {data.get('messages')}")
+        return data
+
+    def cancel_order(self, *, order_id, external_id=None):
+        """DELETE api/v2/operaciones/{numero} -- confirmado contra el código
+        fuente real del SDK `iol-api` (método delete_operaciones). IOL
+        identifica la orden por su propio número de operación, no por un id
+        externo como PPI -- external_id se recibe por firma compartida y se
+        ignora a propósito (nunca se inventa un uso para él)."""
+        resp = requests.delete(
+            f"{self.BASE_URL}/api/v2/operaciones/{order_id}", headers=self._headers(), timeout=self.TIMEOUT,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
 
 class PPIAdapter(BrokerAdapter):

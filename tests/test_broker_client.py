@@ -296,6 +296,136 @@ def test_iol_get_current_price_ok_mockeado(temp_db, manager, monkeypatch):
     assert result == {"price": 50.5, "bid": 50.0, "ask": 51.0}
 
 
+# --- Ejecucion real de ordenes IOL (ver conversacion/auditoria 2026-10-20:
+# "dejemos listo ambos, tanto IOL como PPI completos" -- IOL no tenia
+# get_order_budget/confirm_order/cancel_order implementados, PPI si) -------
+
+def _iol_adapter(temp_db, manager):
+    account = manager.add_account(temp_db, broker_name="IOL", api_key="usuario", api_secret="pass")
+    return broker_client.IOLAdapter(db.get_broker_account(temp_db, account["id"]))
+
+
+def test_iol_get_order_budget_es_una_estimacion_local_nunca_toca_la_red(temp_db, manager, monkeypatch):
+    # A diferencia de PPI, IOL no tiene un endpoint real de presupuesto --
+    # get_order_budget no debe llamar a requests.post/get en absoluto.
+    def _debe_no_llamarse(*a, **kw):
+        raise AssertionError("IOL.get_order_budget no deberia tocar la red")
+    monkeypatch.setattr(broker_client.requests, "post", _debe_no_llamarse)
+    monkeypatch.setattr(broker_client.requests, "get", _debe_no_llamarse)
+
+    adapter = _iol_adapter(temp_db, manager)
+    budget = adapter.get_order_budget(symbol="GGAL", asset_type="accion", operation="Compra", quantity=10, price=6000)
+
+    assert budget["estimated"] is True
+    assert budget["monto_estimado"] == 60000
+    assert budget["comision_estimada"] == pytest.approx(60000 * broker_client.IOLAdapter._GOLD_COMMISSION_PCT / 100.0)
+
+
+def test_iol_get_order_budget_operacion_invalida_rechaza_explicito(temp_db, manager):
+    adapter = _iol_adapter(temp_db, manager)
+    with pytest.raises(ValueError, match="Compra.*Venta"):
+        adapter.get_order_budget(symbol="GGAL", asset_type="accion", operation="comprar", quantity=10, price=6000)
+
+
+def test_iol_confirm_order_compra_arma_el_payload_real_confirmado(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kw):
+        if url.endswith("/token"):
+            return _fake_response({"access_token": "tok-123"})
+        captured["url"] = url
+        captured["json"] = kw.get("json")
+        return _fake_response({"ok": True, "messages": []})
+
+    monkeypatch.setattr(broker_client.requests, "post", fake_post)
+    adapter = _iol_adapter(temp_db, manager)
+
+    result = adapter.confirm_order(
+        symbol="GGAL", asset_type="accion", operation="Compra", quantity=10, price=6000,
+        external_id="kronos-1-123", budget={"estimated": True},
+    )
+
+    assert result == {"ok": True, "messages": []}
+    assert captured["url"].endswith("/api/v2/operar/Comprar")
+    body = captured["json"]
+    assert body["mercado"] == "bCBA"
+    assert body["simbolo"] == "GGAL"
+    assert body["cantidad"] == 10
+    assert body["precio"] == 6000
+    assert body["plazo"] == "t0"  # settlement default "INMEDIATA" -> t0
+    assert body["tipoOrden"] == "precioLimite"
+    assert "monto" not in body  # cantidad y monto son mutuamente excluyentes
+    assert body["validez"].endswith("Z")
+
+
+def test_iol_confirm_order_venta_usa_el_endpoint_correcto(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_post(url, **kw):
+        if url.endswith("/token"):
+            return _fake_response({"access_token": "tok-123"})
+        captured["url"] = url
+        return _fake_response({"ok": True, "messages": []})
+
+    monkeypatch.setattr(broker_client.requests, "post", fake_post)
+    adapter = _iol_adapter(temp_db, manager)
+    adapter.confirm_order(
+        symbol="GGAL", asset_type="accion", operation="Venta", quantity=5, price=6100,
+        external_id="kronos-1-999", budget={},
+    )
+    assert captured["url"].endswith("/api/v2/operar/Vender")
+
+
+def test_iol_confirm_order_api_responde_ok_false_rechaza_explicito(temp_db, manager, monkeypatch):
+    def fake_post(url, **kw):
+        if url.endswith("/token"):
+            return _fake_response({"access_token": "tok-123"})
+        return _fake_response({"ok": False, "messages": [{"title": "Error", "description": "Mercado cerrado"}]})
+
+    monkeypatch.setattr(broker_client.requests, "post", fake_post)
+    adapter = _iol_adapter(temp_db, manager)
+    with pytest.raises(ValueError, match="rechazó"):
+        adapter.confirm_order(
+            symbol="GGAL", asset_type="accion", operation="Compra", quantity=10, price=6000,
+            external_id="x", budget={},
+        )
+
+
+def test_iol_confirm_order_settlement_no_mapeado_rechaza_explicito(temp_db, manager):
+    adapter = _iol_adapter(temp_db, manager)
+    with pytest.raises(ValueError, match="settlement"):
+        adapter.confirm_order(
+            symbol="GGAL", asset_type="accion", operation="Compra", quantity=10, price=6000,
+            external_id="x", budget={}, settlement="A-72HS",
+        )
+
+
+def test_iol_confirm_order_quantity_type_dinero_no_soportado(temp_db, manager):
+    # Sin caller real que ejercite 'Dinero' -- se rechaza explicito en vez de adivinar.
+    adapter = _iol_adapter(temp_db, manager)
+    with pytest.raises(ValueError, match="quantity_type"):
+        adapter.confirm_order(
+            symbol="GGAL", asset_type="accion", operation="Compra", quantity=10000, price=6000,
+            external_id="x", budget={}, quantity_type="Dinero",
+        )
+
+
+def test_iol_cancel_order_llama_delete_con_el_numero_de_operacion(temp_db, manager, monkeypatch):
+    captured = {}
+
+    def fake_delete(url, headers=None, timeout=None):
+        captured["url"] = url
+        return _fake_response({"numero": 555, "estado": "cancelada"})
+
+    monkeypatch.setattr(broker_client.requests, "post", lambda *a, **kw: _fake_response({"access_token": "tok"}))
+    monkeypatch.setattr(broker_client.requests, "delete", fake_delete)
+    adapter = _iol_adapter(temp_db, manager)
+
+    result = adapter.cancel_order(order_id=555)
+    assert result == {"numero": 555, "estado": "cancelada"}
+    assert captured["url"].endswith("/api/v2/operaciones/555")
+
+
 # --- Cifrado en reposo de api_key/api_secret (ver conversacion/auditoria
 # 2026-10-20: se guardaban en TEXTO PLANO, confirmado con credenciales
 # reales de IOL en la fila activa; ver portfolio/secrets_crypto.py) --------

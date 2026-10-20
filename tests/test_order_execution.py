@@ -162,6 +162,42 @@ def test_orden_exitosa_se_confirma_y_persiste(temp_db, monkeypatch):
     assert db.sum_confirmed_auto_trading_exposure_ars(temp_db) == 1000.0
 
 
+def _setup_iol_instrument(conn, *, is_active=True):
+    manager = broker_client.MultiBrokerManager()
+    account = manager.add_account(
+        conn, broker_name="IOL", api_key="usuario", api_secret="pass", is_active=is_active,
+    )
+    instrument_id = db.add_instrument(
+        conn, symbol="GGAL", type_="accion", market="byma", price_source="data912",
+        broker_account_id=account["id"],
+    )
+    return instrument_id, account["id"]
+
+
+def test_orden_exitosa_iol_se_confirma_y_persiste(temp_db, monkeypatch):
+    # Mismo flujo que test_orden_exitosa_se_confirma_y_persiste (PPI) pero
+    # contra IOL (ver conversacion/auditoria 2026-10-20: "dejemos listo
+    # ambos") -- IOL no tiene un paso de budget real (ver
+    # IOLAdapter.get_order_budget), asi que requests.post solo se llama para
+    # /token y para operar/Comprar, nunca para un endpoint de presupuesto.
+    db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_ars=10**6)
+    instrument_id, account_id = _setup_iol_instrument(temp_db)
+    monkeypatch.setattr(
+        broker_client.requests, "post",
+        lambda url, **kw: (
+            _fake_response({"access_token": "tok"}) if url.endswith("/token")
+            else _fake_response({"ok": True, "messages": []})
+        ),
+    )
+
+    order = order_execution.place_real_order(temp_db, **_base_kwargs(instrument_id))
+
+    assert order["estado"] == "confirmada"
+    assert order["symbol"] == "GGAL"
+    assert order["monto_ars"] == 1000.0
+    assert db.sum_confirmed_auto_trading_exposure_ars(temp_db) == 1000.0
+
+
 def test_falla_del_broker_persiste_error_y_relanza(temp_db, monkeypatch):
     db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_ars=10**6)
     instrument_id, account_id = _setup_ppi_instrument(temp_db)
@@ -184,17 +220,20 @@ def test_falla_del_broker_persiste_error_y_relanza(temp_db, monkeypatch):
 
 
 def test_broker_sin_ejecucion_implementada_persiste_error(temp_db):
-    # IOL no tiene get_order_budget/confirm_order implementados -- debe
-    # heredar el NotImplementedError de la base, no romper distinto.
+    # Balanz no tiene get_order_budget/confirm_order implementados (sin
+    # documentación pública de API verificada, ver broker_client.py) -- debe
+    # heredar el NotImplementedError de la base, no romper distinto. IOL ya
+    # tiene las 2 patas implementadas desde 2026-10-20 (ver IOLAdapter), así
+    # que dejó de servir como ejemplo de "broker sin ejecución".
     db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_ars=10**6)
     manager = broker_client.MultiBrokerManager()
-    account = manager.add_account(temp_db, broker_name="IOL", api_key="u", api_secret="p")
+    account = manager.add_account(temp_db, broker_name="Balanz", api_key="u", api_secret="p")
     instrument_id = db.add_instrument(
         temp_db, symbol="GGAL", type_="accion", market="byma", price_source="data912",
         broker_account_id=account["id"],
     )
 
-    with pytest.raises(NotImplementedError, match="IOL"):
+    with pytest.raises(NotImplementedError, match="Balanz"):
         order_execution.place_real_order(temp_db, **_base_kwargs(instrument_id))
 
     orders = db.list_auto_trading_orders(temp_db)
