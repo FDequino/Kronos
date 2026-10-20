@@ -31,8 +31,19 @@ function showDataInfo(dataInfo) {
     initializeTimeWindowSlider(dataInfo);
 }
 
-async function loadData() {
-    const filePath = $('data-file-select').value;
+// Exportada (ver conversación/auditoría, hallazgo 2.7: "después de 'Traer
+// datos en vivo' hay que apretar además 'Cargar datos'") -- live-data.js la
+// llama sola apenas termina el fetch, ya que a esa altura ya tiene el
+// file_path exacto. Los 2 endpoints de backend siguen separados a propósito
+// (fetch descarga de la fuente externa y guarda un CSV; load lo lee e
+// inspecciona) -- achicar esto a UN SOLO click en vez de 2 no necesita
+// fusionar el backend, alcanza con encadenarlos del lado del front.
+export async function loadData(filePathOverride) {
+    // Ver conversación/auditoría, hallazgo 2.7 -- #model-status puede quedar
+    // fuera de la vista actual del usuario en una página larga. Inocuo si ya
+    // se llamó desde fetchLiveData (misma posición, solo re-confirma scroll).
+    $('model-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const filePath = filePathOverride || $('data-file-select').value;
     if (!filePath) {
         showStatus('model-status', 'error', 'Elegí un archivo de datos para cargar');
         return;
@@ -60,5 +71,9 @@ async function loadData() {
 }
 
 export function initDataFilesView() {
-    $('load-data-btn').addEventListener('click', loadData);
+    // () => loadData(), nunca loadData directo: addEventListener pasa el
+    // MouseEvent como primer argumento, que pisaría filePathOverride con un
+    // valor truthy (el Event) en vez de usar el <select> (bug real que se
+    // hubiera introducido acá al exportar loadData con ese parámetro nuevo).
+    $('load-data-btn').addEventListener('click', () => loadData());
 }

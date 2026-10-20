@@ -28,7 +28,16 @@ function populateModelSelect() {
     });
 }
 
+// Ver conversación/auditoría, hallazgo 2.7: "no se ve el estado del modelo
+// después de apretar 'Cargar modelo'" -- #model-status/#loading existen y SÍ
+// se actualizan, pero en una página larga pueden quedar fuera de la vista
+// actual del usuario sin este scroll.
+function focusStatus() {
+    $('model-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 async function loadModel() {
+    focusStatus();
     const modelKey = $('model-select').value;
     const device = $('device-select').value;
     if (!modelKey) {

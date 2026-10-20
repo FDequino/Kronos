@@ -70,6 +70,17 @@ export function initializeTimeWindowSlider(dataInfo) {
     updateSliderFromInputs();
 }
 
+// Ver conversación/auditoría, hallazgo 2.7 -- el default (startPct=0.1) deja
+// margen al final a propósito para la Comparación; esto mueve la ventana al
+// tramo MÁS RECIENTE posible (pronóstico real a futuro, sin datos para
+// comparar porque no los hay más allá del final del archivo).
+function moveWindowToEnd() {
+    if (!state.slider) return;
+    const endPct = 1;
+    updateEndHandle(endPct);
+    updateSliderFromHandles();
+}
+
 export function getSelectedStartDate() {
     const startPct = parseFloat($('start-handle').style.left) / 100;
     const totalTime = state.slider.endDate.getTime() - state.slider.startDate.getTime();
@@ -121,4 +132,9 @@ export function initTimeSlider() {
 
     $('lookback').addEventListener('input', updateSliderFromInputs);
     $('pred-len').addEventListener('input', updateSliderFromInputs);
+
+    $('move-window-to-end-link').addEventListener('click', (e) => {
+        e.preventDefault();
+        moveWindowToEnd();
+    });
 }

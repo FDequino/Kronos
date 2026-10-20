@@ -248,7 +248,7 @@ def load_data_file(file_path):
         return df, None
         
     except Exception as e:
-        return None, f"Failed to load file: {str(e)}"
+        return None, f"No se pudo cargar el archivo: {str(e)}"
 
 def save_prediction_results(file_path, prediction_type, prediction_results, actual_data, input_data, prediction_params):
     """Save prediction results to file"""
@@ -518,39 +518,41 @@ def load_data():
         file_path = data.get('file_path')
         
         if not file_path:
-            return jsonify({'error': 'File path cannot be empty'}), 400
-        
+            return jsonify({'error': 'La ruta del archivo no puede estar vacía'}), 400
+
         df, error = load_data_file(file_path)
         if error:
             return jsonify({'error': error}), 400
-        
-        # Detect data time frequency
+
+        # Detectar la frecuencia temporal de los datos (ver conversación/
+        # auditoría, hallazgo 2.7: "hay mensajes en inglés" -- esta pestaña
+        # los mostraba todos en inglés, en una app que es toda en español).
         def detect_timeframe(df):
             if len(df) < 2:
-                return "Unknown"
-            
+                return "Desconocida"
+
             time_diffs = []
-            for i in range(1, min(10, len(df))):  # Check first 10 time differences
+            for i in range(1, min(10, len(df))):  # Chequea las primeras 10 diferencias de tiempo
                 diff = df['timestamps'].iloc[i] - df['timestamps'].iloc[i-1]
                 time_diffs.append(diff)
-            
+
             if not time_diffs:
-                return "Unknown"
-            
-            # Calculate average time difference
+                return "Desconocida"
+
+            # Calcula la diferencia de tiempo promedio
             avg_diff = sum(time_diffs, pd.Timedelta(0)) / len(time_diffs)
-            
-            # Convert to readable format
+
+            # Convierte a un formato legible
             if avg_diff < pd.Timedelta(minutes=1):
-                return f"{avg_diff.total_seconds():.0f} seconds"
+                return f"{avg_diff.total_seconds():.0f} segundos"
             elif avg_diff < pd.Timedelta(hours=1):
-                return f"{avg_diff.total_seconds() / 60:.0f} minutes"
+                return f"{avg_diff.total_seconds() / 60:.0f} minutos"
             elif avg_diff < pd.Timedelta(days=1):
-                return f"{avg_diff.total_seconds() / 3600:.0f} hours"
+                return f"{avg_diff.total_seconds() / 3600:.0f} horas"
             else:
-                return f"{avg_diff.days} days"
-        
-        # Return data information
+                return f"{avg_diff.days} días"
+
+        # Arma la información de los datos
         data_info = {
             'rows': len(df),
             'columns': list(df.columns),
@@ -563,21 +565,21 @@ def load_data():
             'prediction_columns': ['open', 'high', 'low', 'close'] + (['volume'] if 'volume' in df.columns else []),
             'timeframe': detect_timeframe(df)
         }
-        
+
         return jsonify({
             'success': True,
             'data_info': data_info,
-            'message': f'Successfully loaded data, total {len(df)} rows'
+            'message': f'Datos cargados correctamente, {len(df)} filas en total'
         })
-        
+
     except Exception as e:
-        return jsonify({'error': f'Failed to load data: {str(e)}'}), 500
+        return jsonify({'error': f'No se pudieron cargar los datos: {str(e)}'}), 500
 
 @app.route('/api/fetch-live-data', methods=['POST'])
 def fetch_live_data():
-    """Fetch fresh K-line data from a live online source and save it as a local CSV"""
+    """Trae velas frescas de una fuente en vivo y las guarda como CSV local"""
     if not LIVE_FETCH_AVAILABLE:
-        return jsonify({'error': 'Live fetch dependencies not installed (requests/yfinance)'}), 500
+        return jsonify({'error': 'Las dependencias para traer datos en vivo no están instaladas (requests/yfinance)'}), 500
 
     try:
         data = request.get_json()
@@ -591,7 +593,7 @@ def fetch_live_data():
             interval = data.get('interval', '1h')
             limit = int(data.get('limit', 1000))
             if not symbol:
-                return jsonify({'error': 'symbol is required for binance'}), 400
+                return jsonify({'error': 'El símbolo es obligatorio para binance'}), 400
             df = fetch_binance(symbol, interval, limit)
             filename = f"{symbol}_{interval}.csv"
         elif source == 'yfinance':
@@ -599,12 +601,12 @@ def fetch_live_data():
             period = data.get('period', '2y')
             interval = data.get('interval', '1d')
             if not ticker:
-                return jsonify({'error': 'ticker is required for yfinance'}), 400
+                return jsonify({'error': 'El ticker es obligatorio para yfinance'}), 400
             df = fetch_yfinance(ticker, period, interval)
             safe_ticker = ticker.replace('.', '_').replace('-', '_')
             filename = f"{safe_ticker}_{interval}.csv"
         else:
-            return jsonify({'error': 'source must be "binance" or "yfinance"'}), 400
+            return jsonify({'error': 'La fuente debe ser "binance" o "yfinance"'}), 400
 
         file_path = os.path.join(data_dir, filename)
         df.to_csv(file_path, index=False)
@@ -614,11 +616,11 @@ def fetch_live_data():
             'file_path': file_path,
             'file_name': filename,
             'rows': len(df),
-            'message': f'Fetched {len(df)} rows and saved as {filename}'
+            'message': f'Se trajeron {len(df)} filas y se guardaron como {filename}'
         })
 
     except Exception as e:
-        return jsonify({'error': f'Failed to fetch live data: {str(e)}'}), 500
+        return jsonify({'error': f'No se pudieron traer los datos en vivo: {str(e)}'}), 500
 
 @app.route('/api/predict', methods=['POST'])
 def predict():
@@ -635,15 +637,15 @@ def predict():
         sample_count = int(data.get('sample_count', 1))
         
         if not file_path:
-            return jsonify({'error': 'File path cannot be empty'}), 400
-        
+            return jsonify({'error': 'La ruta del archivo no puede estar vacía'}), 400
+
         # Load data
         df, error = load_data_file(file_path)
         if error:
             return jsonify({'error': error}), 400
-        
+
         if len(df) < lookback:
-            return jsonify({'error': f'Insufficient data length, need at least {lookback} rows'}), 400
+            return jsonify({'error': f'Datos insuficientes, se necesitan al menos {lookback} filas'}), 400
         
         # Perform prediction
         predictor = model_runtime.get_predictor()
@@ -668,7 +670,7 @@ def predict():
                     
                     # Ensure sufficient data: lookback + pred_len
                     if len(time_range_df) < lookback + pred_len:
-                        return jsonify({'error': f'Insufficient data from start time {start_dt.strftime("%Y-%m-%d %H:%M")}, need at least {lookback + pred_len} data points, currently only {len(time_range_df)} available'}), 400
+                        return jsonify({'error': f'Datos insuficientes desde {start_dt.strftime("%Y-%m-%d %H:%M")}, se necesitan al menos {lookback + pred_len} puntos y solo hay {len(time_range_df)} disponibles'}), 400
                     
                     # Use first lookback data points within selected window for prediction
                     x_df = time_range_df.iloc[:lookback][required_cols]
@@ -682,13 +684,13 @@ def predict():
                     end_timestamp = time_range_df['timestamps'].iloc[lookback+pred_len-1]
                     time_span = end_timestamp - start_timestamp
                     
-                    prediction_type = f"Kronos model prediction (within selected window: first {lookback} data points for prediction, last {pred_len} data points for comparison, time span: {time_span})"
+                    prediction_type = f"Predicción del modelo Kronos (dentro de la ventana elegida: primeros {lookback} puntos para predecir, últimos {pred_len} puntos para comparar, rango de tiempo: {time_span})"
                 else:
                     # Use latest data
                     x_df = df.iloc[:lookback][required_cols]
                     x_timestamp = df.iloc[:lookback]['timestamps']
                     y_timestamp = df.iloc[lookback:lookback+pred_len]['timestamps']
-                    prediction_type = "Kronos model prediction (latest data)"
+                    prediction_type = "Predicción del modelo Kronos (datos más recientes)"
                 
                 # Ensure timestamps are Series format, not DatetimeIndex, to avoid .dt attribute error in Kronos model
                 if isinstance(x_timestamp, pd.DatetimeIndex):
@@ -707,9 +709,9 @@ def predict():
                 )
                 
             except Exception as e:
-                return jsonify({'error': f'Kronos model prediction failed: {str(e)}'}), 500
+                return jsonify({'error': f'Falló la predicción del modelo Kronos: {str(e)}'}), 500
         else:
-            return jsonify({'error': 'Kronos model not loaded, please load model first'}), 400
+            return jsonify({'error': 'El modelo Kronos no está cargado, cargalo primero'}), 400
         
         # Prepare actual data for comparison (if exists)
         actual_data = []
@@ -837,11 +839,11 @@ def predict():
             'prediction_results': prediction_results,
             'actual_data': actual_data,
             'has_comparison': len(actual_data) > 0,
-            'message': f'Prediction completed, generated {pred_len} prediction points' + (f', including {len(actual_data)} actual data points for comparison' if len(actual_data) > 0 else '')
+            'message': f'Predicción completa, se generaron {pred_len} puntos' + (f', incluyendo {len(actual_data)} puntos reales para comparar' if len(actual_data) > 0 else '')
         })
-        
+
     except Exception as e:
-        return jsonify({'error': f'Prediction failed: {str(e)}'}), 500
+        return jsonify({'error': f'Falló la predicción: {str(e)}'}), 500
 
 @app.route('/api/load-model', methods=['POST'])
 def load_model():
@@ -854,7 +856,7 @@ def load_model():
         model_config = model_runtime.load_model(model_key, device)
         return jsonify({
             'success': True,
-            'message': f'Model loaded successfully: {model_config["name"]} ({model_config["params"]}) on {device}',
+            'message': f'Modelo cargado correctamente: {model_config["name"]} ({model_config["params"]}) en {device}',
             'model_info': {
                 'name': model_config['name'],
                 'params': model_config['params'],
@@ -865,7 +867,7 @@ def load_model():
     except (RuntimeError, ValueError) as e:
         return jsonify({'error': str(e)}), 400
     except Exception as e:
-        return jsonify({'error': f'Model loading failed: {str(e)}'}), 500
+        return jsonify({'error': f'Falló la carga del modelo: {str(e)}'}), 500
 
 @app.route('/api/available-models')
 def get_available_models():

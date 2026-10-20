@@ -46,7 +46,7 @@ function fillComparisonTable(predictions, actuals) {
 function displayComparisonAnalysis(result) {
     $('comparison-section').style.display = 'block';
     $('prediction-type').textContent = result.prediction_type;
-    $('comparison-data').textContent = `${result.actual_data.length} actual data points`;
+    $('comparison-data').textContent = `${result.actual_data.length} puntos de datos reales`;
 
     const quality = predictionQuality(result.prediction_results, result.actual_data);
     $('mae').textContent = quality.mae.toFixed(4);
@@ -64,7 +64,18 @@ function displayPredictionResult(result) {
     else $('comparison-section').style.display = 'none';
 }
 
+// #model-status vive cerca del inicio de una página larga -- sin esto, un
+// error disparado por un botón de más abajo (ej. "Ejecutar predicción", al
+// final) escribía el mensaje fuera de la vista actual del usuario, que lo
+// veía como "no pasó nada" (ver conversación/auditoría, hallazgo 2.7:
+// "'Ejecutar predicción' sin modelo cargado no da ningún aviso" -- el aviso
+// SÍ se escribía, solo que invisible sin scrollear hacia arriba).
+function focusStatus() {
+    $('model-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 async function startPrediction() {
+    focusStatus();
     if (!state.dataFile) return showStatus('model-status', 'error', 'Cargá un archivo de datos primero');
     if (!state.modelLoaded) return showStatus('model-status', 'error', 'Cargá un modelo primero');
     if (!state.slider) return showStatus('model-status', 'error', 'La ventana temporal todavía no se inicializó');

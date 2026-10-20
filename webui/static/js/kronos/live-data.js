@@ -1,7 +1,7 @@
 import { $ } from '../shared/dom.js';
 import { showStatus, setLoading } from '../shared/status.js';
 import { api } from './api.js';
-import { loadDataFiles } from './data-files.js';
+import { loadDataFiles, loadData } from './data-files.js';
 
 function buildPayload() {
     const source = $('live-source-select').value;
@@ -21,16 +21,29 @@ function buildPayload() {
     };
 }
 
+// Ver conversación/auditoría, hallazgo 2.7 -- #model-status puede quedar
+// fuera de la vista actual del usuario en una página larga.
+function focusStatus() {
+    $('model-status').scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
 async function fetchLiveData() {
+    focusStatus();
     const btn = $('fetch-live-btn');
     try {
         btn.disabled = true;
         setLoading('loading', true);
         const { data } = await api.fetchLiveData(buildPayload());
         if (data.success) {
-            showStatus('model-status', 'success', data.message);
             await loadDataFiles();
             $('data-file-select').value = data.file_path;
+            // Encadenado (ver conversación/auditoría, hallazgo 2.7: "después
+            // de 'Traer datos en vivo' hay que apretar además 'Cargar
+            // datos'") -- ya tenemos el file_path exacto, no hace falta un
+            // segundo click manual. loadData reemplaza el mensaje de éxito
+            // de arriba con el suyo propio ("datos cargados"), así que no se
+            // pisan entre sí.
+            await loadData(data.file_path);
         } else {
             showStatus('model-status', 'error', data.error);
         }

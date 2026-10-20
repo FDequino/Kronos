@@ -144,6 +144,13 @@
                     </div>
                 </div>
                 <p id="window-size" class="hint space-t-xs">Ventana: 400+120=520 puntos</p>
+                <!-- Ver conversación/auditoría, hallazgo 2.7: "la ventana por
+                     defecto termina en una fecha vieja -- es un backtest, no
+                     un pronóstico a futuro". El default deja margen al FINAL
+                     a propósito (para que la Comparación tenga datos reales
+                     con qué contrastar la predicción) -- esto lo explicita y
+                     ofrece moverla al final del todo para predecir a futuro. -->
+                <p class="hint space-t-xs">Por defecto la ventana deja margen al final para poder comparar la predicción contra datos reales. <a href="#" id="move-window-to-end-link">Mover al final (pronóstico a futuro, sin comparación)</a></p>
 
                 <hr class="rule">
 

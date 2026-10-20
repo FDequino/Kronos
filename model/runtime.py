@@ -66,9 +66,9 @@ def load_model(model_key, device=None):
     global _predictor, _current_model_key
 
     if not MODEL_AVAILABLE:
-        raise RuntimeError("Kronos model library not available")
+        raise RuntimeError("La librería del modelo Kronos no está disponible")
     if model_key not in AVAILABLE_MODELS:
-        raise ValueError(f"Unsupported model: {model_key}")
+        raise ValueError(f"Modelo no soportado: {model_key}")
 
     config = AVAILABLE_MODELS[model_key]
     device = device or pick_device()
@@ -96,14 +96,14 @@ def status():
         return {
             "available": False,
             "loaded": False,
-            "message": "Kronos model library not available, please install related dependencies",
+            "message": "La librería del modelo Kronos no está disponible, instalá las dependencias",
         }
     if _predictor is None:
-        return {"available": True, "loaded": False, "message": "Kronos model available but not loaded"}
+        return {"available": True, "loaded": False, "message": "Modelo Kronos disponible pero no cargado"}
     return {
         "available": True,
         "loaded": True,
-        "message": "Kronos model loaded and available",
+        "message": "Modelo Kronos cargado y disponible",
         "current_model": {
             "name": _predictor.model.__class__.__name__,
             "device": str(next(_predictor.model.parameters()).device),
