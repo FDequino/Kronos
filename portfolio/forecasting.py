@@ -39,6 +39,22 @@ _predictor_client = ChronosServiceClient()
 USD_MODEL_ASSET_TYPES = ("accion", "cedear")
 PRICE_COLS = ("open", "high", "low", "close")
 
+# Mismo set que portfolio/features.py::CEDEAR_DIRECT_UNDERLYING_SYMBOLS --
+# DUPLICADO a proposito, no importado (features.py importa build_model_input
+# de aca, importar en sentido contrario crearia un ciclo). Para un CEDEAR acá
+# adentro, preferir el precio REAL del subyacente en EEUU (yfinance, ver
+# fetchers.get_underlying_ohlcv_df) en vez del "USD sintetico" (CEDEAR en ARS
+# / CCL historico, ver mas abajo) -- medido empiricamente en esta
+# conversacion: para estos simbolos el sintetico mete 2-3x mas ruido que
+# señal real (correlacion de retornos diarios de apenas 0.28-0.75 contra el
+# precio real, volatilidad del sintetico 1.25x-3.2x la real).
+CEDEAR_DIRECT_UNDERLYING_SYMBOLS = {
+    "SPY", "QQQ", "AAPL", "NVDA", "TSLA", "MSFT", "AMZN", "GOOGL", "META", "MELI",
+}
+# Si despues del ffill por fecha sigue faltando cobertura para alguna rueda
+# de la ventana, se degrada al sintetico -- nunca se inventa un precio.
+UNDERLYING_MODEL_MIN_ROWS = 60
+
 
 def build_lookback_df(conn, *, instrument_id, symbol, market, asset_type, lookback, as_of_date=None):
     """Holdings reusan price_history (completando con backfill si falta);
@@ -117,18 +133,69 @@ def _ccl_rate_for_dates(conn, date_strs):
     return pd.Series(rates)
 
 
-def build_model_input(conn, lookback_df, asset_type):
+def _resolve_underlying_model_df(conn, lookback_df, symbol):
+    """Serie REAL del subyacente en EEUU para alimentar al modelo, alineada
+    por FECHA contra lookback_df (el subyacente cotiza en dias/feriados
+    distintos a BYMA -- NYSE vs BYMA, no son el mismo calendario), con
+    forward-fill CAUSAL (nunca hacia el futuro) -- mismo criterio ya probado
+    en portfolio/features.py::_resolve_technical_source_df. Devuelve
+    (df_para_el_modelo, True) o (None, False) si falta cobertura para alguna
+    rueda de la ventana (nunca se inventa un precio con un ffill que tape
+    un hueco anterior al primer dato real del subyacente)."""
+    fetchers.ensure_underlying_ohlcv_history(conn, symbol)
+    underlying_df = fetchers.get_underlying_ohlcv_df(conn, symbol)
+    if len(underlying_df) < UNDERLYING_MODEL_MIN_ROWS:
+        return None, False
+
+    aligned = underlying_df.set_index("timestamps").reindex(
+        pd.DatetimeIndex(lookback_df["timestamps"]), method="ffill"
+    )
+    if aligned[list(PRICE_COLS) + ["volume"]].isna().any().any():
+        return None, False
+
+    aligned.index = lookback_df.index
+    df_real = lookback_df.copy()
+    for col in PRICE_COLS:
+        df_real[col] = aligned[col].to_numpy()
+    df_real["volume"] = aligned["volume"].to_numpy()
+    # 'amount' real no existe en underlying_price_history -- misma
+    # aproximacion que build_lookback_df para el camino de catalogo.
+    df_real["amount"] = df_real["volume"].fillna(0) * df_real[list(PRICE_COLS)].mean(axis=1)
+    return df_real, True
+
+
+def build_model_input(conn, lookback_df, asset_type, symbol=None):
     """Convierte el lookback a USD (via CCL historico) antes de alimentarlo a
     Kronos, para accion/cedear -- la serie en ARS cruda arrastra la tendencia
     estructural que sesga la normalizacion por ventana del modelo. El grafico y
     los indicadores siguen mostrandose en ARS (lookback_df no se toca); esta
     conversion es solo para lo que *ve* el modelo.
 
-    Devuelve (df_para_el_modelo, ultimo_ccl_conocido_o_None, "USD"|"ARS"). Si
-    falta cobertura de CCL para alguna fecha de la ventana, degrada a ARS sin
-    romper (igual que cualquier otra fuente de datos faltante en este proyecto)."""
+    symbol (opcional, default None -- NINGUN llamador existente de este
+    modulo lo pasa, asi que esto no cambia el comportamiento de nadie salvo
+    run_forecast_job, que lo pasa a proposito): si corresponde a un CEDEAR
+    con subyacente verificado (CEDEAR_DIRECT_UNDERLYING_SYMBOLS) con
+    cobertura reciente suficiente, usa el precio REAL del subyacente en vez
+    del USD sintetico -- ver _resolve_underlying_model_df. En ese caso el 2do
+    valor devuelto deja de ser un CCL: pasa a ser el ULTIMO CIERRE REAL EN
+    ARS del CEDEAR (necesario para reconvertir la prediccion de vuelta a ARS
+    sin asumir que el precio del subyacente es 1:1 convertible al CEDEAR, ver
+    run_forecast_job), y el 3er valor es "USD_REAL_UNDERLYING" en vez de
+    "USD". Sin cobertura suficiente, degrada en silencio al camino sintetico
+    de siempre (nunca se inventa un numero).
+
+    Devuelve (df_para_el_modelo, ultimo_ccl_o_ultimo_cierre_ars_o_None,
+    "USD"|"USD_REAL_UNDERLYING"|"ARS"). Si falta cobertura de CCL para alguna
+    fecha de la ventana (camino sintetico), degrada a ARS sin romper (igual
+    que cualquier otra fuente de datos faltante en este proyecto)."""
     if asset_type not in USD_MODEL_ASSET_TYPES:
         return lookback_df, None, "ARS"
+
+    if asset_type == "cedear" and symbol in CEDEAR_DIRECT_UNDERLYING_SYMBOLS:
+        df_real, ok = _resolve_underlying_model_df(conn, lookback_df, symbol)
+        if ok:
+            return df_real, float(lookback_df["close"].iloc[-1]), "USD_REAL_UNDERLYING"
+        # Sin cobertura suficiente del subyacente -- sigue al camino sintetico.
 
     date_strs = lookback_df["timestamps"].dt.strftime("%Y-%m-%d")
     rates = _ccl_rate_for_dates(conn, date_strs)
@@ -202,7 +269,9 @@ def run_forecast_job(conn, forecast_id):
         market=row["market"], asset_type=row["asset_type"], lookback=row["lookback"],
         as_of_date=row["as_of_date"],
     )
-    model_input_df, last_ccl, model_currency = build_model_input(conn, lookback_df, row["asset_type"])
+    model_input_df, reconversion_ref, model_currency = build_model_input(
+        conn, lookback_df, row["asset_type"], symbol=row["symbol"],
+    )
     x_df = model_input_df[OHLCV_COLS]
     x_timestamp = model_input_df["timestamps"]
     y_timestamp = _future_timestamps(x_timestamp, row["pred_len"])
@@ -219,7 +288,7 @@ def run_forecast_job(conn, forecast_id):
         df=x_df, x_timestamp=x_timestamp, y_timestamp=y_timestamp, pred_len=row["pred_len"],
     )
 
-    last_close = float(x_df["close"].iloc[-1])  # en USD si model_currency == "USD"
+    last_close = float(x_df["close"].iloc[-1])  # en USD si model_currency in ("USD", "USD_REAL_UNDERLYING")
     pred_mean, sample_dfs = _apply_continuity_correction(pred_mean, sample_dfs, last_close)
     signal, pred_change_pct, uncertainty_pct, distribution = signals.compute_signal(
         last_close, pred_mean, sample_dfs, config
@@ -235,9 +304,22 @@ def run_forecast_job(conn, forecast_id):
     # horizonte predicho, igual que ya acepta portfolio/history.py para el
     # historico reconstruido).
     pred_display = pred_mean.copy()
-    if model_currency == "USD" and last_ccl:
+    if model_currency == "USD" and reconversion_ref:
         for col in PRICE_COLS:
-            pred_display[col] = pred_display[col] * last_ccl
+            pred_display[col] = pred_display[col] * reconversion_ref
+    elif model_currency == "USD_REAL_UNDERLYING" and reconversion_ref:
+        # reconversion_ref es el ULTIMO CIERRE REAL EN ARS del CEDEAR (no un
+        # CCL) -- el precio del subyacente no es 1:1 convertible al CEDEAR
+        # (ratio de conversion, desarbitraje propio), asi que no se puede
+        # multiplicar directo. En cambio se reescala la trayectoria predicha
+        # (ya anclada al ultimo cierre REAL del subyacente por
+        # _apply_continuity_correction) por el factor que la lleva al ultimo
+        # cierre ARS real -- preserva la FORMA/pendiente que predijo el
+        # modelo sobre el precio real, solo cambia el nivel a ARS.
+        scale = reconversion_ref / last_close if last_close else None
+        if scale:
+            for col in PRICE_COLS:
+                pred_display[col] = pred_display[col] * scale
 
     result = {
         "symbol": row["symbol"],

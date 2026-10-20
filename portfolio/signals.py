@@ -98,6 +98,12 @@ def explain(symbol, pred_change_pct, uncertainty_pct, signal, pred_len, config,
             " El modelo corrió sobre la serie convertida a USD (CCL); el gráfico se muestra "
             "reconvertido a ARS con el último CCL conocido."
         )
+    elif model_currency == "USD_REAL_UNDERLYING":
+        base += (
+            " El modelo corrió sobre el precio real del activo subyacente en EEUU (en vez de la "
+            "serie sintética CEDEAR/CCL), más preciso para este símbolo; el gráfico se muestra "
+            "reconvertido a ARS preservando la forma de lo que predijo el modelo."
+        )
     base += (
         " El primer paso de cada muestra se ancló al último cierre real conocido (el modelo no "
         "garantiza esa continuidad por sí solo) -- se corrige el nivel, nunca la forma de lo "
