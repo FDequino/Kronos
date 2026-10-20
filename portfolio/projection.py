@@ -35,13 +35,22 @@ def _contractual_flows(conn, horizon_days, as_of):
             continue
         status = loans_module.compute_loan_status(conn, loan)
         signo = 1 if loan["direccion"] == "prestado" else -1
-        for cuota in status["cronograma"]:
+        # cuotas_pendientes (ver loans.py), no cronograma entero -- antes se
+        # filtraba por "as_of < fecha_cuota" (estrictamente futura), lo que
+        # hacia desaparecer del flujo proyectado cualquier cuota VENCIDA SIN
+        # PAGAR (seguia debiendose, solo que ya tendria que haber pasado) --
+        # bug real reportado en la auditoria 19/10/2026 (hallazgo 2.1:
+        # "Flujo de fondos omite las cuotas atrasadas"). cuotas_pendientes ya
+        # excluye las que SI se cobraron, asi que aca solo hace falta el
+        # techo del horizonte, nunca un piso en as_of.
+        for cuota in status["cuotas_pendientes"]:
             fecha_cuota = datetime.fromisoformat(cuota["fecha"]).date()
-            if as_of < fecha_cuota <= limite:
+            if fecha_cuota <= limite:
                 flows.append({
                     "fecha": cuota["fecha"], "moneda": loan["moneda"],
                     "monto": round(signo * cuota["cuota"], 2),
-                    "origen": f"Cuota de préstamo {'a' if loan['direccion'] == 'prestado' else 'de'} {loan['deudor']}",
+                    "origen": f"Cuota de préstamo {'a' if loan['direccion'] == 'prestado' else 'de'} {loan['deudor']}"
+                              + (" (atrasada)" if fecha_cuota <= as_of else ""),
                 })
 
     instrumentos = [i for i in db.list_instruments(conn) if i["type"] in ("bono", "on")]

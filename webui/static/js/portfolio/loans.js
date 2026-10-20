@@ -144,6 +144,13 @@ function loanFlowCellHtml(row, col) {
 function monthlyLoanFlowsHtml(flows) {
     const cols = loanMonthColumns(12);
     if (!flows.length) return '<p class="hint">Ningún préstamo vigente tiene cuotas en los próximos 12 meses.</p>';
+    // La primer columna visible es SIEMPRE el mes actual (ver loanMonthColumns)
+    // -- una cuota atrasada (ver auditoría 19/10/2026, hallazgo 2.1) trae un
+    // mes anterior a esa primer columna, que de otro modo caía en una clave
+    // que ninguna columna visible matchea y quedaba invisible (todo "—") aun
+    // apareciendo la fila. Se agrupa en el mes actual: es la cuota más
+    // atrasada, el punto más próximo real en este cuadro hacia adelante.
+    const firstColKey = cols[0].key;
     const rowsMap = new Map();
     flows.forEach((f) => {
         const key = `${f.origen}|${f.moneda}`;
@@ -151,7 +158,8 @@ function monthlyLoanFlowsHtml(flows) {
         const row = rowsMap.get(key);
         if (f.fecha < row.firstFecha) row.firstFecha = f.fecha;
         const mk = f.fecha.slice(0, 7);
-        row.porMes[mk] = (row.porMes[mk] || 0) + (f.monto || 0);
+        const bucket = mk < firstColKey ? firstColKey : mk;
+        row.porMes[bucket] = (row.porMes[bucket] || 0) + (f.monto || 0);
     });
     const rows = [...rowsMap.values()].sort((a, b) => a.firstFecha.localeCompare(b.firstFecha));
     const totalRow = `
@@ -268,7 +276,18 @@ function rowHtml(r, columns) {
             case 'tasa_anual': return `<td class="num">${fmt(r.tasa_anual, 2)}%</td>`;
             case 'plan_pago': return `<td>${PLAN_LABEL[r.plan_pago] || r.plan_pago}${r.ajusta_cer ? ' + CER' : ''}</td>`;
             case 'capital_pendiente': return `<td class="num">${fmtMoney(r.capital_pendiente, r.moneda)}</td>`;
-            case 'proximo': return `<td class="num">${r.proximo_vencimiento ? `${fmtDate(r.proximo_vencimiento)} · ${fmtMoney(r.proximo_monto, r.moneda)}` : '—'}</td>`;
+            // Si hay cuotas atrasadas, esta columna mostraba la PRÓXIMA
+            // FUTURA y escondía el atraso (ver auditoría 19/10/2026,
+            // hallazgo 2.1: "Próximo vencimiento muestra 05-11 y esconde la
+            // cuota atrasada") -- el Estado sí lo marcaba, pero esta columna
+            // puntual no. Ahora prioriza mostrar la mora acá también.
+            case 'proximo': {
+                if (r.vencido_hace_dias) {
+                    const cuotas = r.cuotas_atrasadas > 1 ? ` (${r.cuotas_atrasadas} cuotas)` : '';
+                    return `<td class="num"><span class="cell-negative">Atrasada ${r.vencido_hace_dias}d${cuotas}</span></td>`;
+                }
+                return `<td class="num">${r.proximo_vencimiento ? `${fmtDate(r.proximo_vencimiento)} · ${fmtMoney(r.proximo_monto, r.moneda)}` : '—'}</td>`;
+            }
             case 'estado': return `<td>${estadoHtml(r)}</td>`;
             default: return '<td></td>';
         }
@@ -483,8 +502,20 @@ function openPaymentModal(loan) {
     });
 }
 
+// Una cuota no pagada mostraba siempre "Pendiente", igual para la del mes
+// que viene que para una vencida hace 3 meses (ver auditoría 19/10/2026,
+// hallazgo 2.1: "las cuotas vencidas figuran 'PENDIENTE', igual que las
+// futuras") -- ahora distingue por fecha vs. hoy.
 function cronogramaRowHtml(c, index, pagosCount, moneda) {
     const pagada = index < pagosCount;
+    let estadoTag;
+    if (pagada) {
+        estadoTag = '<span class="tag tag-positive">Pagada</span>';
+    } else if (c.fecha <= todayLocalISO()) {
+        estadoTag = '<span class="tag tag-negative">Atrasada</span>';
+    } else {
+        estadoTag = '<span class="tag tag-neutral">Pendiente</span>';
+    }
     return `
         <tr>
             <td class="num">${index + 1}</td>
@@ -492,7 +523,7 @@ function cronogramaRowHtml(c, index, pagosCount, moneda) {
             <td class="num">${fmtMoney(c.capital, moneda)}</td>
             <td class="num">${fmtMoney(c.interes, moneda)}</td>
             <td class="num">${fmtMoney(c.cuota, moneda)}</td>
-            <td>${pagada ? '<span class="tag tag-positive">Pagada</span>' : '<span class="tag tag-neutral">Pendiente</span>'}</td>
+            <td>${estadoTag}</td>
         </tr>
     `;
 }

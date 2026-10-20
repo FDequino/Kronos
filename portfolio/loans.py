@@ -132,6 +132,12 @@ def compute_loan_status(conn, loan):
             # vencimiento posible, nunca varios impagos a la vez.
             "cuotas_atrasadas": 1 if vencido_hace_dias else 0,
             "cronograma": schedule,
+            # cuotas_pendientes (ver conversacion/auditoria, hallazgo 2.1:
+            # "Flujo de fondos omite las cuotas atrasadas") -- las que
+            # TODAVIA deben plata, sin importar si su fecha ya paso. El unico
+            # vencimiento bullet/libre sigue pendiente mientras quede capital
+            # sin cobrar, atrasado o no.
+            "cuotas_pendientes": schedule if capital_pendiente > 0.01 else [],
         }
 
     # frances/aleman: cuantas cuotas ya deberian haberse pagado (por fecha) vs. cuantas se pagaron de verdad
@@ -162,6 +168,13 @@ def compute_loan_status(conn, loan):
         "vencido_hace_dias": vencido_hace_dias,
         "cuotas_atrasadas": cuotas_atrasadas,
         "cronograma": schedule,
+        # cuotas_pendientes (ver conversacion/auditoria, hallazgo 2.1: "Flujo
+        # de fondos omite las cuotas atrasadas") -- "pagada" cuenta por
+        # cantidad de pagos registrados EN ORDEN (mismo criterio que el resto
+        # de este modulo, ver loans.js), asi que schedule[n_pagos_registrados:]
+        # son exactamente las que todavia deben plata: las vencidas sin pagar
+        # (atrasadas) MAS las futuras, nunca las ya cubiertas por un pago.
+        "cuotas_pendientes": schedule[n_pagos_registrados:],
     }
 
 
