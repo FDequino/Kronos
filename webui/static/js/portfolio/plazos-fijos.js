@@ -191,7 +191,7 @@ function renderTable() {
     if (!currentPlazos.length) {
         container.innerHTML = `
             <div class="table-empty-state">
-                <p>Todavía no cargáste ningún plazo fijo. Un plazo fijo tradicional o UVA en un banco, para ver el devengado y compararlo contra el resto de la cartera.</p>
+                <p>Todavía no cargaste ningún plazo fijo. Un plazo fijo tradicional o UVA en un banco, para ver el devengado y compararlo contra el resto de la cartera.</p>
                 <button type="button" class="btn btn-primary" id="pf-empty-add-btn">+ Nuevo plazo fijo</button>
             </div>`;
         const slot = $('pf-columns-slot');

@@ -92,6 +92,7 @@ const TERMS = {
     notif_cobro: 'Cobraste un dividendo, renta o amortización en los últimos días.',
     notif_vence: 'Un bono, ON, plazo fijo, caución o cuota de préstamo vence o paga cupón dentro de los próximos días.',
     notif_vencido: 'Un préstamo vigente tiene una cuota ya vencida sin pago registrado todavía.',
+    notif_bono_vencido: 'Un bono/ON en tu cartera ya pasó su fecha de vencimiento y sigue ahí -- revisá si corresponde darlo de baja.',
     notif_senal: 'Kronos tiene una señal de venta activa y validada para este activo.',
     fuente_usd: 'Fuente de la cotización USD usada para convertir la cartera: BNA, MEP o CCL. No afecta el encabezado del Dashboard, que siempre muestra MEP.',
     ajuste_inflacion: 'Si está activo, los montos en ARS se muestran ajustados por inflación acumulada ("pesos de hoy") en vez de pesos nominales de cada fecha.',
@@ -103,6 +104,15 @@ const TERMS = {
     stop_loss: 'Nivel de precio por debajo del cual sugerís vender para limitar una pérdida. Lo cargás vos; Kronos no lo sugiere.',
     take_profit: 'Nivel de precio por encima del cual sugerís vender para asegurar una ganancia. Lo cargás vos; Kronos no lo sugiere.',
     tendencia_soporte_resistencia: 'Líneas trazadas sobre máximos/mínimos confirmados del precio (Theil-Sen, con al menos 3 toques). Una ruptura se marca como evento informativo — no genera una propuesta de compra/venta porque todavía no se midió si esta señal acierta más que el azar.',
+    // ver conversación/auditoría, hallazgo 3: "el cartel 'BAJO' en cada
+    // noticia" no tenía ninguna explicación -- umbrales reales de
+    // portfolio/nlp_agent.py::classify_risk_level, nunca un número aparte.
+    riesgo_evento_noticia: 'Combina 2 cosas: si hay un balance (earnings) próximo, y qué tan extremo es el sentimiento de los titulares recientes. ALTO: balance dentro de 48hs, o sentimiento muy marcado. MEDIO: balance dentro de la semana, o sentimiento notable. BAJO: ninguna de las dos.',
+    // ver conversación/auditoría, hallazgo 3: "precio de bonos 3,73 por 1 VN
+    // en Transacciones vs. 414,45 por 100 VN en Instrumentos, sin aclarar"
+    // -- misma convención de mercado que fetchers.py::_bono_on_divisor ya
+    // normaliza puertas adentro, acá solo se explicita para el usuario.
+    precio_bono_unidad: 'Los bonos/ON cotizan "cada 100 nominales" en el mercado (ej. $414,45 = lo que cuestan 100 de valor nominal) — en algunas pantallas de la app ese mismo precio se muestra dividido por 100 (por 1 nominal), para que sea comparable con una cantidad real de unidades. Si ves números muy distintos para el mismo bono en 2 lugares, no es un error: es la misma cotización en 2 convenciones distintas (÷100 entre sí).',
 };
 
 export function glossaryText(key) {

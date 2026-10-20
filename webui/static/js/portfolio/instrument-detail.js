@@ -1,5 +1,5 @@
 import { $ } from '../shared/dom.js';
-import { fmt, fmtPct, fmtMoney, fmtDate, fmtDateTime } from '../shared/format.js';
+import { fmt, fmtPct, fmtMoney, fmtDate, fmtDateTime, fmtQty } from '../shared/format.js';
 import { showStatus } from '../shared/status.js';
 import { goBack } from '../shared/nav-history.js';
 import { api } from './api.js';
@@ -247,7 +247,7 @@ function positionHtml(h) {
     const risk = h.risk;
     return `
         <div class="detail-position-grid detail-position-compact">
-            <div class="detail-position-item"><div class="label">Cantidad</div><div class="value">${fmt(h.cantidad, 4)}</div></div>
+            <div class="detail-position-item"><div class="label">Cantidad</div><div class="value">${fmtQty(h.cantidad)}</div></div>
             <div class="detail-position-item"><div class="label">Costo Promedio</div><div class="value">${fmtMoney(h.costo_promedio, currency)}</div></div>
             <div class="detail-position-item"><div class="label">Valor Actual</div><div class="value">${fmtMoney(h.valor_actual, currency)}</div></div>
             <div class="detail-position-item">
@@ -1162,7 +1162,7 @@ async function loadAccuracy(instrumentId, symbol) {
             ${backtestButtonHtml('Ampliar backtest histórico')}
             <h3 class="detail-section-title">Histórico de pronósticos</h3>
             <div id="detail-historico-section">${historicoBlockHtml(symbol)}</div>
-            <h3 class="detail-section-title">Calibración</h3>
+            <h3 class="detail-section-title">${glossaryTerm('calibracion_kronos', 'Calibración')}</h3>
             <div id="detail-calibracion-section">${calibracionBlockHtml(symbol)}</div>
         `;
         renderAccuracyChart($('detail-accuracy-chart'), data);

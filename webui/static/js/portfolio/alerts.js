@@ -96,6 +96,29 @@ function dividendoAlerts(rentas) {
         }));
 }
 
+// Bonos/ON YA vencidos en cartera (ver conversación/auditoría, hallazgo
+// 2.11: "Notificaciones no avisa de bonos vencidos") -- bonoAlerts() de
+// arriba viene de upcoming_fixed_income_events, que descarta de raíz
+// cualquier instrumento con maturity_date < hoy ("upcoming" = solo futuro
+// por diseño, ver portfolio/fixed_income.py) -- nunca iba a generar este
+// aviso. Esta es la contraparte: mira directo holdings.instrument.maturity_date,
+// sin pasar por ese filtro.
+function vencidoAlerts(holdings) {
+    const today = new Date().toISOString().slice(0, 10);
+    return holdings
+        .filter((h) => ['bono', 'on'].includes(h.instrument.type) && h.instrument.maturity_date && h.instrument.maturity_date < today)
+        .map((h) => ({
+            // 'bono_vencido', NUNCA 'vencido' a secas -- ese kind ya lo usa
+            // prestamoAlerts con su propio texto de glosario específico de
+            // préstamos (ver shared/glossary.js::notif_vencido), reusarlo acá
+            // mostraría ese texto equivocado sobre un bono.
+            id: `bono-vencido:${h.instrument.id}`,
+            kind: 'bono_vencido',
+            symbol: h.instrument.symbol,
+            text: `${h.instrument.symbol} venció el ${fmtDate(h.instrument.maturity_date)} y sigue en tu cartera.`,
+        }));
+}
+
 // Fase 1 (ver conversación): ANTES pedía 1 /forecasts/latest POR TENENCIA en
 // paralelo (Promise.all) -- con una cartera de ~25 tenencias eso saturaba el
 // pool de conexiones por-origen del browser y frenaba el resto de la página
@@ -143,6 +166,7 @@ export async function computeAlerts() {
     ]);
     const ventas = await ventaAlerts(holdings);
     return [
+        ...vencidoAlerts(holdings),
         ...plazoFijoAlerts(plazos),
         ...caucionAlerts(cauciones),
         ...dividendoAlerts(rentas),

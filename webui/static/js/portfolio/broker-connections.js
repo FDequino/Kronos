@@ -5,6 +5,7 @@
 import { $ } from '../shared/dom.js';
 import { showStatus } from '../shared/status.js';
 import { openModal } from '../shared/modal.js';
+import { infoTooltipHtml } from '../shared/info-tooltip.js';
 import { api } from './api.js';
 
 const BROKER_NAMES = ['PPI', 'IOL', 'Balanz', 'Matrix'];
@@ -39,10 +40,15 @@ function brokerOptionsHtml(selected) {
     return BROKER_NAMES.map((name) => `<option value="${name}" ${name === selected ? 'selected' : ''}>${name}</option>`).join('');
 }
 
+// "Activa"/"Inactiva" (ver conversación/auditoría, hallazgo 2.10: "Activa"
+// sonaba a "probada y funcionando", cuando solo refleja el toggle manual --
+// "Última prueba" ni siquiera persiste, es un resultado efímero de ESTA
+// sesión) -- "Habilitada" es más honesto: dice que participa del saldo
+// unificado, no que la conexión se haya verificado.
 function statusBadgeHtml(account) {
     return account.is_active
-        ? '<span class="ajustes-role-badge badge-success">Activa</span>'
-        : '<span class="ajustes-role-badge badge-muted">Inactiva</span>';
+        ? '<span class="ajustes-role-badge badge-success">Habilitada</span>'
+        : '<span class="ajustes-role-badge badge-muted">Deshabilitada</span>';
 }
 
 function accountRowHtml(account) {
@@ -142,7 +148,7 @@ export async function loadBrokerAccounts() {
         }
         container.innerHTML = `
             <table>
-                <thead><tr><th>Bróker</th><th>Alias</th><th>N° de cuenta</th><th>API Key</th><th>Estado</th><th>Última prueba</th><th></th></tr></thead>
+                <thead><tr><th>Bróker</th><th>Alias</th><th>N° de cuenta</th><th>API Key</th><th>Estado${infoTooltipHtml('<div>"Habilitada" solo significa que la cuenta participa del saldo/tenencias unificadas -- no que la conexión se haya probado y funcione. Usá 🔌 "Probar conexión" para verificar de verdad.</div>')}</th><th>Última prueba${infoTooltipHtml('<div>Resultado de la última vez que probaste la conexión EN ESTA SESIÓN -- no se guarda entre recargas de la página.</div>')}</th><th></th></tr></thead>
                 <tbody>${accounts.map(accountRowHtml).join('')}</tbody>
             </table>
         `;

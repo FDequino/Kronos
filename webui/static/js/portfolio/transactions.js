@@ -36,7 +36,7 @@ const TX_COLUMNS = [
     { key: 'instrumento', label: 'Instrumento', numeric: false },
     { key: 'tipo', label: 'Tipo', numeric: false },
     { key: 'cantidad', label: 'Cantidad', numeric: true },
-    { key: 'precio', label: 'Precio', numeric: true },
+    { key: 'precio', label: 'Precio', numeric: true, term: 'precio_bono_unidad' },
     { key: 'monto', label: 'Monto', numeric: true },
     { key: 'comision', label: 'Comisión', numeric: true, term: 'comision_tx' },
     { key: 'moneda', label: 'Moneda', numeric: false, sortable: false },
@@ -66,11 +66,22 @@ const TX_SEARCH_CONFIG = {
     filters: [
         { key: 'compra', label: 'Compra', block: 'Tipo', test: (tx) => tx.tipo === 'compra' },
         { key: 'venta', label: 'Venta', block: 'Tipo', test: (tx) => tx.tipo === 'venta' },
+        // Moneda (ver conversación/auditoría, hallazgo 2.5: "faltan filtros...
+        // de moneda/cuenta en Transacciones") -- la moneda de una transacción
+        // es la de su instrumento (ver instrumento-moneda en la columna
+        // "Moneda" de esta misma tabla), nunca un campo propio de tx.
+        { key: 'ars', label: 'ARS', block: 'Moneda', test: (tx) => instrumentById.get(tx.instrument_id)?.currency === 'ARS' },
+        { key: 'usd', label: 'USD', block: 'Moneda', test: (tx) => instrumentById.get(tx.instrument_id)?.currency === 'USD' },
     ],
     groupBy: [
         { key: 'instrument', label: 'Instrumento', value: (tx) => instrumentById.get(tx.instrument_id)?.symbol || `#${tx.instrument_id}` },
         { key: 'tipo', label: 'Tipo', value: (tx) => (tx.tipo === 'compra' ? 'Compra' : 'Venta') },
         { key: 'mes', label: 'Mes', value: (tx) => tx.fecha.slice(0, 7) },
+        // "Cuenta" (ver auditoría, hallazgo 2.5) es texto libre por
+        // instrumento (instruments.cuenta, cargado por import de reporte de
+        // bróker) -- sin un set fijo de valores no se puede armar un filtro
+        // de checkboxes razonable, pero sí agrupar por lo que haya.
+        { key: 'cuenta', label: 'Cuenta', value: (tx) => instrumentById.get(tx.instrument_id)?.cuenta || 'Sin cuenta' },
     ],
 };
 
@@ -83,6 +94,11 @@ const RENTA_SEARCH_CONFIG = {
         { key: 'dividendo', label: 'Dividendo', block: 'Tipo', test: (r) => r.tipo === 'dividendo' },
         { key: 'renta', label: 'Renta', block: 'Tipo', test: (r) => r.tipo === 'renta' },
         { key: 'amortizacion', label: 'Amortización', block: 'Tipo', test: (r) => r.tipo === 'amortizacion' },
+        // Moneda (ver auditoría, hallazgo 2.5) -- rentas_dividendos SÍ tiene
+        // su propio campo moneda (a diferencia de transacciones, que la saca
+        // del instrumento).
+        { key: 'ars', label: 'ARS', block: 'Moneda', test: (r) => r.moneda === 'ARS' },
+        { key: 'usd', label: 'USD', block: 'Moneda', test: (r) => r.moneda === 'USD' },
     ],
     groupBy: [
         { key: 'symbol', label: 'Símbolo', value: (r) => r.symbol },
@@ -237,7 +253,11 @@ function renderHistory() {
             </table>
         </div>
     `;
-    renderTxSummary(inRange);
+    // result (post búsqueda/filtros de search-bar), no inRange (que solo
+    // tiene aplicado el rango de fechas) -- antes el Resumen no reflejaba
+    // buscar/filtrar, solo el período (ver conversación/auditoría, hallazgo
+    // 2.5: "los KPIs no se actualizan al buscar o filtrar").
+    renderTxSummary(result.grouped ? result.groups.flatMap((g) => g.items) : result.items);
 
     const rerender = () => renderHistory();
     mountColumnToggle($('tx-columns-slot'), txColumns, rerender);

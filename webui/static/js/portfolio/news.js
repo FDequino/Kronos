@@ -35,6 +35,8 @@ import { api } from './api.js';
 import { createSearchBar, applySearchState, tableBodyRowsHtml, wireGroupToggles } from '../shared/search-bar.js';
 import { openModal, closeModal } from '../shared/modal.js';
 import { goBack } from '../shared/nav-history.js';
+import { infoTooltipHtml } from '../shared/info-tooltip.js';
+import { glossaryText } from '../shared/glossary.js';
 
 const NEWS_RISK_TAG_CLASS = { BAJO: 'tag-positive', MEDIO: 'tag-warning', ALTO: 'tag-negative' };
 const IMPACT_TAG_CLASS = { positivo: 'tag-positive', negativo: 'tag-negative', neutral: 'tag-neutral' };
@@ -89,8 +91,11 @@ function flattenNewsItems(entries) {
     return items;
 }
 
+// ⓘ aparte (ver conversación/auditoría, hallazgo 3: "el cartel 'BAJO' en
+// cada noticia" sin ninguna explicación).
+const RISK_LEVEL_TOOLTIP = infoTooltipHtml(`<div>${glossaryText('riesgo_evento_noticia')}</div>`);
 function riskTagHtml(item) {
-    return `<span class="tag ${NEWS_RISK_TAG_CLASS[item.risk_level] || 'tag-neutral'}">${item.risk_level}</span>`;
+    return `<span class="tag ${NEWS_RISK_TAG_CLASS[item.risk_level] || 'tag-neutral'}">${item.risk_level}</span>${RISK_LEVEL_TOOLTIP}`;
 }
 
 // Secciones explícitas (ver conversación: "quiero que abra la noticia, y

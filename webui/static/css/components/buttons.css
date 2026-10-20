@@ -10,6 +10,11 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    /* Ver conversación/auditoría, hallazgo 4: "'Agregar a cartera' se parte
+       en varias líneas en el catálogo" -- un botón angosto adentro de una
+       celda de tabla no tenía por qué partir su texto, ningún botón de la
+       app debería. */
+    white-space: nowrap;
     /* .btn en un <a> (ej. "Ver Gráfico"/"Ver en Cartera", ver conversación,
        pase de UX/UI -- hipervínculos entre pantallas) -- sin esto quedaba
        con el subrayado nativo del link, pisando el aspecto de botón. */

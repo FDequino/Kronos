@@ -6,7 +6,7 @@
 // cambiar el capital inicial virtual. Misma carga perezosa que
 // core-satellite.js.
 import { $ } from '../shared/dom.js';
-import { fmt, fmtMoney, fmtPct } from '../shared/format.js';
+import { fmt, fmtMoney, fmtPct, fmtQty } from '../shared/format.js';
 import { showStatus } from '../shared/status.js';
 import { api } from './api.js';
 import { SHIELD_ICON, BOLT_ICON, TARGET_ICON, STOP_ICON, CLOCK_ICON } from '../shared/icons.js';
@@ -109,7 +109,7 @@ async function loadPositions() {
                             <td>${dualPrice(p.current_price_usd, p.current_price_ars)}</td>
                             <td>${dualPrice(p.take_profit_price_usd, p.take_profit_price_ars)}</td>
                             <td>${dualPrice(p.stop_loss_price_usd, p.stop_loss_price_ars)}</td>
-                            <td>${fmt(p.quantity, 4)}</td>
+                            <td>${fmtQty(p.quantity)}</td>
                             <td>${p.unrealized_pnl_usd === null ? '—' : `${signedMoney(p.unrealized_pnl_usd, 'USD')} (${signedPct(p.unrealized_pnl_pct)})`}</td>
                         </tr>
                     `).join('')}</tbody>

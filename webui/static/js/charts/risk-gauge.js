@@ -1,5 +1,5 @@
 import { fmtPct, fmtMoney, fmtDate } from '../shared/format.js';
-import { glossaryTerm } from '../shared/glossary.js';
+import { glossaryTerm, glossaryText } from '../shared/glossary.js';
 import { infoTooltipHtml, riskTooltipContentHtml } from '../shared/info-tooltip.js';
 
 export const LABEL_COLOR = { bajo: '#30c177', medio: '#e0a63c', alto: '#ef5b5b' };
@@ -98,41 +98,66 @@ function _gaugeTile(label, value, max, zones, displayValue, tagLabel, tooltipHtm
 }
 
 // Fase 17: el usuario pidió que el tooltip de cada gauge explique la fórmula
-// Y la cuenta hecha con sus números reales, no solo la definición genérica
-// (eso ya lo daba glossaryTerm) -- "pensá como podemos mejorarlo".
+// Y la cuenta hecha con sus números reales, no solo la definición genérica.
+// FIX (ver conversación/auditoría, hallazgo 3: "doble tooltip superpuesto")
+// -- antes el label de cada gauge llevaba un glossaryTerm() (subrayado
+// punteado, con la definición genérica) Y, pegado al lado, este ⓘ propio
+// (con fórmula + números reales) -- dos triggers de tooltip uno al lado del
+// otro para EL MISMO concepto se leía como un bug visual. Ahora cada
+// tooltip arranca SIEMPRE con la misma explicación que antes daba
+// glossaryText(), y le agrega la fórmula+números reales solo cuando hay
+// datos -- un único ⓘ por gauge, nunca se pierde contenido.
+// Umbrales bajo/medio/alto EXPLÍCITOS en el tooltip de cada gauge (ver
+// conversación/auditoría, hallazgo 3: "por qué 33,9% de volatilidad es
+// 'medio'" -- antes solo se veía en el color de la barra del gauge, nunca
+// como número) -- mismos valores que ya usan las zonas de color pasadas a
+// _gaugeTile más abajo, nunca un segundo umbral inventado aparte.
+function _bandThresholdLine(low, high, unit = '%') {
+    return `banda: bajo < ${low}${unit} · medio ${low}-${high}${unit} · alto > ${high}${unit}`;
+}
+
 function _volatilityTooltip(vol, nDays) {
-    if (vol === null || vol === undefined || !nDays) return '';
+    const explanation = glossaryText('volatilidad_anualizada');
+    const bandLine = _bandThresholdLine(25, 45);
+    if (vol === null || vol === undefined || !nDays) return infoTooltipHtml(riskTooltipContentHtml(explanation, [bandLine]));
     const dailyVol = vol / Math.sqrt(252);
     return infoTooltipHtml(riskTooltipContentHtml(
-        'Cuánto se mueve el valor de tu cartera (en USD, excluyendo aportes/retiros) de un día a otro, proyectado a un año.',
+        explanation,
         [
             'volatilidad anualizada = desvío estándar de los retornos diarios × √252',
             `tu desvío diario fue ${fmtPct(dailyVol)} sobre los últimos ${nDays} días hábiles`,
             `${fmtPct(dailyVol)} × √252 = ${fmtPct(vol)}`,
+            bandLine,
         ],
     ));
 }
 
 function _drawdownTooltip(dd, peakDate, troughDate) {
-    if (dd === null || dd === undefined || !peakDate) return '';
+    const explanation = glossaryText('caida_maxima');
+    const bandLine = _bandThresholdLine(10, 20);
+    if (dd === null || dd === undefined || !peakDate) return infoTooltipHtml(riskTooltipContentHtml(explanation, [bandLine]));
     return infoTooltipHtml(riskTooltipContentHtml(
-        'La mayor caída desde un máximo previo hasta el mínimo posterior, sobre el valor de tu cartera en USD.',
+        explanation,
         [
             'caída máxima = (pico − valle) / pico',
             `tu pico más reciente fue el ${fmtDate(peakDate)}`,
             `el valle posterior más bajo fue el ${fmtDate(troughDate)}`,
             `resultado: -${fmtPct(dd)}`,
+            bandLine,
         ],
     ));
 }
 
 function _top5Tooltip(top5pct, positions) {
-    if (top5pct === null || top5pct === undefined || !positions?.length) return '';
+    const explanation = glossaryText('top5_concentracion');
+    const bandLine = _bandThresholdLine(40, 65);
+    if (top5pct === null || top5pct === undefined || !positions?.length) return infoTooltipHtml(riskTooltipContentHtml(explanation, [bandLine]));
     return infoTooltipHtml(riskTooltipContentHtml(
-        'Qué % de la cartera (normalizado a USD con la cotización MEP) representan tus 5 posiciones más grandes — incluye cauciones y préstamos. Más alto = menos diversificado.',
+        explanation,
         [
             ...positions.map((p) => `${p.symbol}: ${fmtPct(p.pct)}`),
             `suma = ${fmtPct(top5pct)}`,
+            bandLine,
         ],
     ));
 }
@@ -162,19 +187,19 @@ export function renderPortfolioRiskGauges(container, metrics) {
     container.innerHTML = `
         <div class="gauge-row">
             ${_gaugeTile(
-                glossaryTerm('volatilidad_anualizada', 'Volatilidad anualizada'), vol ?? 0, 60,
+                'Volatilidad anualizada', vol ?? 0, 60,
                 [{ from: 0, to: 25, color: GAUGE_COLOR.bajo }, { from: 25, to: 45, color: GAUGE_COLOR.medio }, { from: 45, to: 60, color: GAUGE_COLOR.alto }],
                 vol !== null && vol !== undefined ? fmtPct(vol) : '—', _bandLabel(vol, 25, 45),
                 _volatilityTooltip(vol, metrics.n_days),
             )}
             ${_gaugeTile(
-                glossaryTerm('caida_maxima', 'Caída máxima'), dd ?? 0, 40,
+                'Caída máxima', dd ?? 0, 40,
                 [{ from: 0, to: 10, color: GAUGE_COLOR.bajo }, { from: 10, to: 20, color: GAUGE_COLOR.medio }, { from: 20, to: 40, color: GAUGE_COLOR.alto }],
                 dd !== null && dd !== undefined ? fmtPct(dd) : '—', _bandLabel(dd, 10, 20),
                 _drawdownTooltip(dd, metrics.max_dd_peak_date, metrics.max_dd_trough_date),
             )}
             ${_gaugeTile(
-                glossaryTerm('top5_concentracion', 'Top 5 posiciones'), top5 ?? 0, 100,
+                'Top 5 posiciones', top5 ?? 0, 100,
                 [{ from: 0, to: 40, color: GAUGE_COLOR.bajo }, { from: 40, to: 65, color: GAUGE_COLOR.medio }, { from: 65, to: 100, color: GAUGE_COLOR.alto }],
                 top5 !== null && top5 !== undefined ? fmtPct(top5) : '—', _bandLabel(top5, 40, 65),
                 _top5Tooltip(top5, metrics.top5_positions),

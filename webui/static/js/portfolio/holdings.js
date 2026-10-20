@@ -97,7 +97,8 @@ export async function loadHoldings() {
     const { data: bundle } = await api.dashboardBundle();
     lastCauciones = bundle.cauciones;
     currentCurrency = bundle.settings.display_currency;
-    $('holdings-currency-note').textContent = `Mostrando en ${currentCurrency}`;
+    const otherCurrency = currentCurrency === 'ARS' ? 'USD' : 'ARS';
+    $('holdings-currency-note').textContent = `Mostrando en ${currentCurrency} (tocar para ver en ${otherCurrency})`;
 
     renderGroups(bundle.holdings);
     await renderPatrimonio(bundle);
@@ -309,6 +310,16 @@ export function initHoldingsView() {
         onChange: (state) => { tenenciasSearchState = state; renderGroups(lastHoldings); },
     });
     $('refresh-quotes-btn').addEventListener('click', refreshQuotes);
+    // "Mostrando en USD" no era clickeable -- había que ir hasta Ajustes
+    // para cambiar la moneda (ver conversación/auditoría, hallazgo 2.5).
+    // Mismo mecanismo que el toggle de Ajustes → Moneda: togglea
+    // display_currency y dispara 'currency-changed' para que todas las
+    // vistas que escuchan ese evento (esta incluida) se actualicen solas.
+    $('holdings-currency-note').addEventListener('click', async () => {
+        const next = currentCurrency === 'ARS' ? 'USD' : 'ARS';
+        await api.updateSettings({ display_currency: next });
+        document.dispatchEvent(new CustomEvent('currency-changed', { detail: next }));
+    });
     onQuoteUpdate((event) => scheduleQuotePatch(event.instrument_id));
     $('holdings-groups').addEventListener('change', (e) => {
         if (e.target.classList.contains('manual-price-input')) saveManualPrice(e.target);

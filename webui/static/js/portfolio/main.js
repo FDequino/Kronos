@@ -15,6 +15,10 @@ import { initQuoteStream } from './quote-stream.js';
 import { initTabs } from './tabs.js';
 import { initSubtabs } from '../shared/subtabs.js';
 import { initStickyOffset } from '../shared/sticky-offset.js';
+// Efecto lateral únicamente (ver conversación/auditoría, hallazgo 3) --
+// repositiona paneles de tooltip que quedarían cortados contra el borde
+// derecho, sin ningún init explícito que llamar.
+import '../shared/tooltip-position.js';
 
 document.addEventListener('DOMContentLoaded', async () => {
     // Fase 15: initTabs() corre DESPUÉS de initSubtabs() y de cada

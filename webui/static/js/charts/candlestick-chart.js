@@ -466,6 +466,12 @@ export function renderRsiPane(container, forecast) {
 
     const rsi = chart.addSeries(LightweightCharts.LineSeries, { color: palette.accentStrong, lineWidth: 1 });
     rsi.setData(zipSeries(forecast.historical, forecast.indicators.rsi_14));
+    // Eje fijo 0-100 (ver conversación/auditoría, hallazgo 4: "el eje del
+    // RSI llega hasta 120 cuando el RSI va de 0 a 100") -- sin esto, el
+    // autoscale de la librería agrega su margen default sobre el máximo
+    // REAL observado en la serie, que puede terminar mostrando un eje hasta
+    // ~120 aunque el RSI nunca pase de 100 por definición.
+    rsi.applyOptions({ autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }) });
 
     chart.timeScale().fitContent();
     observeChartResize(chart, container);

@@ -15,6 +15,15 @@
     flex: 1;
     min-width: 0;
     display: flex;
+    /* flex-wrap (ver conversación/auditoría, hallazgo 4: "el texto del chip
+       de filtro se superpone con el placeholder del buscador") -- con 1
+       sola fila (default), un pill que ya ocupaba 2 líneas internamente
+       (.search-bar-pills es flex-wrap:wrap aparte) quedaba centrado
+       verticalmente junto al input de una sola línea, y el recorte de
+       overflow:hidden de abajo terminaba superponiendo el input sobre la
+       segunda línea del pill. Envolver acá deja que el input baje a su
+       propia línea cuando no entra al lado de los pills. */
+    flex-wrap: wrap;
     align-items: center;
     gap: 8px;
     padding: 7px 10px;

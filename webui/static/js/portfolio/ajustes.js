@@ -31,12 +31,40 @@ async function loadQuantControls() {
         const { data } = await api.satelliteExitParams();
         $('ajustes-satellite-tp-input').value = data.take_profit_pct;
         $('ajustes-satellite-sl-input').value = data.stop_loss_pct;
+        renderSatelliteBreakeven();
     } catch { /* deja los inputs vacios si falla -- nunca inventa un valor */ }
 
     try {
         const { data } = await api.coreParams();
         $('ajustes-core-threshold-input').value = data.min_efficiency_score;
     } catch { /* idem */ }
+
+    try {
+        const { data } = await api.signalConfig();
+        if (data.pairs_allocation_pct !== null && data.pairs_allocation_pct !== undefined) {
+            $('ajustes-pairs-allocation-input').value = data.pairs_allocation_pct;
+        }
+        if (data.factor_allocation_pct !== null && data.factor_allocation_pct !== undefined) {
+            $('ajustes-factor-allocation-input').value = data.factor_allocation_pct;
+        }
+    } catch { /* idem */ }
+}
+
+// Breakeven win rate (ver conversación/auditoría, hallazgo 2.10: "con TP 4%/
+// SL 9% hace falta >69% de aciertos para empatar") -- se recalcula en vivo
+// contra lo que haya tipeado en los 2 inputs en ESE momento, nunca un valor
+// guardado: el usuario tiene que ver el trade-off ANTES de tocar "Guardar".
+function renderSatelliteBreakeven() {
+    const hint = $('ajustes-satellite-breakeven-hint');
+    if (!hint) return;
+    const tp = Number($('ajustes-satellite-tp-input').value);
+    const sl = Number($('ajustes-satellite-sl-input').value);
+    if (!tp || !sl || tp <= 0 || sl <= 0) {
+        hint.textContent = '';
+        return;
+    }
+    const breakeven = (sl / (tp + sl)) * 100;
+    hint.textContent = `Con este TP/SL hace falta >${fmt(breakeven, 0)}% de aciertos para empatar en el largo plazo.`;
 }
 
 function initQuantControls() {
@@ -57,14 +85,20 @@ function initQuantControls() {
         }
     });
 
+    $('ajustes-satellite-tp-input').addEventListener('input', renderSatelliteBreakeven);
+    $('ajustes-satellite-sl-input').addEventListener('input', renderSatelliteBreakeven);
+
     $('ajustes-save-quant-btn').addEventListener('click', async () => {
         const take_profit_pct = Number($('ajustes-satellite-tp-input').value);
         const stop_loss_pct = Number($('ajustes-satellite-sl-input').value);
         const min_efficiency_score = Number($('ajustes-core-threshold-input').value);
+        const pairs_allocation_pct = Number($('ajustes-pairs-allocation-input').value);
+        const factor_allocation_pct = Number($('ajustes-factor-allocation-input').value);
         try {
             await Promise.all([
                 api.updateSatelliteExitParams({ take_profit_pct, stop_loss_pct }),
                 api.updateCoreParams({ min_efficiency_score }),
+                api.updateSignalConfig({ pairs_allocation_pct, factor_allocation_pct }),
             ]);
             showStatus('status-banner', 'success', 'Configuración del motor actualizada');
         } catch (error) {

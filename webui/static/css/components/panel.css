@@ -64,6 +64,20 @@
     gap: 12px;
 }
 
+/* "Mostrando en USD" ahora es clickeable para togglear la moneda sin ir a
+   Ajustes (ver conversación/auditoría, hallazgo 2.5) -- deja clara la
+   affordance con subrayado punteado + cursor, mismo criterio visual que
+   .glossary-term para "esto hace algo si lo tocás". */
+#holdings-currency-note {
+    cursor: pointer;
+    text-decoration: underline dotted;
+    text-underline-offset: 3px;
+}
+
+#holdings-currency-note:hover {
+    color: var(--text-primary);
+}
+
 /* Nota/aviso (hint, status) que precede a una tabla dentro de un panel-body
    -- separacion antes del container de la tabla en si. */
 .panel-note {

@@ -42,12 +42,39 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
     font-size: var(--step--1);
     color: var(--text-secondary);
+    /* Reset explícito (ver conversación/auditoría, hallazgo 3: "texto en
+       MAYÚSCULAS en tooltips, difícil de leer") -- el ⓘ suele vivir dentro
+       de un label en mayúsculas (ej. ".l"/".stat-label"), y text-transform
+       es heredable: sin este reset, el PANEL (prosa explicativa) heredaba
+       el mismo mayúsculas del label que lo contiene. Mismo criterio que ya
+       tenía .glossary-term-panel más abajo. */
+    text-transform: none;
+    letter-spacing: normal;
+    font-style: normal;
+    font-weight: 400;
+    white-space: normal;
 }
 
+/* :focus-visible, NUNCA :focus-within a secas -- mismo riesgo que
+   .glossary-term de quedar "pegado" abierto tras un click de mouse (ver
+   comentario más abajo, hallazgo 3 de la auditoría). El wrapper
+   (tabindex=0) y el botón interno pueden recibir foco por separado, así
+   que se cubren los dos caminos. */
 .info-tooltip:hover .info-tooltip-panel,
-.info-tooltip:focus-within .info-tooltip-panel {
+.info-tooltip:focus-visible .info-tooltip-panel,
+.info-tooltip-trigger:focus-visible + .info-tooltip-panel {
     display: block;
     animation: dropdown-in 140ms ease-out;
+}
+
+/* Cuando el trigger está cerca del borde derecho de la ventana, se abre
+   hacia la izquierda en vez de hacia la derecha (ver
+   webui/static/js/shared/tooltip-position.js -- sin esto, el panel se
+   cortaba contra el borde y generaba scroll horizontal). */
+.info-tooltip-panel.tooltip-panel-align-right,
+.glossary-term-panel.tooltip-panel-align-right {
+    left: auto;
+    right: 0;
 }
 
 /* Termino de glosario inline (subrayado punteado) -- alternativa mas liviana
@@ -82,8 +109,17 @@
     cursor: auto;
 }
 
+/* :focus-visible, NUNCA :focus a secas (ver conversación/auditoría,
+   hallazgo 3: "el tooltip de TWR queda abierto al sacar el mouse... y
+   bloquea los clics hasta tocar en otro lado") -- un click de MOUSE sobre
+   este span (tabindex=0) dispara :focus normal, que no se limpia solo al
+   mover el mouse (a diferencia de :hover): quedaba "pegado" abierto,
+   tapando lo que hubiera debajo/encima, hasta que otra cosa robara el foco.
+   :focus-visible solo se activa con navegación por teclado -- un click de
+   mouse deja de abrir el panel por este camino, :hover sigue cubriendo ese
+   caso con el cierre automático esperado al sacar el mouse. */
 .glossary-term:hover .glossary-term-panel,
-.glossary-term:focus .glossary-term-panel {
+.glossary-term:focus-visible .glossary-term-panel {
     display: block;
     animation: dropdown-in 140ms ease-out;
 }

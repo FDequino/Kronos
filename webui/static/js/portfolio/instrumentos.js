@@ -44,7 +44,7 @@ const COLUMNS = [
     { key: 'name', label: 'Nombre', numeric: false },
     { key: 'clase', label: 'Clase', numeric: false, term: 'clase_taxonomia' },
     { key: 'en_cartera', label: 'En cartera', numeric: false, sortable: false },
-    { key: 'price', label: 'Precio', numeric: true },
+    { key: 'price', label: 'Precio', numeric: true, term: 'precio_bono_unidad' },
     { key: 'pct_change', label: 'Var. %', numeric: true },
     {
         key: 'valor', label: 'Valorizado', numeric: true, aggregate: 'sum',

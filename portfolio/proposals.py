@@ -100,10 +100,14 @@ def _event_candidates(conn, instruments):
     return candidates
 
 
-def _rebalance_candidates(conn, holdings_display, cauciones, config):
+def _rebalance_candidates(conn, holdings_display, cauciones, config, display_currency='ARS'):
     """holdings_display YA paso por _apply_display_currency -- las magnitudes
     tienen que estar en una unica moneda comparable para que sumar/dividir de
-    sentido (mismo criterio que buildAllocationSegments del lado frontend)."""
+    sentido (mismo criterio que buildAllocationSegments del lado frontend).
+    display_currency es SOLO para que el texto diga en qué moneda está el
+    monto sugerido (ver conversación/auditoría, hallazgo 3: "'Bonos: comprar
+    aprox. 577' sin unidades" -- era un monto de dinero sin la moneda al
+    lado, fácil de confundir con una cantidad de nominales)."""
     targets = db.list_target_allocation(conn)
     if not targets:
         return []
@@ -141,7 +145,7 @@ def _rebalance_candidates(conn, holdings_display, cauciones, config):
             'texto': (
                 f"{label}: objetivo {fmt_es(target_pct, decimals=0)}%, actual {fmt_es(actual_pct, decimals=1)}% "
                 f"(desvío {fmt_es(desvio, decimals=1, signed=True)}pp) -> "
-                f"{('vender' if accion == 'venta' else 'comprar')} aprox. {fmt_es(monto, decimals=0)}."
+                f"{('vender' if accion == 'venta' else 'comprar')} aprox. {display_currency} {fmt_es(monto, decimals=0)}."
             ),
             'evidencia': f"Asignación objetivo configurada en Preferencias; umbral {fmt_es(threshold, decimals=0)}pp.",
         })
@@ -239,7 +243,7 @@ def evaluate_all(conn):
     candidates = []
     candidates += _sl_tp_candidates(conn, holdings_native)
     candidates += _event_candidates(conn, instruments)
-    candidates += _rebalance_candidates(conn, holdings_display, cauciones, config)
+    candidates += _rebalance_candidates(conn, holdings_display, cauciones, config, settings.get('display_currency', 'ARS'))
     candidates += _validated_signal_candidates(conn, holdings_native, config)
     return candidates
 

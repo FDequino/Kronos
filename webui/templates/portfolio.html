@@ -91,6 +91,17 @@
                         <p class="panel-subtitle">Señales accionables de HOY de los 4 motores (Core, Satélite, Pairs Trading, Factor Investing) y las alertas de Arbitraje de Canje, Dólar Sintético y Renta Fija/Carry Trade. Los precios en USD de esta pestaña usan el dólar CCL real del día — es la tasa a la que de verdad se opera un CEDEAR, <strong>no</strong> tu preferencia de cotización elegida en Ajustes → Moneda (que solo se usa para mostrar tu patrimonio).</p>
                     </div>
                 </div>
+                <!-- Filtro por motor + spread mínimo (ver conversación/auditoría,
+                     hallazgo 2.3: "31 oportunidades, 26 son pares de bonos con
+                     spreads de 0,01% a 0,5%, básicamente ruido") -- el umbral
+                     de spread solo descarta motores que de verdad tienen ese
+                     concepto (Carry/Arbitraje/Dólar Sintético). -->
+                <div class="view-toolbar">
+                    <div id="dual-engine-search-bar" class="view-toolbar-grow"></div>
+                    <div class="view-toolbar-actions">
+                        <input type="number" id="dual-engine-min-spread-input" min="0" step="0.1" placeholder="Spread mín. %" style="width:130px;" title="Descarta oportunidades de Carry/Arbitraje/Dólar Sintético con spread por debajo de este %. No afecta Core/Satélite/Pairs/Factor (no tienen spread).">
+                    </div>
+                </div>
                 <div class="view-toolbar">
                     <div id="dual-engine-last-updated" class="view-toolbar-grow hint"></div>
                     <div class="view-toolbar-actions">
@@ -520,6 +531,11 @@
                         </label>
                         <input type="number" id="ajustes-satellite-sl-input" min="0.1" max="100" step="0.1">
                         <span class="hint">El stop real nunca supera este %, aunque el activo sea muy volátil.</span>
+                        <!-- Breakeven win rate (ver conversación/auditoría, hallazgo 2.10:
+                             "con TP 4%/SL 9% hace falta >69% de aciertos para empatar") --
+                             se recalcula en vivo contra los valores de los 2 inputs de arriba,
+                             nunca un número fijo. -->
+                        <span class="hint" id="ajustes-satellite-breakeven-hint"></span>
                     </div>
                     <div class="field">
                         <label for="ajustes-core-threshold-input">
@@ -527,6 +543,30 @@
                         </label>
                         <input type="number" id="ajustes-core-threshold-input" min="0" step="1">
                         <span class="hint">efficiency_score mínimo para que el Core abra una posición (no es un %).</span>
+                    </div>
+                </div>
+                <!-- Pairs/Factor (ver conversación/auditoría, hallazgo 2.10: "no hay
+                     controles para Pairs, Factor ni Carry, sus capitales aparecen en
+                     Oportunidades sin poder configurarse") -- Arbitraje de Canje, Dólar
+                     Sintético y Carry Trade son ALERTAS informativas, nunca tuvieron (ni
+                     necesitan) un % de capital propio, ver portfolio/live_signals.py --
+                     por eso solo Pairs y Factor tienen un control acá, con una aclaración
+                     explícita del resto para no dejar la pregunta sin responder. -->
+                <div class="field-row" style="margin-top: 18px; align-items: flex-start;">
+                    <div class="field">
+                        <label for="ajustes-pairs-allocation-input">
+                            <span class="glossary-term" tabindex="0">Monto sugerido Pairs Trading (%)<span class="glossary-term-panel">% del patrimonio que se muestra como "monto sugerido" en cada oportunidad de Pairs Trading -- informativo, independiente del 100% Core+Satélite (no se resta de ahí).</span></span>
+                        </label>
+                        <input type="number" id="ajustes-pairs-allocation-input" min="0" max="100" step="0.5">
+                    </div>
+                    <div class="field">
+                        <label for="ajustes-factor-allocation-input">
+                            <span class="glossary-term" tabindex="0">Monto sugerido Factor Investing (%)<span class="glossary-term-panel">% del patrimonio que se muestra como "monto sugerido" en la rotación de Factor Investing -- informativo, independiente del 100% Core+Satélite (no se resta de ahí).</span></span>
+                        </label>
+                        <input type="number" id="ajustes-factor-allocation-input" min="0" max="100" step="0.5">
+                    </div>
+                    <div class="field" style="flex: 1 1 260px;">
+                        <span class="hint">Arbitraje de Canje, Dólar Sintético y Carry Trade son alertas informativas de un desvío puntual -- nunca tuvieron un % de capital propio para configurar, a diferencia de Pairs/Factor.</span>
                     </div>
                 </div>
                 <div class="view-toolbar-actions" style="margin-top: 18px;">
@@ -639,7 +679,7 @@
                 <div class="panel-header">
                     <div class="panel-header-text">
                         <h2>Cuentas de bróker (Multi-Broker)</h2>
-                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker — nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano en esta instalación local y nunca se muestran completos, solo los últimos 4 caracteres.</p>
+                        <p class="panel-subtitle">Conexión API en vivo opcional para consultar saldo y tenencias directo del bróker — nunca reemplaza la carga manual de instrumentos/transacciones. La clave y el secreto se guardan en texto plano, nunca se muestran completos (solo los últimos 4 caracteres) — pero esta instalación está publicada en internet detrás de una sola contraseña: si esa contraseña se compromete, las claves de bróker guardadas acá quedan expuestas en texto plano.</p>
                     </div>
                 </div>
                 <div class="view-toolbar">

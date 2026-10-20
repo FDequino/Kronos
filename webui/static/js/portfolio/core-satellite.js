@@ -12,6 +12,7 @@ import { fmt, fmtPct, fmtMoney, fmtDate } from '../shared/format.js';
 import { loadingHtml } from '../shared/loading.js';
 import { activateSubtab } from '../shared/subtabs.js';
 import { infoTooltipHtml, riskTooltipContentHtml } from '../shared/info-tooltip.js';
+import { createSearchBar, applySearchState } from '../shared/search-bar.js';
 import { api } from './api.js';
 
 // Explicaciones de indicadores (ver conversacion, "Perfiles de Inversion")
@@ -53,6 +54,30 @@ let lastSignals = null; // respuesta cruda de /api/signals, para recalcular mont
 let allocation = { core_pct: 70, satellite_pct: 30 };
 let opportunitiesView = 'cards'; // 'cards' | 'list' (ver conversación: vista de lista para escanear muchas señales de un vistazo)
 
+// Filtro por motor + spread mínimo (ver conversación/auditoría, hallazgo 2.3:
+// "31 oportunidades, 26 son pares de bonos con spreads de 0,01% a 0,5%,
+// básicamente ruido -- no hay filtro por motor ni umbral mínimo de spread").
+// Los "26 pares" son Carry Trade (fixed_income_signals, una fila por bono
+// CER emparejado con su LECAP más cercano, ver portfolio/fixed_income.py) --
+// el umbral de spread solo aplica a motores que de verdad tienen spread_pct
+// (fixed_income/arbitrage/synthetic_dollar); Core/Satélite/Pairs/Factor no
+// tienen ese concepto y nunca se descartan por este filtro.
+const OPPORTUNITIES_SEARCH_CONFIG = {
+    searchFields: [{ key: 'texto', label: 'Instrumento', value: (item) => item.searchText }],
+    filters: [
+        { key: 'core', label: 'Core', block: 'Motor', test: (item) => item.engine === 'core' },
+        { key: 'satellite', label: 'Satélite', block: 'Motor', test: (item) => item.engine === 'satellite' },
+        { key: 'pairs', label: 'Pairs Trading', block: 'Motor', test: (item) => item.engine === 'pairs' },
+        { key: 'factor', label: 'Factor Investing', block: 'Motor', test: (item) => item.engine === 'factor' },
+        { key: 'arbitrage', label: 'Arbitraje de Canje', block: 'Motor', test: (item) => item.engine === 'arbitrage' },
+        { key: 'synthetic_dollar', label: 'Dólar Sintético', block: 'Motor', test: (item) => item.engine === 'synthetic_dollar' },
+        { key: 'fixed_income', label: 'Carry Trade', block: 'Motor', test: (item) => item.engine === 'fixed_income' },
+    ],
+    groupBy: [],
+};
+let opportunitiesSearchState = { query: '', activeFilters: new Set(), groupKey: null };
+let opportunitiesMinSpreadPct = 0;
+
 // Qué es cada motor/alerta y qué significan sus métricas (ver conversación:
 // "no entiendo qué son" las tarjetas) -- un tooltip por tipo de tarjeta,
 // pegado al badge de motor, mismo patrón que INDICATOR_TOOLTIPS más arriba.
@@ -69,8 +94,8 @@ const ENGINE_TOOLTIPS = {
         <div class="info-tooltip-formula">Z-score = cuán lejos está el spread actual de su media (más alto, más estirado)\nCointegración p = confiabilidad de la relación (cuanto más bajo, mejor)\nHedge ratio = cuánto del activo caro corresponde vender por cada unidad del barato</div>
     `),
     factor: infoTooltipHtml(`
-        <div>Factor Investing: rotación hacia los instrumentos con mejor combinación de 4 factores — no es un trade con entrada/salida, es a qué instrumentos conviene estar expuesto esta semana.</div>
-        <div class="info-tooltip-formula">Composite = ranking combinado de los 4 factores de abajo\nMomentum = retorno reciente (más alto, mejor)\nLow-Vol = baja volatilidad (más alto, más estable)\nValue = qué tan barato está relativo a sus fundamentals</div>
+        <div>Factor Investing: rotación hacia los instrumentos con mejor combinación de 3 factores — no es un trade con entrada/salida, es a qué instrumentos conviene estar expuesto esta semana.</div>
+        <div class="info-tooltip-formula">Composite = promedio ponderado de los z-scores de los 3 factores de abajo (escala tipo z-score: 0 = promedio del universo, +1/-1 ≈ un desvío estándar por encima/debajo, la mayoría cae entre -2 y +2) -- más alto, mejor combinación\nMomentum = retorno reciente (más alto, mejor)\nLow-Vol = baja volatilidad (más alto, más estable)\nValue = qué tan barato está relativo a sus fundamentals</div>
     `),
     arbitrage: infoTooltipHtml(`
         <div>Arbitraje de Canje MEP/CCL: el mismo bono cotiza distinto según la plaza en la que se opera (ley argentina vs. ley Nueva York) — cuando la brecha se estira, conviene pasar de la versión cara a la barata.</div>
@@ -251,6 +276,12 @@ function factorCardHtml(sig) {
             <div class="opportunity-card-prices">
                 <div><span class="l">Monto sugerido${infoTooltipHtml('<div>Capital asignado a Factor Investing (ver Ajustes → Estrategia y Motores), repartido en partes iguales entre los instrumentos del Top N de esta rotación.</div>')}</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
             </div>
+            <!-- "Ver Gráfico" (ver conversación/auditoría, hallazgo 2.3): ya
+                 estaba en factorRowHtml (vista Lista) pero faltaba acá
+                 (vista Tarjetas) -- misma acción, ambas vistas. -->
+            <div class="opportunity-card-actions">
+                <a href="#detalle/${encodeURIComponent(sig.symbol)}" class="btn btn-secondary">Ver Gráfico</a>
+            </div>
         </div>
     `;
 }
@@ -354,6 +385,12 @@ function fixedIncomeCarryCardHtml(sig) {
                 <div><span class="l">Spread mensual</span><span class="v">${fmtPct(sig.spread_pct)}</span></div>
             </div>
             <p class="hint">${sig.note}</p>
+            <!-- Ver conversación/auditoría, hallazgo 2.3: ni tarjeta ni lista
+                 tenían ninguna acción -- apunta al lado RECOMENDADO ("Rota
+                 hacia"), el instrumento sobre el que de verdad se actuaría. -->
+            <div class="opportunity-card-actions">
+                <a href="#detalle/${encodeURIComponent(betterSymbol)}" class="btn btn-secondary">Ver Gráfico</a>
+            </div>
         </div>
     `;
 }
@@ -370,7 +407,7 @@ function fixedIncomeCarryRowHtml(sig) {
                 <div class="hint">${sig.note}</div>
             </td>
             <td>—</td>
-            <td>—</td>
+            <td><a href="#detalle/${encodeURIComponent(betterSymbol)}" class="btn btn-secondary">Ver Gráfico</a></td>
         </tr>
     `;
 }
@@ -391,17 +428,24 @@ function renderOpportunityCards() {
     const arbitrageFn = opportunitiesView === 'list' ? arbitrageRowHtml : arbitrageCardHtml;
     const syntheticDollarFn = opportunitiesView === 'list' ? syntheticDollarRowHtml : syntheticDollarCardHtml;
     const fixedIncomeFn = opportunitiesView === 'list' ? fixedIncomeCarryRowHtml : fixedIncomeCarryCardHtml;
-    const coreItems = lastSignals.core_signals.map((s) => htmlFn(s, allocation.core_pct, true, eventRiskNotes));
-    const satelliteItems = lastSignals.satellite_signals.map((s) => htmlFn(s, allocation.satellite_pct, false, eventRiskNotes));
-    const pairItems = (lastSignals.pairs_signals || []).map((s) => pairFn(s));
-    const factorItems = (lastSignals.factor_signals || []).map((s) => factorFn(s));
-    const arbitrageItems = (lastSignals.arbitrage_signals || []).map((s) => arbitrageFn(s));
-    const syntheticDollarItems = (lastSignals.synthetic_dollar_signals || []).map((s) => syntheticDollarFn(s));
-    const fixedIncomeItems = (lastSignals.fixed_income_signals || []).map((s) => fixedIncomeFn(s));
-    const allItems = [
-        ...coreItems, ...satelliteItems, ...pairItems, ...factorItems,
-        ...arbitrageItems, ...syntheticDollarItems, ...fixedIncomeItems,
+    // Tagged (engine/spread_pct/searchText), no solo el HTML ya armado --
+    // así se puede filtrar por motor y por spread mínimo ANTES de pintar
+    // (ver OPPORTUNITIES_SEARCH_CONFIG más arriba).
+    const taggedItems = [
+        ...lastSignals.core_signals.map((s) => ({ engine: 'core', spread_pct: null, searchText: s.symbol, html: htmlFn(s, allocation.core_pct, true, eventRiskNotes) })),
+        ...lastSignals.satellite_signals.map((s) => ({ engine: 'satellite', spread_pct: null, searchText: s.symbol, html: htmlFn(s, allocation.satellite_pct, false, eventRiskNotes) })),
+        ...(lastSignals.pairs_signals || []).map((s) => ({ engine: 'pairs', spread_pct: null, searchText: (s.pair || []).join(' '), html: pairFn(s) })),
+        ...(lastSignals.factor_signals || []).map((s) => ({ engine: 'factor', spread_pct: null, searchText: s.symbol, html: factorFn(s) })),
+        ...(lastSignals.arbitrage_signals || []).map((s) => ({ engine: 'arbitrage', spread_pct: s.brecha_pct, searchText: (s.pair || []).join(' '), html: arbitrageFn(s) })),
+        ...(lastSignals.synthetic_dollar_signals || []).map((s) => ({ engine: 'synthetic_dollar', spread_pct: s.spread_pct, searchText: s.contract, html: syntheticDollarFn(s) })),
+        ...(lastSignals.fixed_income_signals || []).map((s) => ({ engine: 'fixed_income', spread_pct: s.spread_pct, searchText: `${s.lecap_symbol} ${s.cer_symbol}`, html: fixedIncomeFn(s) })),
     ];
+    const minSpread = Number(opportunitiesMinSpreadPct) || 0;
+    const filtered = applySearchState(taggedItems, opportunitiesSearchState, OPPORTUNITIES_SEARCH_CONFIG);
+    const visibleItems = (filtered.grouped ? filtered.groups.flatMap((g) => g.items) : filtered.items)
+        .filter((item) => minSpread <= 0 || item.spread_pct === null || item.spread_pct === undefined || Math.abs(item.spread_pct) >= minSpread);
+    const allItems = visibleItems.map((item) => item.html);
+    const totalBeforeFilter = taggedItems.length;
 
     // Notas de régimen (ver conversación: estaban como texto suelto antes de
     // la grilla de KPIs, "colgadas" sin jerarquía visual) -- ahora son un
@@ -433,6 +477,9 @@ function renderOpportunityCards() {
             : '';
     }
 
+    const emptyMessage = totalBeforeFilter === 0
+        ? 'Ninguna oportunidad hoy.'
+        : 'Ningún resultado para este filtro.';
     const itemsHtml = allItems.length
         ? (opportunitiesView === 'list'
             ? `<div class="table-scroll"><table>
@@ -442,7 +489,7 @@ function renderOpportunityCards() {
                 <tbody>${allItems.join('')}</tbody>
             </table></div>`
             : `<div class="opportunity-cards-grid">${allItems.join('')}</div>`)
-        : '<p class="table-empty">Ninguna oportunidad hoy.</p>';
+        : `<p class="table-empty">${emptyMessage}</p>`;
 
     container.innerHTML = `
         <div class="mini-stat-grid row">
@@ -589,6 +636,27 @@ export function initCoreSatelliteView() {
 
     const refreshBtn = $('refresh-dual-engine-signals-btn');
     if (refreshBtn) refreshBtn.addEventListener('click', () => loadSignals(true));
+
+    // Filtro por motor + spread mínimo (ver conversación/auditoría, hallazgo
+    // 2.3) -- createSearchBar maneja el filtro por motor, el input de spread
+    // es aparte (no es un checkbox, search-bar.js no tiene un control
+    // numérico propio).
+    const searchBarSlot = $('dual-engine-search-bar');
+    if (searchBarSlot) {
+        createSearchBar(searchBarSlot, {
+            ...OPPORTUNITIES_SEARCH_CONFIG,
+            searchPlaceholder: 'Buscar por símbolo...',
+            initialState: opportunitiesSearchState,
+            onChange: (state) => { opportunitiesSearchState = state; renderOpportunityCards(); },
+        });
+    }
+    const minSpreadInput = $('dual-engine-min-spread-input');
+    if (minSpreadInput) {
+        minSpreadInput.addEventListener('input', () => {
+            opportunitiesMinSpreadPct = Number(minSpreadInput.value) || 0;
+            renderOpportunityCards();
+        });
+    }
 
     const viewToggle = $('dual-engine-view-toggle');
     if (viewToggle) {

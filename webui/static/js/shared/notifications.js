@@ -2,9 +2,9 @@ import { $ } from './dom.js';
 import { computeAlerts } from '../portfolio/alerts.js';
 import { glossaryText } from './glossary.js';
 
-const KIND_TAG = { vencido: 'tag-negative', vencimiento: 'tag-warning', cobro: 'tag-positive', senal: 'tag-negative', sltp: 'tag-negative' };
-const KIND_LABEL = { vencido: 'Vencido', vencimiento: 'Vence pronto', cobro: 'Cobro', senal: 'Señal', sltp: 'SL/TP' };
-const KIND_TERM = { vencimiento: 'notif_vence', vencido: 'notif_vencido', cobro: 'notif_cobro', senal: 'notif_senal', sltp: 'notif_sltp' };
+const KIND_TAG = { vencido: 'tag-negative', bono_vencido: 'tag-negative', vencimiento: 'tag-warning', cobro: 'tag-positive', senal: 'tag-negative', sltp: 'tag-negative' };
+const KIND_LABEL = { vencido: 'Vencido', bono_vencido: 'Vencido', vencimiento: 'Vence pronto', cobro: 'Cobro', senal: 'Señal', sltp: 'SL/TP' };
+const KIND_TERM = { vencimiento: 'notif_vence', vencido: 'notif_vencido', bono_vencido: 'notif_bono_vencido', cobro: 'notif_cobro', senal: 'notif_senal', sltp: 'notif_sltp' };
 
 // Estado de leido/no-leido, solo en este navegador -- mismo patron ya usado
 // para favoritos/columnas de las tablas, no hace falta backend para esto.
@@ -92,6 +92,10 @@ export function initNotifications() {
         saveSeen(seen);
         row.classList.add('alert-row-seen');
         updateBadge();
+        // El panel se quedaba abierto tapando la pantalla de destino al
+        // navegar desde un aviso (ver conversación/auditoría, hallazgo
+        // 2.11) -- se cierra apenas el click toca el link de la fila.
+        if (e.target.closest('a')) $('notifications-panel').hidden = true;
     });
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.header-notifications')) $('notifications-panel').hidden = true;

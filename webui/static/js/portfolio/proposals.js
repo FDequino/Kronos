@@ -83,7 +83,14 @@ export async function loadProposals() {
 function renderSummary() {
     const el = $('proposals-summary');
     if (!el) return;
-    const count = (estado) => rows.filter((p) => p.estado === estado).length;
+    // Cuenta sobre lo que el usuario está VIENDO ahora mismo (búsqueda +
+    // filtros aplicados), no sobre el total general -- antes mostraba
+    // siempre el total general sin importar qué tan filtrada estuviera la
+    // tabla de abajo (ver conversación/auditoría, hallazgo 2.5: "los KPIs
+    // no se actualizan al buscar o filtrar").
+    const result = applySearchState(rows, searchState, SEARCH_CONFIG);
+    const visibleRows = result.grouped ? result.groups.flatMap((g) => g.items) : result.items;
+    const count = (estado) => visibleRows.filter((p) => p.estado === estado).length;
     const rebalanceThreshold = signalConfig?.proposals_rebalance_threshold_pct;
     const minHit = signalConfig?.min_directional_hit_pct;
     const minN = signalConfig?.min_non_overlapping_forecasts;
@@ -225,12 +232,34 @@ function renderTable() {
     });
 }
 
+// Los 4 filtros de "Estado" son mutuamente excluyentes por naturaleza (son
+// 4 formas de cortar la MISMA dimensión `estado`, "activas" es un compuesto
+// de nueva+vista) -- search-bar.js los renderiza como checkboxes
+// independientes, así que nada impedía tildar "Activas" + "Solo expiradas"
+// juntos, lo que da 0 resultados siempre (ver conversación/auditoría,
+// hallazgo 2.5). Se fuerza la exclusividad acá en vez de en search-bar.js
+// (cambiarlo ahí afectaría a todas las demás pestañas que lo usan).
+const ESTADO_FILTER_KEYS = ['activas', 'nueva', 'descartada', 'expirada'];
+let proposalsSearchBar = null;
+
 export function initProposalsView() {
-    createSearchBar($('proposals-search-bar'), {
+    proposalsSearchBar = createSearchBar($('proposals-search-bar'), {
         ...SEARCH_CONFIG,
         searchPlaceholder: 'Buscar por activo...',
         initialState: searchState,
-        onChange: (state) => { searchState = state; renderTable(); },
+        onChange: (state) => {
+            const activeEstado = [...state.activeFilters].filter((k) => ESTADO_FILTER_KEYS.includes(k));
+            if (activeEstado.length > 1) {
+                const previouslyActive = [...searchState.activeFilters].filter((k) => ESTADO_FILTER_KEYS.includes(k));
+                const justClicked = activeEstado.find((k) => !previouslyActive.includes(k)) || activeEstado[activeEstado.length - 1];
+                const nextFilters = [...state.activeFilters].filter((k) => !ESTADO_FILTER_KEYS.includes(k) || k === justClicked);
+                proposalsSearchBar.setActiveFilters(nextFilters); // dispara este mismo onChange de nuevo, ya corregido
+                return;
+            }
+            searchState = state;
+            renderTable();
+            renderSummary();
+        },
     });
 
     const refreshBtn = $('refresh-proposals-btn');

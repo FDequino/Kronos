@@ -169,3 +169,31 @@ def test_sync_proposals_expira_senal_que_ya_no_aplica_sin_tocar_la_otra(temp_db,
     ibm_rows = {p["origen"]: p for p in db.list_proposals(temp_db) if p["symbol"] == "IBM"}
     assert ibm_rows["senal_kronos"]["estado"] in ("nueva", "vista")
     assert ibm_rows["senal_tecnica"]["estado"] == "expirada"
+
+
+# --- _rebalance_candidates: monto sugerido con la moneda explicita (ver
+# conversacion/auditoria 19/10/2026, hallazgo 3: "'Bonos: comprar aprox. 577'
+# sin unidades") ---------------------------------------------------------
+
+def test_rebalance_candidates_incluye_la_moneda_en_el_monto_sugerido(temp_db):
+    db.upsert_target_allocation(temp_db, "bono", 50.0)
+    config = db.get_signal_config(temp_db)
+    holdings_display = [
+        {"valor_actual": 100.0, "instrument": {"type": "bono"}},
+        {"valor_actual": 900.0, "instrument": {"type": "accion"}},
+    ]
+    candidates = proposals._rebalance_candidates(temp_db, holdings_display, [], config, display_currency="USD")
+    assert len(candidates) == 1
+    assert "USD" in candidates[0]["texto"]
+    assert "aprox. USD" in candidates[0]["texto"]
+
+
+def test_rebalance_candidates_default_ars_si_no_se_pasa_moneda(temp_db):
+    db.upsert_target_allocation(temp_db, "bono", 50.0)
+    config = db.get_signal_config(temp_db)
+    holdings_display = [
+        {"valor_actual": 100.0, "instrument": {"type": "bono"}},
+        {"valor_actual": 900.0, "instrument": {"type": "accion"}},
+    ]
+    candidates = proposals._rebalance_candidates(temp_db, holdings_display, [], config)
+    assert "aprox. ARS" in candidates[0]["texto"]
