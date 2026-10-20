@@ -47,10 +47,26 @@ CANJE_ZSCORE_ENTRY_THRESHOLD = 2.0
 # time-stop, lo que pase primero.
 CANJE_EXIT_ZSCORE = 0.5
 CANJE_MAX_HOLD_DAYS = 30
-# Canje tambien es una posicion de 2 patas (vender el bono caro, comprar el
-# barato) -- mismo criterio que pairs_trading.PAIRS_ROUND_TRIP_COMMISSION_PCT
-# (Fase 4 del plan de unificacion).
-CANJE_ROUND_TRIP_COMMISSION_PCT = ROUND_TRIP_COMMISSION_PCT * 2
+# Corregido (ver conversacion/auditoria 2026-10-20, hallazgo del fork de
+# auditoria de Canje): usar ROUND_TRIP_COMMISSION_PCT*2 (5.0%) trataba un
+# canje de bonos como si fueran 2 operaciones normales de acciones -- con eso
+# puesto, los 12 trades reales de la ventana de backtest (que sin comision
+# ganaban los 12, +12.3% USD anual, Sharpe 1.72, Max DD -4.1%) perdian
+# garantizado pase lo que pase (edge bruto de apenas 0.4%-1.5% por operacion).
+# Tarifa real tomada de los tarifarios PUBLICOS de los 2 brokers de este
+# usuario (IOL y PPI, consultados 2026-10-20):
+#   - PPI: linea explicita "Canjes de Titulos Valores", hasta 1% + IVA (21%)
+#     = ~1.21% -- UNA sola comision para todo el swap, no por pata
+#     (portfoliopersonal.com/Contenido/comisiones).
+#   - IOL: sin tarifa especial de canje -- se ejecuta como 2 operaciones de
+#     bonos a la comision estandar del tramo GOLD (tramo de entrada, hasta
+#     $7.5M/mes operados): 0.50% + IVA por pata x 2 patas = ~1.21% (coincide
+#     con PPI). Si el volumen mensual entra en PLATINUM/BLACK el costo real
+#     baja (0.30%/0.10% + IVA por pata) -- 1.21% es el escenario conservador
+#     de entrada, no el mejor caso (iol.invertironline.com/servicios/tarifas).
+# Ajustar si el tramo de comision real del usuario cambia -- declarado
+# explicito aca, nunca un numero inventado.
+CANJE_ROUND_TRIP_COMMISSION_PCT = 1.21
 
 
 def _fetch_bond_close_series(symbol):
