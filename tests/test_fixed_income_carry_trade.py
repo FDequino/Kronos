@@ -200,6 +200,28 @@ def test_fuente_de_letras_cae_con_excepcion_no_rompe_el_dispatcher(monkeypatch):
     assert fixed_income.compute_carry_trade_rotation_signals() == []
 
 
+def test_letra_con_tem_negativa_o_cero_se_descarta_sin_romper(monkeypatch):
+    """Saneo real (ver conversacion/auditoria, hallazgo 2026-10-20): la fuente
+    mezcla LECAPs de descuento simple con al menos un Bono Dual (TTD26,
+    confirmado en vivo con TNA=-49.48%/TEM=-4.20% mientras las otras 9
+    letras del mismo dia iban de 16% a 45% TNA) -- la fuente le calcula una
+    TEM de descuento simple a un instrumento con opcionalidad, dando una
+    tasa sin sentido economico. Sin este filtro, ese dato entraba al ranking
+    como si fuera una LECAP real y disparaba un "spread" de rotacion
+    inventado (+6.3%/mes medido en vivo antes del fix)."""
+    _mock_letras(monkeypatch, {
+        "TTD26": {"tem_pct": -4.2, "fecha_vencimiento": _iso(56), "dias_al_vencimiento": 56},
+        "CERO": {"tem_pct": 0.0, "fecha_vencimiento": _iso(40), "dias_al_vencimiento": 40},
+        "S13N6": {"tem_pct": 2.0, "fecha_vencimiento": _iso(30), "dias_al_vencimiento": 30},
+    })
+    _mock_cer_bonds(monkeypatch, {"TX26": {"tir_pct": 10.0, "fecha_vencimiento": _iso(31), "precio_ars": 100, "volumen": 1}})
+    _mock_inflation(monkeypatch, 2.0)
+
+    signals = fixed_income.compute_carry_trade_rotation_signals()
+    assert len(signals) == 1
+    assert signals[0]["lecap_symbol"] == "S13N6"
+
+
 def test_bono_cer_vencido_o_sin_fecha_se_descarta_sin_romper(monkeypatch):
     _mock_letras(monkeypatch, {"S13N6": {"tem_pct": 2.0, "fecha_vencimiento": _iso(30), "dias_al_vencimiento": 30}})
     _mock_cer_bonds(monkeypatch, {

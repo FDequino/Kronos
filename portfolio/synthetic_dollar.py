@@ -225,3 +225,24 @@ def compute_synthetic_dollar_signal(conn=None, margin_tna_pct=DEFAULT_MARGIN_TNA
             "además el riesgo de tipo de cambio."
         ),
     }
+
+
+# --- Log diario para construir backtest propio (ver conversación/auditoría,
+# mismo criterio que portfolio/fixed_income.py::log_carry_trade_snapshot) ---
+#
+# HONESTIDAD DECLARADA: los futuros ROFEX de dólar se ven SOLO por el
+# websocket de A3 Mercados en vivo -- no se encontró un archivo público y
+# gratuito de precios de ajuste/settlement históricos de estos contratos
+# (a diferencia de un dato de mercado de EEUU, ROFEX/Matba no publica esto
+# de forma simple y sin key). Mismo camino que carry_trade: loguear la señal
+# de HOY en vez de fabricar una serie pasada.
+
+def log_synthetic_dollar_snapshot(conn, margin_tna_pct=DEFAULT_MARGIN_TNA_PCT):
+    """Corre compute_synthetic_dollar_signal() y persiste el snapshot --
+    best_spread_pct=None si no hubo oportunidad ese día (la función devuelve
+    None cuando el spread no supera Caución+margen, o si falta algún dato);
+    se loguea igual con payload=None para dejar constancia real de "no hubo
+    señal hoy", nunca se omite la corrida."""
+    signal = compute_synthetic_dollar_signal(conn, margin_tna_pct=margin_tna_pct)
+    best = signal["spread_pct"] if signal else None
+    return db.insert_strategy_signal_log(conn, strategy="synthetic_dollar", payload=signal, best_spread_pct=best)

@@ -796,3 +796,31 @@ CREATE TABLE IF NOT EXISTS auto_trading_orders (
 );
 
 CREATE INDEX IF NOT EXISTS idx_auto_trading_orders_broker_account ON auto_trading_orders(broker_account_id);
+
+-- Log diario de señales de Carry Trade LECAP/CER y Dólar Sintético (ver
+-- conversación/auditoría: ninguna de las dos tiene historial descargable de
+-- una fuente externa -- api.argentinadatos.com/v1/finanzas/letras y
+-- /bonos-cer solo exponen el dato VIGENTE, sin endpoint histórico
+-- confirmado [probado /historico, /{fecha}, todos 404]; el feed de futuros
+-- ROFEX via A3 Mercados es un websocket en vivo, sin archivo de settlements
+-- históricos público y gratuito conocido. En vez de fabricar un backtest
+-- con datos inventados, se empieza a loguear la señal real de HOY en
+-- adelante -- walk-forward genuino, no retroactivo -- para poder medir en
+-- unos meses si el spread observado es sostenido o es ruido/un evento
+-- puntual (ver portfolio/fixed_income.py::log_carry_trade_snapshot,
+-- portfolio/synthetic_dollar.py::log_synthetic_dollar_snapshot). Append-only,
+-- mismo patrón que news_sentiment_log/accuracy_cache.
+CREATE TABLE IF NOT EXISTS strategy_signal_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy TEXT NOT NULL CHECK (strategy IN ('carry_trade', 'synthetic_dollar')),
+    -- Para carry_trade: mejor spread_pct entre todos los pares LECAP/CER del
+    -- día (ver compute_carry_trade_rotation_signals). Para synthetic_dollar:
+    -- spread_pct de la señal del día (NULL si compute_synthetic_dollar_signal
+    -- devolvió None -- "no hubo oportunidad ese día" es un dato real, se
+    -- loguea igual con best_spread_pct NULL, nunca se omite la fila).
+    best_spread_pct REAL,
+    payload_json TEXT NOT NULL,  -- snapshot completo (lista de señales o señal única) para reconstruir cualquier métrica más adelante sin haber previsto el campo exacto hoy
+    logged_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_strategy_signal_log_strategy_logged
+    ON strategy_signal_log (strategy, logged_at DESC);

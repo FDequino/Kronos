@@ -34,6 +34,7 @@ from datetime import date, datetime, timedelta
 
 import requests
 
+from portfolio import db
 from portfolio.fetchers import fetch_inflation_history
 from portfolio.formatting import fmt_es
 from portfolio.tz import today_ar
@@ -448,7 +449,20 @@ def compute_carry_trade_rotation_signals(conn=None):
                 dias = (datetime.fromisoformat(data["fecha_vencimiento"]).date() - today).days
             except (ValueError, TypeError):
                 continue
-        if dias and dias > 0 and data.get("tem_pct") is not None:
+        # Saneo real (ver conversación/auditoría): api.argentinadatos.com/v1/
+        # finanzas/letras mezcla LECAPs de descuento simple (TNA/TEM siempre
+        # positivas en este contexto de tasas nominales altas) con al menos
+        # un Bono Dual (ej. TTD26, confirmado en vivo con TNA=-49.48%/
+        # TEM=-4.20% el 2026-10-20, mientras las otras 9 letras del mismo día
+        # van de 16% a 45% TNA) -- la fuente le calcula una TEM de descuento
+        # simple a un instrumento con opcionalidad (paga lo mejor entre tasa
+        # fija y CER), lo que da una tasa implícita sin sentido económico. Sin
+        # este filtro, ese dato entraba a compute_carry_trade_rotation_signals
+        # como si fuera una LECAP real y disparaba un "spread" de rotación
+        # gigante (+6.3%/mes) que no era una oportunidad de carry, era un
+        # artefacto de datos. Una letra de descuento jamás debería rendir <=0%
+        # nominal en este contexto -- se descarta en vez de compararla.
+        if dias and dias > 0 and data.get("tem_pct") is not None and data["tem_pct"] > 0:
             letras_list.append({"ticker": ticker, "dias": dias, "tem_pct": data["tem_pct"]})
     if not letras_list:
         return []
@@ -488,3 +502,27 @@ def compute_carry_trade_rotation_signals(conn=None):
 
     signals.sort(key=lambda s: -s["spread_pct"])
     return signals
+
+
+# --- Log diario para construir backtest propio (ver conversación/auditoría) -
+#
+# HONESTIDAD DECLARADA: api.argentinadatos.com/v1/finanzas/letras y
+# /bonos-cer solo exponen el dato VIGENTE -- se probaron en vivo variantes
+# tipo /historico, /letras/<fecha>, etc., todas 404. No hay forma de
+# reconstruir retroactivamente el spread LECAP/CER de meses pasados sin
+# inventar numeros. En vez de fabricar un backtest, se loguea la señal REAL
+# de HOY en una tabla append-only (ver schema.sql::strategy_signal_log) --
+# con suficientes días acumulados (semanas/meses, corriendo esto a diario)
+# se podrá medir si el spread observado hoy (ej. "+6.3%/mes") es sostenido
+# o fue un evento puntual de compresión hacia un vencimiento, igual que
+# cualquier otro motor de este proyecto se mide con datos reales, nunca con
+# una extrapolación de un solo día.
+
+def log_carry_trade_snapshot(conn):
+    """Corre compute_carry_trade_rotation_signals() y persiste el snapshot
+    completo -- best_spread_pct=None (no 0.0) si la lista vino vacía (fuente
+    caída o sin pares comparables ese día), para no confundir "sin dato" con
+    "spread cero" en el historial."""
+    signals = compute_carry_trade_rotation_signals(conn)
+    best = max((s["spread_pct"] for s in signals), default=None)
+    return db.insert_strategy_signal_log(conn, strategy="carry_trade", payload=signals, best_spread_pct=best)

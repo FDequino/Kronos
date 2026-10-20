@@ -1939,3 +1939,39 @@ def list_backtest_anchors_by_symbol(conn, symbol, market, model_key=None):
         params.append(model_key)
     rows = conn.execute(query, params).fetchall()
     return {r["as_of_date"] for r in rows}
+
+
+# --- Log diario de Carry Trade LECAP/CER y Dólar Sintético (ver schema.sql) ---
+# Ninguna de las 2 fuentes externas expone historial -- este log, append-only
+# desde hoy, es la única forma honesta de juntar evidencia hacia adelante
+# (walk-forward real) en vez de fabricar un backtest retroactivo sin datos.
+
+def insert_strategy_signal_log(conn, *, strategy, payload, best_spread_pct=None):
+    """Una fila por corrida (ver portfolio/fixed_income.py::log_carry_trade_snapshot,
+    portfolio/synthetic_dollar.py::log_synthetic_dollar_snapshot) -- nunca un
+    upsert, para poder reconstruir la serie completa de spreads en el tiempo."""
+    cur = conn.execute(
+        "INSERT INTO strategy_signal_log (strategy, best_spread_pct, payload_json) VALUES (?, ?, ?)",
+        (strategy, best_spread_pct, json.dumps(payload)),
+    )
+    conn.commit()
+    return cur.lastrowid
+
+
+def list_strategy_signal_log(conn, strategy, since=None):
+    """Historial completo (o desde `since`, fecha ISO) de una estrategia,
+    mas antiguo primero -- pensado para alimentar un backtest una vez que
+    haya suficientes dias acumulados."""
+    query = "SELECT * FROM strategy_signal_log WHERE strategy = ?"
+    params = [strategy]
+    if since:
+        query += " AND logged_at >= ?"
+        params.append(since)
+    query += " ORDER BY logged_at ASC, id ASC"
+    rows = conn.execute(query, params).fetchall()
+    out = []
+    for r in rows:
+        d = _row_to_dict(r)
+        d["payload"] = json.loads(d.pop("payload_json"))
+        out.append(d)
+    return out
