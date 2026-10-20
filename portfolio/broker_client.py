@@ -38,9 +38,9 @@ list_broker_accounts (ver portfolio/secrets_crypto.py, Fernet con clave en
 en texto plano EN MEMORIA (nunca ve el valor cifrado), igual que antes;
 nunca se devuelven sin enmascarar desde ninguna función pensada para
 mostrarse (ver _mask_secret/list_accounts_masked). signal_config.
-openai_api_key/anthropic_api_key/finnhub_api_key TODAVÍA se guardan en texto
-plano -- mismo problema, no resuelto en esta pasada (fuera de alcance,
-queda pendiente).
+openai_api_key/anthropic_api_key/finnhub_api_key (corregido 2026-10-20,
+misma pasada): mismo esquema, cifrado/descifrado transparente en el borde
+de get_signal_config/update_signal_config.
 
 Arquitectura: cada broker implementa la MISMA interfaz (BrokerAdapter:
 test_connection/get_balance/get_holdings) para que MultiBrokerManager

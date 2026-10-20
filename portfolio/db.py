@@ -491,6 +491,29 @@ def _migrate(conn):
     if legacy_rows:
         conn.commit()
 
+    # Mismo cifrado en reposo, extendido a signal_config.openai_api_key/
+    # anthropic_api_key/finnhub_api_key (ver conversacion/auditoria
+    # 2026-10-20: mismo problema declarado en broker_client.py, no resuelto
+    # en la pasada anterior -- hoy vacios en esta instalacion, pero el
+    # mecanismo de guardado seguia sin cifrar). Fila unica (id=1).
+    legacy_signal_config = conn.execute(
+        "SELECT openai_api_key, anthropic_api_key, finnhub_api_key FROM signal_config WHERE id = 1 "
+        "AND ((openai_api_key IS NOT NULL AND openai_api_key NOT LIKE ?) "
+        "OR (anthropic_api_key IS NOT NULL AND anthropic_api_key NOT LIKE ?) "
+        "OR (finnhub_api_key IS NOT NULL AND finnhub_api_key NOT LIKE ?))",
+        (secrets_crypto.ENC_PREFIX + "%", secrets_crypto.ENC_PREFIX + "%", secrets_crypto.ENC_PREFIX + "%"),
+    ).fetchone()
+    if legacy_signal_config:
+        conn.execute(
+            "UPDATE signal_config SET openai_api_key = ?, anthropic_api_key = ?, finnhub_api_key = ? WHERE id = 1",
+            (
+                secrets_crypto.encrypt_secret(legacy_signal_config["openai_api_key"]),
+                secrets_crypto.encrypt_secret(legacy_signal_config["anthropic_api_key"]),
+                secrets_crypto.encrypt_secret(legacy_signal_config["finnhub_api_key"]),
+            ),
+        )
+        conn.commit()
+
 
 def _row_to_dict(row):
     return dict(row) if row is not None else None
@@ -1439,13 +1462,28 @@ def get_price_history_as_of(conn, instrument_id, as_of_date, limit=None):
 
 # --- Config de senales ----------------------------------------------------------
 
+# Cifrados en reposo (ver portfolio/secrets_crypto.py) -- cualquier llamador
+# de get_signal_config/update_signal_config sigue viendo el valor en texto
+# plano en memoria, igual que antes de este cambio (mismo criterio que
+# broker_accounts.api_key/api_secret).
+SIGNAL_CONFIG_SECRET_FIELDS = ("openai_api_key", "anthropic_api_key", "finnhub_api_key")
+
+
 def get_signal_config(conn):
-    return _row_to_dict(conn.execute("SELECT * FROM signal_config WHERE id = 1").fetchone())
+    config = _row_to_dict(conn.execute("SELECT * FROM signal_config WHERE id = 1").fetchone())
+    if config is None:
+        return config
+    for field in SIGNAL_CONFIG_SECRET_FIELDS:
+        config[field] = secrets_crypto.decrypt_secret(config.get(field))
+    return config
 
 
 def update_signal_config(conn, **fields):
     if not fields:
         return get_signal_config(conn)
+    for field in SIGNAL_CONFIG_SECRET_FIELDS:
+        if field in fields:
+            fields[field] = secrets_crypto.encrypt_secret(fields[field])
     columns = ", ".join(f"{k} = ?" for k in fields)
     conn.execute(
         f"UPDATE signal_config SET {columns}, updated_at = datetime('now') WHERE id = 1",
