@@ -13,9 +13,13 @@ import { SHIELD_ICON, BOLT_ICON, TARGET_ICON, STOP_ICON, CLOCK_ICON } from '../s
 
 let loaded = false;
 
+// Nombres consistentes con el resto de la app (ver auditoría 19/10/2026,
+// hallazgo 2.4: "el motor corto plazo se llama 'Estrategia Corto Plazo' acá
+// pero 'Satélite' en el resto" -- antes eran "Fondo de Mediano Plazo"/
+// "Estrategia Corto Plazo", dos alias propios de esta pantalla sin motivo).
 const ENGINE_LABELS = {
-    core: `<span class="inline-icon">${SHIELD_ICON}</span> Fondo de Mediano Plazo`,
-    satellite: `<span class="inline-icon">${BOLT_ICON}</span> Estrategia Corto Plazo`,
+    core: `<span class="inline-icon">${SHIELD_ICON}</span> Core`,
+    satellite: `<span class="inline-icon">${BOLT_ICON}</span> Satélite`,
 };
 const EXIT_REASON_LABELS = {
     take_profit: `<span class="inline-icon">${TARGET_ICON}</span> Meta de Ganancia`,

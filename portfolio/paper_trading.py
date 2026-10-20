@@ -120,19 +120,31 @@ def size_position(conn, engine, position_weight, entry_price_usd, equity_usd=Non
     return amount_usd / entry_price_usd
 
 
+# Tipos que en BYMA se compran en unidades enteras, nunca fraccionadas (ver
+# auditoria 19/10/2026, hallazgo 2.4: "simula CEDEARs fraccionados, ej. 20,32
+# QQQ" -- el bróker real jamás ejecutaría esa cantidad, así que el resultado
+# simulado no era representativo de lo que pasaría con plata real). Bonos/ON
+# quedan fuera a propósito: se operan por nominales y SI admiten fracciones
+# en la práctica, nada en la auditoria señala un problema ahi.
+WHOLE_UNIT_ASSET_TYPES = ("accion", "cedear")
+
+
 def open_from_signal(conn, signal, engine, asset_type):
     """Abre una posicion virtual a partir de una señal de
     portfolio/live_signals.py (compute_core_signals/compute_satellite_signals,
     llamadas SIN account_value -- el tamaño se calcula aca sobre el equity
     VIRTUAL, nunca sobre el patrimonio real). No abre una segunda posicion
     si ya hay una abierta en el mismo symbol+engine (ver has_open_position).
-    Devuelve None si no se abrio nada (duplicado o tamaño 0), o la fila
-    nueva de paper_positions."""
+    Devuelve None si no se abrio nada (duplicado o tamaño 0 -- incluido el
+    caso de accion/cedear donde el monto asignado no alcanza ni para 1
+    unidad entera), o la fila nueva de paper_positions."""
     symbol = signal["symbol"]
     if has_open_position(conn, symbol, engine):
         return None
     entry_price_usd = signal["entry_price_usd"]
     quantity = size_position(conn, engine, signal["position_weight"], entry_price_usd)
+    if asset_type in WHOLE_UNIT_ASSET_TYPES:
+        quantity = float(int(quantity))
     if quantity <= 0:
         return None
     tactic = ",".join(signal["tactics"]) if signal.get("tactics") else None

@@ -120,6 +120,47 @@ def test_mismo_symbol_distinto_motor_si_puede_abrir_las_dos(temp_db):
     assert len(paper_trading.list_open_positions(temp_db)) == 2
 
 
+# --- Unidades enteras para accion/cedear (ver conversacion/auditoria
+# 19/10/2026, hallazgo 2.4: "simula CEDEARs fraccionados, ej. 20,32 QQQ" --
+# el broker real jamas ejecutaria esa cantidad) ------------------------------
+
+def test_cedear_trunca_a_unidades_enteras(temp_db):
+    paper_trading.set_initial_capital_usd(temp_db, 10000)
+    capital_config.set_core_allocation_pct(temp_db, 20.0)
+    # 10000 * 20% * 0.5 = 1000 USD / 12.3 = 81.30 titulos -- deberia truncar a 81
+    signal = _core_signal(entry_price_usd=12.3, position_weight=0.5)
+    position = paper_trading.open_from_signal(temp_db, signal, "core", "cedear")
+    assert position["quantity"] == 81.0
+
+
+def test_accion_trunca_a_unidades_enteras(temp_db):
+    paper_trading.set_initial_capital_usd(temp_db, 10000)
+    capital_config.set_core_allocation_pct(temp_db, 20.0)
+    signal = _core_signal(entry_price_usd=12.3, position_weight=0.5)
+    position = paper_trading.open_from_signal(temp_db, signal, "core", "accion")
+    assert position["quantity"] == 81.0
+
+
+def test_bono_no_trunca_sigue_fraccionado(temp_db):
+    # Bonos/ON se operan por nominales y SI admiten fracciones en la
+    # practica -- quedan fuera de WHOLE_UNIT_ASSET_TYPES a proposito.
+    paper_trading.set_initial_capital_usd(temp_db, 10000)
+    capital_config.set_core_allocation_pct(temp_db, 20.0)
+    signal = _core_signal(entry_price_usd=12.3, position_weight=0.5)
+    position = paper_trading.open_from_signal(temp_db, signal, "core", "bono")
+    assert position["quantity"] == pytest.approx(81.30, abs=0.01)
+
+
+def test_cedear_trunca_a_cero_no_abre_posicion(temp_db):
+    # Monto asignado no alcanza ni para 1 unidad entera -- no debe abrir
+    # una posicion de 0 titulos.
+    paper_trading.set_initial_capital_usd(temp_db, 100)
+    capital_config.set_core_allocation_pct(temp_db, 1.0)
+    signal = _core_signal(entry_price_usd=50.0, position_weight=0.5)
+    position = paper_trading.open_from_signal(temp_db, signal, "core", "cedear")
+    assert position is None
+
+
 # --- Salidas: Stop Loss / Take Profit / tiempo maximo ------------------------
 
 def test_salida_por_stop_loss(temp_db):
