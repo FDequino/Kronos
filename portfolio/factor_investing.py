@@ -274,10 +274,19 @@ def get_rotation_signals(conn, universe=None):
 FACTOR_REBALANCE_SPACING_DAYS = FACTOR_STALENESS_DAYS  # "semanalmente", misma cadencia que en vivo
 
 
-def simulate_factor_engine(conn, universe=None, lookback_days=backtest.CORE_BACKTEST_LOOKBACK_DAYS):
+def simulate_factor_engine(conn, universe=None, lookback_days=backtest.CORE_BACKTEST_LOOKBACK_DAYS, commission_pct=0.0):
     """Simulador historico del Motor Factor Investing -- rebalanceo semanal,
     Top N (ver top_rotation_symbols) equal-weighted hasta el proximo
-    rebalanceo. Ver LIMITACION declarada arriba sobre el factor Value."""
+    rebalanceo. Ver LIMITACION declarada arriba sobre el factor Value.
+
+    commission_pct (ver backtest.ROUND_TRIP_COMMISSION_PCT, Fase 4 del plan
+    de unificacion): a diferencia de Core/Satelite/Pairs/Canje (1 posicion,
+    1 costo de ida+vuelta), acá cada rebalanceo solo rota una FRACCION de la
+    cartera (turnover = la mitad de la suma de |cambio de peso| por simbolo,
+    ya que todo lo que se vende de un lado se compra del otro) -- el costo
+    se escala por esa fraccion, no por el costo completo de un trade nuevo.
+    Default 0.0 para no romper ningun llamador que todavia no lo pase
+    explicito."""
     universe = universe if universe is not None else CEDEAR_UNIVERSE
     series = {}
     value_raw_today = {}
@@ -335,6 +344,16 @@ def simulate_factor_engine(conn, universe=None, lookback_days=backtest.CORE_BACK
                     new_holdings = {r["symbol"]: 1.0 / len(top) for r in top}
 
             if set(new_holdings) != set(current_holdings):
+                # Turnover = fraccion de la cartera que efectivamente se
+                # compra/vende este rebalanceo -- 0.5x la suma de |cambios de
+                # peso| porque cada peso que se vende de un lado se compra
+                # del otro (no se cuenta doble). commission_pct ya es un
+                # costo de ida+vuelta completo, se escala por esa fraccion.
+                turnover = 0.5 * sum(
+                    abs(new_holdings.get(s, 0.0) - current_holdings.get(s, 0.0))
+                    for s in set(new_holdings) | set(current_holdings)
+                )
+                contributions[date] -= turnover * commission_pct
                 trades.append({
                     "engine": "factor", "date": date,
                     "holdings_before": list(current_holdings.keys()), "holdings_after": list(new_holdings.keys()),

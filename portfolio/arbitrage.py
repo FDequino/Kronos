@@ -30,7 +30,7 @@ SQLite."""
 import pandas as pd
 
 from portfolio import db, features, yield_engine
-from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS
+from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT
 from portfolio.fetchers import fetch_data912_historical
 
 CANJE_PAIR = ("AL30", "GD30")
@@ -47,6 +47,10 @@ CANJE_ZSCORE_ENTRY_THRESHOLD = 2.0
 # time-stop, lo que pase primero.
 CANJE_EXIT_ZSCORE = 0.5
 CANJE_MAX_HOLD_DAYS = 30
+# Canje tambien es una posicion de 2 patas (vender el bono caro, comprar el
+# barato) -- mismo criterio que pairs_trading.PAIRS_ROUND_TRIP_COMMISSION_PCT
+# (Fase 4 del plan de unificacion).
+CANJE_ROUND_TRIP_COMMISSION_PCT = ROUND_TRIP_COMMISSION_PCT * 2
 
 
 def _fetch_bond_close_series(symbol):
@@ -122,7 +126,7 @@ def compute_canje_arbitrage_signal():
     }
 
 
-def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS):
+def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS, commission_pct=0.0):
     """Backtest historico del Motor de Arbitraje de Canje (ver conversacion,
     'backtest unificado') -- mismo shape de salida que simulate_pairs_engine/
     simulate_factor_engine: {"engine": "canje", "daily_returns_pct": pd.Series,
@@ -144,7 +148,12 @@ def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKB
     Usa SIEMPRE el historial COMPLETO disponible de data912 para calcular el
     z-score (warmup correcto desde el primer dia), y recorta la SIMULACION
     (no el calculo del z-score) a los ultimos `lookback_days` para ser
-    comparable con los demas motores del backtest unificado."""
+    comparable con los demas motores del backtest unificado.
+
+    commission_pct (ver CANJE_ROUND_TRIP_COMMISSION_PCT, Fase 4 del plan de
+    unificacion): costo de transaccion restado UNA VEZ al cerrar la posicion
+    -- default 0.0 para no romper ningun llamador que todavia no lo pase
+    explicito."""
     df = compute_canje_brecha_series()
     if df is None:
         empty = pd.Series(dtype=float)
@@ -180,6 +189,11 @@ def simulate_canje_arbitrage_engine(conn=None, lookback_days=CORE_BACKTEST_LOOKB
                 or (not pd.isna(z_now) and abs(float(z_now)) <= CANJE_EXIT_ZSCORE)
             )
             if should_exit:
+                # Comision ida+vuelta de las 2 patas, restada UNA VEZ al
+                # cerrar (ver commission_pct arriba) -- mismo criterio
+                # contable que pairs_trading.simulate_pairs_engine.
+                position["cum_return_pct"] -= commission_pct
+                contributions[date] -= commission_pct
                 trades.append({
                     "engine": "canje", "pair": CANJE_PAIR, "direction": position["direction"],
                     "entry_date": position["entry_date"], "exit_date": date.date().isoformat(),

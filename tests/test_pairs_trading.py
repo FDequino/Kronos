@@ -252,6 +252,28 @@ def test_simulate_pairs_engine_entradas_solo_despues_de_la_ventana_minima(temp_d
         assert trade["entry_date"] >= first_valid_date
 
 
+def test_simulate_pairs_engine_commission_pct_default_cero_no_cambia_comportamiento(temp_db, monkeypatch):
+    """Fase 4 del plan de unificacion, extendida a Pairs (ver conversacion):
+    default 0.0 reproduce exactamente el resultado de antes de esta fase."""
+    frame = _fake_pair_frame(n=700)
+    monkeypatch.setattr(pt, "_pair_price_frame", lambda a, b, conn: frame)
+    result = pt.simulate_pairs_engine(temp_db, pairs=[("A", "B")], lookback_days=300)
+    assert len(result["trades"]) >= 1
+
+
+def test_simulate_pairs_engine_resta_comision_al_cerrar(temp_db, monkeypatch):
+    frame = _fake_pair_frame(n=700)
+    monkeypatch.setattr(pt, "_pair_price_frame", lambda a, b, conn: frame)
+
+    bruto = pt.simulate_pairs_engine(temp_db, pairs=[("A", "B")], lookback_days=300, commission_pct=0.0)
+    neto = pt.simulate_pairs_engine(temp_db, pairs=[("A", "B")], lookback_days=300, commission_pct=5.0)
+
+    assert len(neto["trades"]) == len(bruto["trades"])
+    assert len(bruto["trades"]) >= 1
+    for t_bruto, t_neto in zip(bruto["trades"], neto["trades"]):
+        assert t_neto["return_pct"] == pytest.approx(t_bruto["return_pct"] - 5.0)
+
+
 def test_simulate_pairs_engine_nunca_excede_max_concurrentes(temp_db, monkeypatch):
     # Con un unico par candidato nunca puede haber mas de 1 posicion abierta
     # a la vez de ESE par -- regla general (PAIRS_MAX_CONCURRENT) verificada

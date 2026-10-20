@@ -243,6 +243,32 @@ def test_simulate_canje_arbitrage_engine_abre_y_cierra_posicion_con_direccion_co
     assert first_trade["return_pct"] > 1.0
 
 
+def test_simulate_canje_arbitrage_engine_commission_pct_default_cero_no_cambia_comportamiento(monkeypatch):
+    """Fase 4 del plan de unificacion, extendida a Canje (ver conversacion):
+    default 0.0 reproduce exactamente el resultado de antes de esta fase."""
+    n = 70
+    al30_ars, al30_usd, gd30_ars = np.full(n, 1000.0), np.full(n, 1.0), np.full(n, 1000.0)
+    gd30_usd = _spiked_gd30_usd_series(n)
+    _mock_fetch(monkeypatch, al30_ars, al30_usd, gd30_ars, gd30_usd)
+
+    result = arbitrage.simulate_canje_arbitrage_engine(conn=None, lookback_days=n)
+    assert result["trades"][0]["return_pct"] > 1.0  # mismo assert que el test de arriba
+
+
+def test_simulate_canje_arbitrage_engine_resta_comision_al_cerrar(monkeypatch):
+    n = 70
+    al30_ars, al30_usd, gd30_ars = np.full(n, 1000.0), np.full(n, 1.0), np.full(n, 1000.0)
+    gd30_usd = _spiked_gd30_usd_series(n)
+    _mock_fetch(monkeypatch, al30_ars, al30_usd, gd30_ars, gd30_usd)
+
+    bruto = arbitrage.simulate_canje_arbitrage_engine(conn=None, lookback_days=n, commission_pct=0.0)
+    neto = arbitrage.simulate_canje_arbitrage_engine(conn=None, lookback_days=n, commission_pct=5.0)
+
+    assert len(neto["trades"]) == len(bruto["trades"])
+    for t_bruto, t_neto in zip(bruto["trades"], neto["trades"]):
+        assert t_neto["return_pct"] == pytest.approx(t_bruto["return_pct"] - 5.0)
+
+
 def test_simulate_canje_arbitrage_engine_sin_senal_nunca_abre_posicion(monkeypatch):
     # brecha constante en 0 (sin ruido) -- std=0, z-score NaN todo el tiempo,
     # nunca cruza el umbral (determinista, a diferencia de agregar ruido

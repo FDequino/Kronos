@@ -289,6 +289,38 @@ def test_simulate_factor_engine_rebalancea_en_la_cadencia_declarada(temp_db, mon
         assert date_to_idx[d2] - date_to_idx[d1] >= factor_investing.FACTOR_REBALANCE_SPACING_DAYS
 
 
+def test_simulate_factor_engine_commission_pct_default_cero_no_cambia_comportamiento(temp_db, monkeypatch):
+    """Fase 4 del plan de unificacion, extendida a Factor (ver conversacion):
+    default 0.0 reproduce exactamente el resultado de antes de esta fase."""
+    universe = [(f"T{i}", "cedear") for i in range(5)]
+    series = {f"T{i}": _synthetic_series_df(seed=i) for i in range(5)}
+    _patch_universe(monkeypatch, series, pe_by_symbol={f"T{i}": 10.0 + i for i in range(5)})
+
+    result = factor_investing.simulate_factor_engine(temp_db, universe=universe, lookback_days=100)
+    assert len(result["trades"]) > 0
+
+
+def test_simulate_factor_engine_resta_comision_proporcional_al_turnover(temp_db, monkeypatch):
+    universe = [(f"T{i}", "cedear") for i in range(5)]
+    series = {f"T{i}": _synthetic_series_df(seed=i) for i in range(5)}
+    _patch_universe(monkeypatch, series, pe_by_symbol={f"T{i}": 10.0 + i for i in range(5)})
+
+    bruto = factor_investing.simulate_factor_engine(temp_db, universe=universe, lookback_days=100, commission_pct=0.0)
+    neto = factor_investing.simulate_factor_engine(temp_db, universe=universe, lookback_days=100, commission_pct=10.0)
+
+    rebalance_dates = {t["date"] for t in bruto["trades"]}
+    assert rebalance_dates  # el fixture ya confirma >0 en el test de arriba
+    diffs = (bruto["daily_returns_pct"] - neto["daily_returns_pct"])
+    # En dias SIN rebalanceo, bruto y neto deben ser identicos (sin comision
+    # que restar); en dias CON rebalanceo, neto debe ser estrictamente menor
+    # (turnover > 0 siempre que holdings cambie, ver docstring del motor).
+    for date, diff in diffs.items():
+        if date in rebalance_dates:
+            assert diff > 0
+        else:
+            assert diff == pytest.approx(0.0)
+
+
 def test_simulate_factor_engine_holdings_son_causales(temp_db, monkeypatch):
     # Cero look-ahead: el primer rebalanceo no debe depender de NADA posterior
     # a su propia fecha -- se trunca la serie para que no exista ningun dato

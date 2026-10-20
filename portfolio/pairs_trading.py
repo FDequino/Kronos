@@ -36,7 +36,7 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import coint
 
 from portfolio import db, features, yield_engine
-from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, UNIVERSE, fetch_ticker_history
+from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT, UNIVERSE, fetch_ticker_history
 from portfolio.forecasting import build_model_input
 from portfolio.signals import CORE_SECTOR_GROUPS
 
@@ -50,6 +50,11 @@ ZSCORE_ENTRY_THRESHOLD = 2.0  # pedido explicito
 # reusada tal cual, no un numero nuevo elegido sin motivo.
 ZSCORE_WINDOW = features.ROLLING_NORM_WINDOW
 ZSCORE_MIN_PERIODS = features.ROLLING_NORM_MIN_PERIODS
+# Pairs abre 2 patas simultaneas (comprar la barata, vender la cara) --
+# cerrar tambien son 2 operaciones, el doble de comisiones que una posicion
+# de 1 solo instrumento (ver portfolio.backtest.ROUND_TRIP_COMMISSION_PCT,
+# Fase 4 del plan de unificacion: "ningun backtest resta comision").
+PAIRS_ROUND_TRIP_COMMISSION_PCT = ROUND_TRIP_COMMISSION_PCT * 2
 # Igual que CORE_BACKTEST_LOOKBACK_DAYS en portfolio/backtest.py -- historia
 # minima declarada para que el test de cointegracion tenga sentido (con muy
 # pocos puntos, cualquier par "parece" cointegrado por azar).
@@ -264,7 +269,7 @@ def _pair_price_frame(symbol_a, symbol_b, conn):
     return pd.DataFrame({"date": series_a.index, "close_a": series_a.to_numpy(), "close_b": series_b.to_numpy()})
 
 
-def simulate_pairs_engine(conn, pairs=None, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS):
+def simulate_pairs_engine(conn, pairs=None, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS, commission_pct=0.0):
     """Simulador historico del Motor Pairs Trading. Cero look-ahead: en la
     fecha de re-estimacion t, cointegracion/hedge ratio se calculan SOLO con
     la ventana [t - PAIRS_COINT_WINDOW_DAYS, t] (nunca datos posteriores a
@@ -280,6 +285,11 @@ def simulate_pairs_engine(conn, pairs=None, lookback_days=CORE_BACKTEST_LOOKBACK
     del spread se combina como weight*(retorno_diario_barata -
     hedge_ratio*retorno_diario_cara) -- una aproximacion beta-ponderada
     estandar, declarada como tal, no una medicion dollar-neutral exacta.
+
+    commission_pct (ver PAIRS_ROUND_TRIP_COMMISSION_PCT, Fase 4 del plan de
+    unificacion): costo de transaccion restado UNA VEZ al cerrar cada
+    posicion -- default 0.0 para no romper ningun llamador que todavia no lo
+    pase explicito.
 
     Devuelve {"engine": "pairs", "daily_returns_pct": pd.Series, "idle_weight":
     pd.Series, "trades": [...]}, mismo shape que simulate_satellite_engine."""
@@ -335,6 +345,12 @@ def simulate_pairs_engine(conn, pairs=None, lookback_days=CORE_BACKTEST_LOOKBACK
             z_now = pos["zscore_path"].get(idx)
             should_exit = pos["hold_days"] >= PAIRS_MAX_HOLD_DAYS or (z_now is not None and abs(z_now) <= PAIRS_EXIT_ZSCORE)
             if should_exit:
+                # Comision ida+vuelta de las 2 patas, restada UNA VEZ al
+                # cerrar (ver commission_pct arriba) -- mismo criterio
+                # contable que backtest.py::_trade_daily_returns (se
+                # "realiza" cuando se liquida la posicion).
+                pos["cum_return_pct"] -= commission_pct
+                contributions[date] -= weight * commission_pct
                 trades.append({
                     "engine": "pairs", "pair": pair, "direction": pos["direction"],
                     "entry_date": pos["entry_date"], "exit_date": date, "hold_days": pos["hold_days"],

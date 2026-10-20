@@ -2048,9 +2048,17 @@ def simulate_unified_backtest(universe=UNIVERSE, conn=None, lookback_days=CORE_B
         client = ChronosServiceClient()
         core_result = simulate_core_engine(universe, client, conn, lookback_days)
         satellite_result = simulate_satellite_engine(universe, conn, lookback_days)
-        pairs_result = pairs_trading.simulate_pairs_engine(conn, lookback_days=lookback_days)
-        factor_result = factor_investing.simulate_factor_engine(conn, lookback_days=lookback_days)
-        canje_result = arbitrage.simulate_canje_arbitrage_engine(conn, lookback_days=lookback_days)
+        # commission_pct explicito en los 3 (Fase 4 del plan de unificacion,
+        # extendida a Pairs/Factor/Canje -- antes solo Core/Satelite restaban
+        # comision): cada motor define su propia constante porque el costo
+        # real depende de su propia estructura (2 patas vs. turnover
+        # fraccional), ver cada simulate_* para el detalle.
+        pairs_result = pairs_trading.simulate_pairs_engine(
+            conn, lookback_days=lookback_days, commission_pct=pairs_trading.PAIRS_ROUND_TRIP_COMMISSION_PCT)
+        factor_result = factor_investing.simulate_factor_engine(
+            conn, lookback_days=lookback_days, commission_pct=ROUND_TRIP_COMMISSION_PCT)
+        canje_result = arbitrage.simulate_canje_arbitrage_engine(
+            conn, lookback_days=lookback_days, commission_pct=arbitrage.CANJE_ROUND_TRIP_COMMISSION_PCT)
 
         per_engine = {
             "core": core_result, "satellite": satellite_result,
