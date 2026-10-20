@@ -14,6 +14,7 @@ import { activateSubtab } from '../shared/subtabs.js';
 import { infoTooltipHtml, riskTooltipContentHtml } from '../shared/info-tooltip.js';
 import { createSearchBar, applySearchState } from '../shared/search-bar.js';
 import { api } from './api.js';
+import { getActiveProposalsBySymbol } from './proposals.js';
 
 // Explicaciones de indicadores (ver conversacion, "Perfiles de Inversion")
 // -- iconos (?) reusados tanto en esta tabla de Rendimiento Historico como
@@ -136,6 +137,22 @@ export function getEventRiskNotes() {
     return lastSignals?.event_risk_notes || {};
 }
 
+// Inverso de getEventRiskNotes de arriba: marca una tarjeta de Oportunidades
+// cuando ya existe una Propuesta activa para el mismo símbolo (ver
+// conversación/informe de diseño: "cruzar Oportunidades con Propuestas").
+// Deliberadamente NO dice que la señal "generó" la propuesta -- son 2
+// cálculos independientes (Oportunidades: 7 motores sobre un universo
+// amplio; Propuestas: valida solo contra holdings) que solo pueden coincidir
+// por símbolo. Vacío hasta que el usuario haya abierto la subtab Propuestas
+// al menos una vez en la sesión -- mismo límite ya aceptado en la dirección
+// inversa.
+function activeProposalBadgeHtml(symbol) {
+    const proposal = getActiveProposalsBySymbol()[symbol];
+    if (!proposal) return '';
+    const tipoTexto = proposal.tipo_sugerido === 'compra' ? ' de compra' : proposal.tipo_sugerido === 'venta' ? ' de venta' : '';
+    return `<span class="tag tag-neutral opportunity-proposal-link" role="button" tabindex="0">📋 Propuesta${tipoTexto} activa →</span>`;
+}
+
 // Refactorizacion financiera en USD CCL (ver conversacion): el analisis y la
 // operatoria son en USD, pero el usuario opera en ARS en BYMA -- siempre se
 // muestran las 2 monedas juntas, nunca una sola.
@@ -167,6 +184,7 @@ function opportunityCardHtml(sig, enginePct, isCore, eventRiskNotes) {
             </div>
             <p class="hint">${subtitle}</p>
             ${eventNote ? `<p class="hint cell-warning">${eventNote}</p>` : ''}
+            ${activeProposalBadgeHtml(sig.symbol)}
             <div class="opportunity-card-prices">
                 <div><span class="l">Entrada</span><span class="v">${dualPrice(sig.entry_price_usd, sig.entry_price_ars)}</span></div>
                 <div><span class="l">Take Profit</span><span class="v cell-positive">${dualPrice(sig.take_profit_price_usd, sig.take_profit_price_ars)} (+${fmt(sig.take_profit_pct, 1)}%)</span></div>
@@ -200,6 +218,7 @@ function opportunityRowHtml(sig, enginePct, isCore, eventRiskNotes) {
                 <div class="hint">${subtitle}</div>
                 <div>Entrada ${dualPrice(sig.entry_price_usd, sig.entry_price_ars)} · <span class="cell-positive">TP ${dualPrice(sig.take_profit_price_usd, sig.take_profit_price_ars)} (+${fmt(sig.take_profit_pct, 1)}%)</span> · <span class="cell-negative">Stop ${dualPrice(sig.initial_stop_price_usd, sig.initial_stop_price_ars)} (-${fmt(sig.initial_stop_pct, 1)}%)</span></div>
                 ${eventNote ? `<div class="hint cell-warning">${eventNote}</div>` : ''}
+                ${activeProposalBadgeHtml(sig.symbol)}
             </td>
             <td class="num">${amount !== null ? fmtMoney(amount) : '—'}${suggestedAmountTooltip(isCore)}</td>
             <td>
@@ -273,6 +292,7 @@ function factorCardHtml(sig) {
                 <span class="tag tag-neutral">🔄 Factor #${sig.rank}${ENGINE_TOOLTIPS.factor}</span>
             </div>
             <p class="hint">Composite ${fmt(sig.composite_score, 2)} · Momentum ${fmtPct(sig.momentum_raw)} · Low-Vol ${fmt(sig.low_vol_raw, 3)} · Value ${valueLabel}</p>
+            ${activeProposalBadgeHtml(sig.symbol)}
             <div class="opportunity-card-prices">
                 <div><span class="l">Monto sugerido${infoTooltipHtml('<div>Capital asignado a Factor Investing (ver Ajustes → Estrategia y Motores), repartido en partes iguales entre los instrumentos del Top N de esta rotación.</div>')}</span><span class="v">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}</span></div>
             </div>
@@ -292,7 +312,7 @@ function factorRowHtml(sig) {
         <tr>
             <td><a href="#detalle/${encodeURIComponent(sig.symbol)}" class="table-link">${sig.symbol}</a></td>
             <td><span class="tag tag-neutral">🔄 Factor #${sig.rank}${ENGINE_TOOLTIPS.factor}</span></td>
-            <td class="hint">Composite ${fmt(sig.composite_score, 2)} · Momentum ${fmtPct(sig.momentum_raw)} · Low-Vol ${fmt(sig.low_vol_raw, 3)} · Value ${valueLabel}</td>
+            <td class="hint">Composite ${fmt(sig.composite_score, 2)} · Momentum ${fmtPct(sig.momentum_raw)} · Low-Vol ${fmt(sig.low_vol_raw, 3)} · Value ${valueLabel}${activeProposalBadgeHtml(sig.symbol)}</td>
             <td class="num">${sig.suggested_amount_ars !== null && sig.suggested_amount_ars !== undefined ? fmtMoney(sig.suggested_amount_ars) : '—'}${infoTooltipHtml('<div>Capital asignado a Factor Investing (ver Ajustes → Estrategia y Motores), repartido en partes iguales entre los instrumentos del Top N de esta rotación.</div>')}</td>
             <td><a href="#detalle/${encodeURIComponent(sig.symbol)}" class="btn btn-secondary">Ver Gráfico</a></td>
         </tr>
@@ -673,6 +693,7 @@ export function initCoreSatelliteView() {
     if (signalsContainer) {
         signalsContainer.addEventListener('click', (e) => {
             if (e.target.closest('.opportunity-paper-trading-btn')) activateSubtab('decisiones', 'paper-trading');
+            if (e.target.closest('.opportunity-proposal-link')) activateSubtab('decisiones', 'propuestas');
         });
     }
 

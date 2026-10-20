@@ -76,6 +76,24 @@ export async function loadProposals() {
     renderLastUpdated();
 }
 
+// Para que core-satellite.js (misma subtab "Decisiones", riesgo inverso de
+// getEventRiskNotes importado arriba) marque una tarjeta de Oportunidades
+// cuando ya existe una Propuesta activa para ese símbolo, sin pedirle de
+// nuevo al servidor algo que esta vista ya tiene en memoria. Mapa vacío
+// hasta que loadProposals() resuelva la primera vez en la sesión -- mismo
+// límite ya aceptado por getEventRiskNotes en la dirección inversa. Nunca
+// dice que la señal "generó" la propuesta -- son 2 cálculos independientes
+// que solo pueden coincidir por símbolo (ver conversación/informe de diseño).
+export function getActiveProposalsBySymbol() {
+    const map = {};
+    for (const p of rows) {
+        if (p.estado === 'nueva' || p.estado === 'vista' || p.estado === 'aceptada') {
+            map[p.symbol] = { estado: p.estado, tipo_sugerido: p.tipo_sugerido };
+        }
+    }
+    return map;
+}
+
 // Fase 16: panel "Resumen" al costado, mismo patrón ya usado en el resto de
 // la plataforma. Fase 18: cada estado explica qué lo genera/qué significa,
 // con el parámetro real configurado donde aplica -- "no tienen explicación
