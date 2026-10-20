@@ -993,6 +993,18 @@ CORE_MAX_HOLD_DAYS = 15
 SATELLITE_MAX_POSITIONS = 3  # no pedido explicitamente -- declarado aca para poder simular multiples trades concurrentes sin apalancar
 SATELLITE_MIN_WARMUP_ROWS = 40
 
+# Costo de transaccion ida+vuelta (ver conversacion/plan de unificacion, Fase
+# 4: "ningun backtest/paper trading resta comision... todo el edge medido es
+# BRUTO, no neto" -- un edge que ya es ~0 bruto (ver DSR=0.0000 del motor
+# base) puede ser negativo neto). No es un numero inventado: es el promedio
+# real observado en portfolio/transactions con comision>0 (comision importada
+# de resumenes de broker reales via import_broker_report.py, columna
+# `comision` de schema.sql) -- ronda 1.25% por pata (rango real 0.07%-2.2%),
+# asi que 2.5% ida+vuelta es razonable y conservador. Ajustable si cambia el
+# broker/la comision real; declarado explicito aca para que cualquier
+# Sharpe/DSR calculado de ahora en mas sea interpretable como NETO.
+ROUND_TRIP_COMMISSION_PCT = 2.5
+
 
 def _prepare_aligned_series(symbol, asset_type, conn, min_rows):
     """Fetchea + alinea a la MISMA moneda que ve Chronos en produccion
@@ -1021,7 +1033,7 @@ def _prepare_aligned_series(symbol, asset_type, conn, min_rows):
 
 def simulate_position_exit(future_rows, entry_price, tp_pct, initial_stop_pct, max_hold_days,
                             trailing=False, atr_pct_value=None, tp_atr_mult=None, stop_atr_mult=None,
-                            stop_is_ceiling=False):
+                            stop_is_ceiling=False, commission_pct=0.0):
     """Simulador de salida COMPARTIDO por Core y Satelite (misma logica para
     los dos, para que ninguno tenga una ventaja de simulacion que el otro no
     tenga). future_rows: filas high/low/close YA posteriores a la entrada
@@ -1042,8 +1054,13 @@ def simulate_position_exit(future_rows, entry_price, tp_pct, initial_stop_pct, m
     STOP se toca primero (peor caso posible), nunca se infla el resultado
     asumiendo la salida mas favorable.
 
+    commission_pct: costo de transaccion ida+vuelta ya restado del return_pct
+    devuelto (ver ROUND_TRIP_COMMISSION_PCT) -- default 0.0 para no romper
+    ningun llamador que todavia no lo pase explicito.
+
     Devuelve (hold_days, exit_price, return_pct, exit_reason) con
-    exit_reason en {'take_profit','stop_loss','trailing_stop','time_exit','no_data'}."""
+    exit_reason en {'take_profit','stop_loss','trailing_stop','time_exit','no_data'}.
+    return_pct ya es NETO de comision si se paso commission_pct."""
     effective_tp_pct = tp_pct
     if tp_atr_mult is not None and atr_pct_value and not pd.isna(atr_pct_value):
         effective_tp_pct = max(tp_pct, tp_atr_mult * atr_pct_value)
@@ -1072,26 +1089,32 @@ def simulate_position_exit(future_rows, entry_price, tp_pct, initial_stop_pct, m
 
         if low <= stop_price:
             reason = "trailing_stop" if (trailing and stop_price > initial_stop_price) else "stop_loss"
-            return i, stop_price, (stop_price - entry_price) / entry_price * 100, reason
+            return i, stop_price, (stop_price - entry_price) / entry_price * 100 - commission_pct, reason
         if high >= tp_price:
-            return i, tp_price, (tp_price - entry_price) / entry_price * 100, "take_profit"
+            return i, tp_price, (tp_price - entry_price) / entry_price * 100 - commission_pct, "take_profit"
 
     last_close = float(rows["close"].iloc[-1])
-    return len(rows), last_close, (last_close - entry_price) / entry_price * 100, "time_exit"
+    return len(rows), last_close, (last_close - entry_price) / entry_price * 100 - commission_pct, "time_exit"
 
 
-def _trade_daily_returns(df, entry_pos, entry_price, hold_days, exit_price):
+def _trade_daily_returns(df, entry_pos, entry_price, hold_days, exit_price, commission_pct=0.0):
     """Retorno %/dia para marcar a mercado dia a dia una posicion ya resuelta
     por simulate_position_exit -- cada dia usa el cierre real de esa rueda,
     EXCEPTO el ultimo (donde se usa el precio de salida real: TP/stop/ultimo
     cierre, no el cierre de esa rueda, para que el equity curve refleje el
-    motivo real de cierre). Devuelve lista de (fecha, retorno_pct)."""
+    motivo real de cierre). commission_pct (ver ROUND_TRIP_COMMISSION_PCT) se
+    resta completo en el ultimo dia -- es cuando se "realiza" el costo
+    ida+vuelta, mismo criterio contable que una liquidacion real. Devuelve
+    lista de (fecha, retorno_pct), ya NETO de comision si se paso
+    commission_pct."""
     out = []
     prev_price = entry_price
     rows = df.iloc[entry_pos + 1: entry_pos + 1 + hold_days]
     for i, row in enumerate(rows.itertuples(), start=1):
         price_today = float(exit_price) if i == hold_days else float(row.close)
         day_ret = (price_today - prev_price) / prev_price * 100 if prev_price else 0.0
+        if i == hold_days:
+            day_ret -= commission_pct
         out.append((row.date, day_ret))
         prev_price = price_today
     return out
@@ -1204,12 +1227,12 @@ def simulate_core_engine(universe, client, conn, lookback_days=CORE_BACKTEST_LOO
                 future_rows, entry_price, CORE_TP_FLAT_PCT, CORE_STOP_FLAT_PCT, CORE_MAX_HOLD_DAYS,
                 trailing=True, atr_pct_value=cand["atr_pct"],
                 tp_atr_mult=CORE_TP_ATR_MULT, stop_atr_mult=CORE_STOP_ATR_MULT,
-                stop_is_ceiling=True,
+                stop_is_ceiling=True, commission_pct=ROUND_TRIP_COMMISSION_PCT,
             )
             if hold_days == 0:
                 continue
 
-            trade_days = _trade_daily_returns(df, idx, entry_price, hold_days, exit_price)
+            trade_days = _trade_daily_returns(df, idx, entry_price, hold_days, exit_price, commission_pct=ROUND_TRIP_COMMISSION_PCT)
             for day_date, day_ret in trade_days:
                 if day_date in contributions:
                     contributions[day_date] += effective_weight * day_ret
@@ -1489,12 +1512,12 @@ def simulate_satellite_engine(universe, conn, lookback_days=CORE_BACKTEST_LOOKBA
                 exit_params["take_profit_pct"], exit_params["stop_loss_pct"],
                 short_term_engine.SATELLITE_MAX_HOLD_DAYS, trailing=True,
                 atr_pct_value=atr_pct_at_entry, stop_atr_mult=short_term_engine.SATELLITE_TRAILING_STOP_ATR_MULT,
-                stop_is_ceiling=True,
+                stop_is_ceiling=True, commission_pct=ROUND_TRIP_COMMISSION_PCT,
             )
             if hold_days == 0:
                 continue
 
-            trade_days = _trade_daily_returns(df, idx, entry_price, hold_days, exit_price)
+            trade_days = _trade_daily_returns(df, idx, entry_price, hold_days, exit_price, commission_pct=ROUND_TRIP_COMMISSION_PCT)
             for day_date, day_ret in trade_days:
                 if day_date in contributions:
                     contributions[day_date] += weight * day_ret

@@ -389,11 +389,17 @@ CREATE TABLE IF NOT EXISTS technical_cache (
 -- signal_config, a diferencia de compute_accuracy) nunca se cachea -- se
 -- recalcula fresco contra el resultado cacheado en cada request, es
 -- aritmetica sobre escalares, no el costo real.
+-- Append-only (ver conversacion, Fase 3 de unificacion): instrument_id YA NO
+-- es PRIMARY KEY -- antes cada corrida pisaba (upsert) la fila anterior, asi
+-- que era imposible ver si el acierto de un instrumento viene cayendo con el
+-- tiempo, solo "cuanto acierta ahora". Mismo criterio que news_sentiment_log.
 CREATE TABLE IF NOT EXISTS accuracy_cache (
-    instrument_id INTEGER PRIMARY KEY REFERENCES instruments(id) ON DELETE CASCADE,
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    instrument_id INTEGER NOT NULL REFERENCES instruments(id) ON DELETE CASCADE,
     result_json TEXT NOT NULL,
     fetched_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS idx_accuracy_cache_instrument ON accuracy_cache(instrument_id, fetched_at);
 
 -- Preferencias de visualizacion (no son parametros de señales): moneda en la
 -- que se muestra la cartera y que variante de BNA se usa para convertir.

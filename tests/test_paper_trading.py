@@ -267,9 +267,48 @@ def test_cierre_de_posicion_actualiza_caja(temp_db):
 
     paper_trading.check_exits(temp_db, {"QQQ": (tp_price, tp_price * 1000)})
 
-    expected_pnl = (tp_price - position["entry_price_usd"]) * position["quantity"]
+    # Neto de comision ida+vuelta (Fase 4, ver paper_trading.ROUND_TRIP_COMMISSION_PCT).
+    commission_usd = position["entry_price_usd"] * position["quantity"] * (paper_trading.ROUND_TRIP_COMMISSION_PCT / 100)
+    expected_pnl = (tp_price - position["entry_price_usd"]) * position["quantity"] - commission_usd
     assert paper_trading.get_cash_usd(temp_db) == pytest.approx(10000 + expected_pnl)
     assert paper_trading.get_equity_usd(temp_db) == pytest.approx(10000 + expected_pnl)
+
+
+def test_close_position_comision_cero_reproduce_comportamiento_bruto_previo(temp_db):
+    signal = _core_signal(symbol="QQQ", entry_price_usd=10.0, position_weight=0.5)
+    position = paper_trading.open_from_signal(temp_db, signal, "core", "accion")
+    tp_price = position["take_profit_price_usd"]
+
+    trade = paper_trading.close_position(
+        temp_db, position, exit_price_usd=tp_price, exit_price_ars=tp_price * 1000,
+        exit_reason="take_profit", commission_pct=0.0,
+    )
+
+    gross_pnl_usd = (tp_price - position["entry_price_usd"]) * position["quantity"]
+    assert trade["pnl_usd"] == pytest.approx(gross_pnl_usd)
+    assert trade["pnl_pct"] == pytest.approx((tp_price / position["entry_price_usd"] - 1) * 100)
+
+
+def test_close_position_comision_default_da_pnl_neto_menor_que_bruto(temp_db):
+    signal = _core_signal(symbol="QQQ", entry_price_usd=10.0, position_weight=0.5)
+    position = paper_trading.open_from_signal(temp_db, signal, "core", "accion")
+    tp_price = position["take_profit_price_usd"]
+
+    trade_bruto = paper_trading.close_position(
+        temp_db, position, exit_price_usd=tp_price, exit_price_ars=tp_price * 1000,
+        exit_reason="take_profit", commission_pct=0.0,
+    )
+    # Reabrir la misma posicion para cerrarla de nuevo, esta vez con comision
+    # default -- mismo engine "core" que arriba (distinto engine tendria
+    # distinta asignacion de capital/quantity, no serian comparables).
+    position2 = paper_trading.open_from_signal(temp_db, signal, "core", "accion")
+    trade_neto = paper_trading.close_position(
+        temp_db, position2, exit_price_usd=tp_price, exit_price_ars=tp_price * 1000,
+        exit_reason="take_profit",
+    )
+
+    assert trade_neto["pnl_usd"] < trade_bruto["pnl_usd"]
+    assert trade_neto["pnl_pct"] == pytest.approx(trade_bruto["pnl_pct"] - paper_trading.ROUND_TRIP_COMMISSION_PCT)
 
 
 # --- Reporte de rendimiento ----------------------------------------------------

@@ -120,6 +120,17 @@ def size_position(conn, engine, position_weight, entry_price_usd, equity_usd=Non
     return amount_usd / entry_price_usd
 
 
+# Costo de transaccion ida+vuelta (ver conversacion/plan de unificacion, Fase
+# 4: ningun backtest/paper trading restaba comision -- el P&L simulado era
+# BRUTO, no neto). Mismo valor y misma fuente que
+# portfolio/backtest.py::ROUND_TRIP_COMMISSION_PCT (promedio real observado
+# en transactions.comision, ~1.25% por pata, 2.5% ida+vuelta) -- duplicado en
+# vez de importado a proposito: este modulo es logica pura sin red/Chronos
+# (ver docstring del archivo), backtest.py arrastra dependencias pesadas que
+# no tiene sentido sumar aca solo por una constante.
+ROUND_TRIP_COMMISSION_PCT = 2.5
+
+
 # Tipos que en BYMA se compran en unidades enteras, nunca fraccionadas (ver
 # auditoria 19/10/2026, hallazgo 2.4: "simula CEDEARs fraccionados, ej. 20,32
 # QQQ" -- el bróker real jamás ejecutaría esa cantidad, así que el resultado
@@ -161,17 +172,26 @@ def open_from_signal(conn, signal, engine, asset_type):
 
 # --- Cierre de posiciones -----------------------------------------------------
 
-def close_position(conn, position, *, exit_price_usd, exit_price_ars, exit_reason, exit_date=None):
+def close_position(conn, position, *, exit_price_usd, exit_price_ars, exit_reason, exit_date=None,
+                    commission_pct=ROUND_TRIP_COMMISSION_PCT):
     """Cierra UNA posicion: inserta el trade cerrado (historial inmutable) y
     borra la fila de paper_positions. quantity es la misma cantidad de
     titulos en ambas monedas (no de pesos), por eso pnl_ars se calcula igual
     que pnl_usd pero con los precios ARS -- consistente con como BYMA
-    liquida de verdad (mismo numero de titulos, precio en pesos)."""
+    liquida de verdad (mismo numero de titulos, precio en pesos).
+
+    commission_pct (ver ROUND_TRIP_COMMISSION_PCT, Fase 4 del plan de
+    unificacion): costo de transaccion ida+vuelta, expresado como % del
+    monto de ENTRADA -- se resta de pnl_usd/pnl_ars/pnl_pct para que el
+    resultado quede NETO, no bruto. commission_pct=0 reproduce el
+    comportamiento anterior a esta fase exactamente."""
     exit_date = exit_date or today_ar().isoformat()
     quantity = position["quantity"]
-    pnl_usd = (exit_price_usd - position["entry_price_usd"]) * quantity
-    pnl_pct = (exit_price_usd / position["entry_price_usd"] - 1) * 100
-    pnl_ars = (exit_price_ars - position["entry_price_ars"]) * quantity
+    commission_usd = position["entry_price_usd"] * quantity * (commission_pct / 100)
+    commission_ars = position["entry_price_ars"] * quantity * (commission_pct / 100)
+    pnl_usd = (exit_price_usd - position["entry_price_usd"]) * quantity - commission_usd
+    pnl_pct = (exit_price_usd / position["entry_price_usd"] - 1) * 100 - commission_pct
+    pnl_ars = (exit_price_ars - position["entry_price_ars"]) * quantity - commission_ars
     trade = db.insert_paper_trade(
         conn,
         position_id=position["id"], symbol=position["symbol"], asset_type=position["asset_type"],

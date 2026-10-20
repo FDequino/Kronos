@@ -38,10 +38,10 @@ def test_cuenta_solo_los_que_tienen_directional_hit_pct(tmp_path):
     iid1 = _add_instrument(conn, "GGAL")
     iid2 = _add_instrument(conn, "YPFD")
     iid3 = _add_instrument(conn, "AAPL")
-    db.upsert_accuracy_cache(conn, iid1, result_json=json.dumps({"directional_hit_pct": 30.0}))
-    db.upsert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 70.0}))
+    db.insert_accuracy_cache(conn, iid1, result_json=json.dumps({"directional_hit_pct": 30.0}))
+    db.insert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 70.0}))
     # pending (sin directional_hit_pct todavia) -- no debe contarse ni como bueno ni como malo.
-    db.upsert_accuracy_cache(conn, iid3, result_json=json.dumps({"pending": True, "directional_hit_pct": None}))
+    db.insert_accuracy_cache(conn, iid3, result_json=json.dumps({"pending": True, "directional_hit_pct": None}))
 
     result = accuracy.compute_model_reliability_summary(conn)
 
@@ -53,7 +53,7 @@ def test_instrumento_sin_cache_se_omite(tmp_path):
     conn = _temp_conn(tmp_path)
     _add_instrument(conn, "GGAL")  # nunca se abrio su detalle -- sin accuracy_cache.
     iid2 = _add_instrument(conn, "YPFD")
-    db.upsert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 20.0}))
+    db.insert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 20.0}))
 
     result = accuracy.compute_model_reliability_summary(conn)
 
@@ -70,8 +70,8 @@ def test_accuracy_null_cacheada_no_rompe(tmp_path):
     conn = _temp_conn(tmp_path)
     iid1 = _add_instrument(conn, "GGAL")
     iid2 = _add_instrument(conn, "YPFD")
-    db.upsert_accuracy_cache(conn, iid1, result_json=json.dumps(None))
-    db.upsert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 20.0}))
+    db.insert_accuracy_cache(conn, iid1, result_json=json.dumps(None))
+    db.insert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 20.0}))
 
     result = accuracy.compute_model_reliability_summary(conn)
 
@@ -82,7 +82,7 @@ def test_accuracy_null_cacheada_no_rompe(tmp_path):
 def test_exactamente_50_no_es_bajo(tmp_path):
     conn = _temp_conn(tmp_path)
     iid = _add_instrument(conn, "GGAL")
-    db.upsert_accuracy_cache(conn, iid, result_json=json.dumps({"directional_hit_pct": 50.0}))
+    db.insert_accuracy_cache(conn, iid, result_json=json.dumps({"directional_hit_pct": 50.0}))
 
     result = accuracy.compute_model_reliability_summary(conn)
 

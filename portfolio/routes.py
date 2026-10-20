@@ -1440,7 +1440,7 @@ def _get_cached_accuracy(conn, instrument_id):
     forecasts = db.list_forecasts_for_instrument(conn, instrument_id)
     price_history = db.get_price_history(conn, instrument_id)
     acc = accuracy.compute_accuracy(forecasts, price_history, conn=conn)
-    db.upsert_accuracy_cache(conn, instrument_id, result_json=json.dumps(acc))
+    db.insert_accuracy_cache(conn, instrument_id, result_json=json.dumps(acc))
     return acc
 
 

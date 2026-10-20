@@ -426,6 +426,32 @@ def _migrate(conn):
         conn.execute("ALTER TABLE proposals ADD COLUMN telegram_notified_at TEXT")
         conn.commit()
 
+    # Fase 3 de unificacion (ver conversacion): accuracy_cache tenia
+    # instrument_id como PRIMARY KEY -- cada corrida pisaba (upsert) la fila
+    # anterior, imposible ver si el acierto de un instrumento viene cayendo
+    # con el tiempo. Reconstruye la tabla append-only (mismo patron que la
+    # migracion de 'cripto' en instruments mas arriba: tabla nueva, copiar
+    # filas, drop, rename) preservando cada fila ya cacheada como el primer
+    # punto historico de ese instrumento -- no se pierde nada.
+    accuracy_cache_cols = {row["name"] for row in conn.execute("PRAGMA table_info(accuracy_cache)").fetchall()}
+    if "id" not in accuracy_cache_cols:
+        conn.execute("PRAGMA foreign_keys=OFF")
+        conn.executescript("""
+            CREATE TABLE accuracy_cache_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                instrument_id INTEGER NOT NULL REFERENCES instruments(id) ON DELETE CASCADE,
+                result_json TEXT NOT NULL,
+                fetched_at TEXT NOT NULL
+            );
+            INSERT INTO accuracy_cache_new (instrument_id, result_json, fetched_at)
+            SELECT instrument_id, result_json, fetched_at FROM accuracy_cache;
+            DROP TABLE accuracy_cache;
+            ALTER TABLE accuracy_cache_new RENAME TO accuracy_cache;
+            CREATE INDEX IF NOT EXISTS idx_accuracy_cache_instrument ON accuracy_cache(instrument_id, fetched_at);
+        """)
+        conn.execute("PRAGMA foreign_keys=ON")
+        conn.commit()
+
 
 def _row_to_dict(row):
     return dict(row) if row is not None else None
@@ -1062,22 +1088,43 @@ def upsert_technical_cache(conn, instrument_id, *, rsi, tecnico, edge, n, fundam
 
 
 def get_accuracy_cache(conn, instrument_id):
+    """Fila MAS RECIENTE de accuracy_cache para instrument_id -- append-only
+    desde la Fase 3 de unificacion (ver insert_accuracy_cache/
+    get_accuracy_cache_history), asi que puede haber varias filas por
+    instrumento; el comportamiento observable de este getter ("la accuracy
+    actual") no cambia para ningun caller existente."""
     row = conn.execute(
-        "SELECT * FROM accuracy_cache WHERE instrument_id = ?", (instrument_id,)
+        "SELECT * FROM accuracy_cache WHERE instrument_id = ? ORDER BY fetched_at DESC, id DESC LIMIT 1",
+        (instrument_id,),
     ).fetchone()
     return _row_to_dict(row)
 
 
-def upsert_accuracy_cache(conn, instrument_id, *, result_json, fetched_at=None):
+def insert_accuracy_cache(conn, instrument_id, *, result_json, fetched_at=None):
+    """Append-only (ver conversacion, Fase 3 de unificacion) -- nunca pisa una
+    fila anterior, siempre inserta una nueva. Antes era upsert_accuracy_cache
+    (ON CONFLICT DO UPDATE), lo que hacia imposible ver si el acierto de un
+    instrumento viene cayendo con el tiempo. Mismo criterio que
+    insert_news_sentiment."""
     fetched_at = fetched_at or datetime.now().isoformat()
     conn.execute(
-        """INSERT INTO accuracy_cache (instrument_id, result_json, fetched_at)
-           VALUES (?, ?, ?)
-           ON CONFLICT(instrument_id) DO UPDATE SET
-               result_json = excluded.result_json, fetched_at = excluded.fetched_at""",
+        "INSERT INTO accuracy_cache (instrument_id, result_json, fetched_at) VALUES (?, ?, ?)",
         (instrument_id, result_json, fetched_at),
     )
     conn.commit()
+
+
+def get_accuracy_cache_history(conn, instrument_id, limit=None):
+    """Historico completo de accuracy_cache para instrument_id, mas reciente
+    primero -- pensado para un futuro grafico de "acierto direccional en el
+    tiempo" (ver conversacion, Fase 3 de unificacion)."""
+    query = "SELECT * FROM accuracy_cache WHERE instrument_id = ? ORDER BY fetched_at DESC, id DESC"
+    params = [instrument_id]
+    if limit is not None:
+        query += " LIMIT ?"
+        params.append(limit)
+    rows = conn.execute(query, params).fetchall()
+    return [_row_to_dict(row) for row in rows]
 
 
 # --- Historico de cotizaciones de dolar (fx_rate_history) ----------------------
