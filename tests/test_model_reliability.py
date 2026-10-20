@@ -61,6 +61,24 @@ def test_instrumento_sin_cache_se_omite(tmp_path):
     conn.close()
 
 
+def test_accuracy_null_cacheada_no_rompe(tmp_path):
+    # compute_accuracy devuelve None (nunca un dict) cuando el instrumento no
+    # tiene ningun forecast con datos predichos todavia -- json.dumps(None)
+    # cachea el string "null", que json.loads devuelve como None (no un dict
+    # vacio) -- distinto del caso {"pending": True, ...} de arriba. Bug real
+    # encontrado en vivo: crasheaba con AttributeError al llamar None.get(...).
+    conn = _temp_conn(tmp_path)
+    iid1 = _add_instrument(conn, "GGAL")
+    iid2 = _add_instrument(conn, "YPFD")
+    db.upsert_accuracy_cache(conn, iid1, result_json=json.dumps(None))
+    db.upsert_accuracy_cache(conn, iid2, result_json=json.dumps({"directional_hit_pct": 20.0}))
+
+    result = accuracy.compute_model_reliability_summary(conn)
+
+    assert result == {"evaluated_count": 1, "low_accuracy_count": 1}
+    conn.close()
+
+
 def test_exactamente_50_no_es_bajo(tmp_path):
     conn = _temp_conn(tmp_path)
     iid = _add_instrument(conn, "GGAL")

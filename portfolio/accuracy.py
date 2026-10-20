@@ -338,6 +338,11 @@ def compute_model_reliability_summary(conn):
         if not cached:
             continue
         acc = json.loads(cached["result_json"])
+        # compute_accuracy devuelve None (cacheado como "null") cuando el
+        # instrumento no tiene ningun forecast con datos predichos todavia --
+        # distinto del caso {"pending": True, ...}, que si es un dict.
+        if acc is None:
+            continue
         hit = acc.get("directional_hit_pct")
         if hit is None:
             continue
