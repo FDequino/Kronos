@@ -67,15 +67,13 @@
     animation: dropdown-in 140ms ease-out;
 }
 
-/* Cuando el trigger está cerca del borde derecho de la ventana, se abre
-   hacia la izquierda en vez de hacia la derecha (ver
-   webui/static/js/shared/tooltip-position.js -- sin esto, el panel se
-   cortaba contra el borde y generaba scroll horizontal). */
-.info-tooltip-panel.tooltip-panel-align-right,
-.glossary-term-panel.tooltip-panel-align-right {
-    left: auto;
-    right: 0;
-}
+/* El posicionamiento real (incluido evitar que se corte contra cualquier
+   borde, de ventana o de un contenedor con scroll propio) lo calcula
+   webui/static/js/shared/tooltip-position.js en cada apertura, pasando el
+   panel a position:fixed con coordenadas de ventana -- ver ese archivo para
+   el motivo (un ancestro con overflow-x:auto, como .table-scroll, también
+   clippea verticalmente por spec de CSS, un corte que left/right solos
+   nunca iban a resolver). */
 
 /* Termino de glosario inline (subrayado punteado) -- alternativa mas liviana
    al boton ⓘ de .info-tooltip para texto corrido/labels/headers, donde un

@@ -99,9 +99,20 @@ async function calibrarInstrumento(btn) {
     const symbol = btn.dataset.symbol;
     const row = btn.closest('.kronos-pending-row');
     btn.disabled = true;
-    const statusEl = document.createElement('span');
-    statusEl.className = 'hint';
-    row.appendChild(statusEl);
+    // Clickear "Calibrar" más de una vez (ej. tras un primer click que ya
+    // terminó y re-habilitó el botón) apendeaba OTRO <span> de estado sin
+    // sacar el anterior -- el mensaje se iba acumulando, duplicado, en vez
+    // de reemplazarse (bug real reportado por el usuario). Clase propia
+    // (nunca ".hint" a secas, que ya la usa el label fijo "Sin pronósticos
+    // resueltos todavía" de pendingRowHtml) para encontrar y reusar el
+    // mismo span entre llamadas en vez de crear uno nuevo cada vez.
+    let statusEl = row.querySelector('.kronos-calibrar-status');
+    if (!statusEl) {
+        statusEl = document.createElement('span');
+        statusEl.className = 'hint kronos-calibrar-status';
+        row.appendChild(statusEl);
+    }
+    statusEl.textContent = '';
     try {
         const { data } = await api.backtestInstrument(instrumentId);
         if (!data.forecast_ids.length) {

@@ -508,6 +508,15 @@
                 </div>
             </div>
             <div class="panel-body">
+                <!-- Secciones por motor (ver conversación/auditoría: "esto
+                     para qué sirve? no deberíamos configurar cada motor de
+                     manera independiente?" -- antes era un solo bloque de
+                     inputs sin separación visual de a qué motor pertenece
+                     cada uno) -- un solo endpoint/botón de guardado sigue
+                     por debajo (no hay 4 configuraciones independientes de
+                     verdad que guardar por separado), pero ahora queda
+                     explícito qué controla cada grupo. -->
+                <h3 class="detail-section-title" style="margin-top: 0;">Core y Satélite</h3>
                 <div class="field-row">
                     <div class="field" style="flex: 1 1 100%;">
                         <label for="ajustes-core-allocation-slider">
@@ -552,7 +561,9 @@
                      necesitan) un % de capital propio, ver portfolio/live_signals.py --
                      por eso solo Pairs y Factor tienen un control acá, con una aclaración
                      explícita del resto para no dejar la pregunta sin responder. -->
-                <div class="field-row" style="margin-top: 18px; align-items: flex-start;">
+                <hr class="rule">
+                <h3 class="detail-section-title" style="margin-top: 0;">Pairs Trading y Factor Investing</h3>
+                <div class="field-row" style="align-items: flex-start;">
                     <div class="field">
                         <label for="ajustes-pairs-allocation-input">
                             <span class="glossary-term" tabindex="0">Monto sugerido Pairs Trading (%)<span class="glossary-term-panel">% del patrimonio que se muestra como "monto sugerido" en cada oportunidad de Pairs Trading -- informativo, independiente del 100% Core+Satélite (no se resta de ahí).</span></span>
@@ -806,10 +817,6 @@
                     <div class="field">
                         <label for="ajustes-caucion-reference-input" class="glossary-term" tabindex="0">Tasa caución (TNA %)<span class="glossary-term-panel">Tasa que cargás vos a mano para comparar tu cartera (y el backtest Core/Satélite) contra "invertir en cauciones" — no existe una fuente pública gratuita de esta tasa.</span></label>
                         <input type="number" id="ajustes-caucion-reference-input" step="0.1" min="0" placeholder="sin configurar">
-                        <!-- Sugerencia desde cauciones reales (ver conversación/auditoría,
-                             hallazgo 2.2: "tasa fija en 38% cuando las reales fueron 20-26%")
-                             -- nunca pisa el campo manual sola, el usuario decide si la usa. -->
-                        <span class="hint" id="ajustes-caucion-suggested-hint" hidden></span>
                     </div>
                     <div class="field">
                         <label class="glossary-term" tabindex="0">Ajustar ARS por inflación<span class="glossary-term-panel">Si está activo, los montos en ARS se muestran ajustados por inflación acumulada ("pesos de hoy") en vez de pesos nominales de cada fecha.</span></label>
@@ -819,6 +826,16 @@
                         </label>
                     </div>
                 </div>
+                <!-- Sugerencia desde cauciones reales (ver conversación/auditoría,
+                     hallazgo 2.2: "tasa fija en 38% cuando las reales fueron
+                     20-26%") -- FUERA del .field-row a propósito (ver
+                     conversación: "estaban desalineados los ítems" -- adentro
+                     del .field de Tasa caución, esta línea extra hacía que ese
+                     campo creciera más que los demás, y .field-row alinea por
+                     el borde inferior -- "Ajustar ARS por inflación" quedaba
+                     empujado hacia abajo, desalineado del resto). Nunca pisa
+                     el campo manual sola, el usuario decide si la usa. -->
+                <p class="hint" id="ajustes-caucion-suggested-hint" hidden></p>
             </div>
         </div>
     </div>
@@ -900,15 +917,16 @@
                              -- misma generación que el envío, sin depender de Telegram. -->
                         <button id="ajustes-pdf-download-btn" class="btn btn-secondary" type="button">Descargar PDF</button>
                     </div>
-                </div>
-                <div class="field-row" style="margin-top: 10px;">
+                    <!-- En la MISMA fila que el resto de la config de envío, no en un
+                         renglón aparte (ver conversación: "lo de solo días hábiles no
+                         es necesario que esté en un renglón aparte" -- un toggle chico
+                         no amerita su propia fila completa). -->
                     <div class="field">
-                        <label>Solo días hábiles</label>
+                        <label class="glossary-term" tabindex="0">Solo días hábiles<span class="glossary-term-panel">Si está activo, el envío programado se salta sábados y domingos (no hubo rueda que resumir).</span></label>
                         <label class="switch">
                             <input type="checkbox" id="ajustes-pdf-weekdays-only-switch">
                             <span class="switch-track"><span class="switch-thumb"></span></span>
                         </label>
-                        <span class="hint">Si está activo, el envío programado se salta sábados y domingos (no hubo rueda que resumir).</span>
                     </div>
                 </div>
                 <div id="ajustes-pdf-test-send-result"></div>

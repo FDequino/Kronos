@@ -6,7 +6,7 @@
 import { $ } from '../shared/dom.js';
 import { fmt, fmtDate } from '../shared/format.js';
 import { showStatus } from '../shared/status.js';
-import { openModal } from '../shared/modal.js';
+import { openModal, closeModal } from '../shared/modal.js';
 import { INDICATOR_TOOLTIPS } from './core-satellite.js';
 import { api } from './api.js';
 
@@ -460,25 +460,44 @@ function initAutoTradingControl() {
     });
 
     $('auto-trading-enabled-switch').addEventListener('change', async (e) => {
-        // Encender pide confirmación explícita (apagar nunca, siempre es
-        // seguro apagar de una) -- este interruptor no hace nada todavía,
-        // pero la fricción tiene que estar desde el día uno, no agregarse
-        // recién cuando haya código real del otro lado.
-        if (e.target.checked) {
-            const confirmed = confirm(
-                'Vas a encender el interruptor maestro de ejecución real de órdenes.\n\n' +
-                'Hoy ningún código de Kronos lo usa todavía (no hay ejecución automática construida), ' +
-                'pero esto es exactamente lo que cualquier función futura de "mandar una orden real" ' +
-                'va a chequear antes de operar.\n\n¿Confirmás?'
-            );
-            if (!confirmed) {
-                e.target.checked = false;
-                return;
-            }
+        if (!e.target.checked) {
+            // Apagar nunca pide confirmación -- siempre es seguro apagar de una.
+            await api.updateSettings({ auto_trading_enabled: 0 });
+            await loadAutoTradingControl();
+            showStatus('status-banner', 'success', 'Ejecución real desactivada.');
+            return;
         }
-        await api.updateSettings({ auto_trading_enabled: e.target.checked ? 1 : 0 });
-        await loadAutoTradingControl();
-        showStatus('status-banner', 'success', e.target.checked ? 'Ejecución real ACTIVADA.' : 'Ejecución real desactivada.');
+        // Encender SÍ pide confirmación explícita -- este interruptor no
+        // hace nada todavía, pero la fricción tiene que estar desde el día
+        // uno, no agregarse recién cuando haya código real del otro lado.
+        // Modal propio, NUNCA confirm() nativo del navegador (ver
+        // conversación: "ese popup no pertenece a la app" -- se ve
+        // completamente ajeno al resto de la UI).
+        let confirmed = false;
+        openModal({
+            title: 'Encender ejecución real de órdenes',
+            bodyHtml: `
+                <p>Vas a encender el interruptor maestro de ejecución real de órdenes.</p>
+                <p class="hint">Hoy ningún código de Kronos lo usa todavía (no hay ejecución automática construida), pero esto es exactamente lo que cualquier función futura de "mandar una orden real" va a chequear antes de operar.</p>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary modal-close-btn">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Confirmar</button>
+                </div>
+            `,
+            onMount: (form) => {
+                form.querySelector('.modal-close-btn')?.addEventListener('click', () => closeModal());
+            },
+            onSubmit: async () => { confirmed = true; },
+            onClose: async () => {
+                if (!confirmed) {
+                    e.target.checked = false;
+                    return;
+                }
+                await api.updateSettings({ auto_trading_enabled: 1 });
+                await loadAutoTradingControl();
+                showStatus('status-banner', 'success', 'Ejecución real ACTIVADA.');
+            },
+        });
     });
 }
 
