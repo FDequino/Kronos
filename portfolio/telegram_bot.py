@@ -885,6 +885,44 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _edit_or_send(query, "No entendí ese botón -- volvé al menú.", reply_markup=_back_to_menu_keyboard())
 
 
+# Limite real de Telegram es 4096 caracteres por mensaje (confirmado en
+# produccion: telegram.error.BadRequest: Message is too long tumbando el
+# resumen diario completo para chat_id=6540392960 cuando el bloque de
+# oportunidades crecia). Margen contra el limite exacto, no el valor justo.
+TELEGRAM_MAX_MESSAGE_CHARS = 4000
+
+
+async def _send_long_message(bot, chat_id, text, **kwargs):
+    """Parte text en varios mensajes si excede el limite de Telegram --
+    nunca trunca contenido real (séria perder informacion de la cartera
+    en silencio), corta por limite de linea para no partir una línea Markdown
+    a la mitad."""
+    if len(text) <= TELEGRAM_MAX_MESSAGE_CHARS:
+        await bot.send_message(chat_id=chat_id, text=text, **kwargs)
+        return
+
+    chunks = []
+    current = ""
+    for line in text.split("\n"):
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) > TELEGRAM_MAX_MESSAGE_CHARS and current:
+            chunks.append(current)
+            current = line
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+
+    for i, chunk in enumerate(chunks):
+        # reply_markup (el teclado principal) solo tiene sentido en el
+        # ultimo mensaje -- repetirlo en cada parte lo pisaria sin aportar
+        # nada.
+        chunk_kwargs = dict(kwargs)
+        if i < len(chunks) - 1:
+            chunk_kwargs.pop("reply_markup", None)
+        await bot.send_message(chat_id=chat_id, text=chunk, **chunk_kwargs)
+
+
 async def _daily_summary_job(context: ContextTypes.DEFAULT_TYPE):
     """Resumen diario proactivo (§14 del prompt) -- reporta sobre el estado YA
     calculado (no dispara pronosticos nuevos de Kronos, eso corre por su
@@ -932,8 +970,8 @@ async def _daily_summary_job(context: ContextTypes.DEFAULT_TYPE):
         text = "\n".join(lines)
         for user in allowed_users:
             try:
-                await context.bot.send_message(
-                    chat_id=user["chat_id"], text=text, parse_mode="Markdown", reply_markup=_main_menu_keyboard()
+                await _send_long_message(
+                    context.bot, user["chat_id"], text, parse_mode="Markdown", reply_markup=_main_menu_keyboard()
                 )
             except Exception:
                 # Un chat_id roto/bloqueado (ej. el usuario borro el chat con

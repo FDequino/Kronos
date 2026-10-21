@@ -36,7 +36,10 @@ import statsmodels.api as sm
 from statsmodels.tsa.stattools import coint
 
 from portfolio import db, features, yield_engine
-from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT, UNIVERSE, fetch_ticker_history
+from portfolio.backtest import (
+    CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT, UNIVERSE, fetch_ticker_history,
+    _fix_price_discontinuities,
+)
 from portfolio.forecasting import build_model_input
 from portfolio.signals import CORE_SECTOR_GROUPS
 
@@ -95,11 +98,17 @@ def candidate_pairs_from_sectors(sector_groups=None):
 
 def _usd_close_series(symbol, conn):
     """Serie de cierre en USD CCL de `symbol`, indexada por fecha -- MISMA
-    conversion que el resto del proyecto (ver docstring del modulo)."""
+    conversion que el resto del proyecto (ver docstring del modulo). Aplica
+    _fix_price_discontinuities ANTES de convertir a USD -- mismo bug real
+    que portfolio/backtest.py::_prepare_aligned_series corrige (confirmado:
+    SPY/YPFD con saltos de precio falsos por cambio de ratio de CEDEAR
+    nunca ajustado hacia atras por la fuente), este modulo tiene su PROPIO
+    camino de fetch y no heredaba la correccion."""
     asset_type = _SYMBOL_ASSET_TYPE.get(symbol)
     if asset_type is None:
         raise ValueError(f"'{symbol}' no esta en portfolio.backtest.UNIVERSE -- no se conoce su asset_type")
     raw_df = fetch_ticker_history(symbol, asset_type, conn=conn)
+    raw_df = _fix_price_discontinuities(raw_df)
     model_df, _ccl, _currency = build_model_input(conn, raw_df, asset_type)
     series = pd.Series(model_df["close"].to_numpy(), index=pd.DatetimeIndex(raw_df["timestamps"]))
     return series[~series.index.duplicated(keep="last")].sort_index()

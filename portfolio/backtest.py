@@ -473,7 +473,8 @@ def summarize(results_df, symbol, proba_col="ensemble_proba"):
             profit_factor = float("inf")
         periods_per_year = 252 / ANCHOR_SPACING_DAYS
         if len(trade_return) > 1 and trade_return.std(ddof=1) > 0:
-            sharpe = float((trade_return.mean() / trade_return.std(ddof=1)) * np.sqrt(periods_per_year))
+            sharpe_raw = float(trade_return.mean() / trade_return.std(ddof=1))
+            sharpe = sharpe_raw * np.sqrt(periods_per_year)
 
     return {
         "symbol": symbol,
@@ -483,6 +484,16 @@ def summarize(results_df, symbol, proba_col="ensemble_proba"):
         "win_rate_pct": round(win_rate, 1) if win_rate is not None else None,
         "profit_factor": profit_factor,
         "sharpe_ratio": round(sharpe, 2) if sharpe is not None else None,
+        # Bug real encontrado (auditoria 2026-10-20): deflated_sharpe_ratio
+        # compara su propio sr_hat (SIEMPRE sin anualizar, ver docstring de
+        # esa funcion) contra sr0 -- si sr0 se construye con el Sharpe YA
+        # ANUALIZADO de arriba, la comparacion queda en escalas distintas
+        # (~sqrt(periods_per_year) de diferencia) y el DSR sale
+        # sistematicamente cerca de 0 sin importar si hay edge real o no.
+        # Este campo (SIN el factor sqrt(periods_per_year)) es el que hay
+        # que usar para construir la lista de Sharpes que alimenta
+        # _expected_max_sharpe_under_null -- nunca "sharpe_ratio".
+        "sharpe_ratio_raw": round(sharpe_raw, 4) if sharpe is not None else None,
         "n_operated": len(operated),
         "n_filtered": n_filtered,
         # Retornos POR TRADE (no diarios, sin anualizar) del subconjunto
@@ -635,8 +646,8 @@ def cpcv_evaluate_pooled(pooled_df, n_groups=N_CPCV_GROUPS, n_test_groups=N_CPCV
         out.append(fold_result)
 
         combo_summary = summarize(fold_result, f"combo_{combo_id}", proba_col="ensemble_proba_v4")
-        if combo_summary["sharpe_ratio"] is not None:
-            v4_sharpes_by_combo.append(combo_summary["sharpe_ratio"])
+        if combo_summary["sharpe_ratio_raw"] is not None:
+            v4_sharpes_by_combo.append(combo_summary["sharpe_ratio_raw"])
 
     if not out:
         return None, [], []
@@ -1006,6 +1017,98 @@ SATELLITE_MIN_WARMUP_ROWS = 40
 ROUND_TRIP_COMMISSION_PCT = 2.5
 
 
+# Tolerancia para considerar un salto diario "sospechosamente redondo" (ver
+# _fix_price_discontinuities): 3% de margen contra la fraccion limpia mas
+# cercana (1/2, 1/3, 1/4, 1/5, 1/10 y sus inversas) -- confirmado con datos
+# reales (auditoria 2026-10-20): el ratio de SPY (CEDEAR) el 2026-05-29 fue
+# 0.335 (a 0.5% de 1/3) y el de YPFD el 2026-08-03 fue 0.098 (a 2% de 1/10) --
+# ambos cambios de ratio de CEDEAR/split reales, nunca corregidos hacia atras
+# por la fuente. La caida real de GGAL/CEPU del 12/08/2019 (crisis PASO) dio
+# 0.529/0.528 -- a 5.8% de 1/2, FUERA de esta tolerancia a proposito: un
+# crash de mercado real no cae en una fraccion limpia por casualidad, un
+# cambio de ratio/split SI, por definicion.
+_RATIO_JUMP_TOLERANCE_PCT = 3.0
+_CLEAN_RATIOS = [0.1, 0.2, 0.25, 1 / 3, 0.5, 2, 3, 4, 5, 10]
+_JUMP_LOWER, _JUMP_UPPER = 0.6, 1.67
+
+
+def _closest_clean_ratio_gap_pct(ratio):
+    closest = min(_CLEAN_RATIOS, key=lambda r: abs(ratio - r) / r)
+    return abs(ratio - closest) / closest * 100, closest
+
+
+def _fix_price_discontinuities(df, price_cols=("open", "high", "low", "close")):
+    """Corrige, sobre una copia, dos clases de salto de precio de un dia
+    para el otro QUE NO SON un movimiento real de mercado (ver auditoria
+    2026-10-20, confirmado con datos reales de price_history):
+
+    1. Glitch transitorio de la fuente (varios simbolos SIN relacion entre
+       si saltan el mismo dia y vuelven al nivel anterior 1-2 ruedas
+       despues -- confirmado real en data912 para EWZ/MCD/TSLA/GGAL/GOOGL/
+       IBM/MELI/QQQ/SPY/YPFD el 2023-08-03->04 y para IBM/MELI el
+       2023-11-28->30): se interpola linealmente ese dia entre el anterior
+       y el siguiente, en vez de dejar un salto y una vuelta falsos.
+    2. Cambio de ratio de CEDEAR/split real pero nunca ajustado hacia atras
+       por la fuente (el precio NO vuelve al nivel anterior, queda ahi para
+       siempre): se re-escala TODO el historial ANTERIOR al salto por ese
+       ratio, mismo criterio que un ajuste de split normal -- el nivel mas
+       reciente queda como esta, la historia vieja se ajusta para que el
+       retorno dia a dia tenga sentido.
+
+    Declarado a proposito lo que NO se toca: un salto permanente cuyo ratio
+    NO cae cerca de una fraccion limpia (ver _CLEAN_RATIOS/_RATIO_JUMP_
+    TOLERANCE_PCT) se deja intacto -- puede ser un crash real (confirmado:
+    GGAL/CEPU 12/08/2019, crisis PASO, ratio 0.529/0.528, fuera de
+    tolerancia). Nunca se decide a ciegas que una caida real "no paso"."""
+    df = df.copy().reset_index(drop=True)
+    close = df["close"].astype(float)
+    n = len(close)
+    i = 1
+    while i < n:
+        prev = close.iloc[i - 1]
+        curr = close.iloc[i]
+        if prev and prev > 0 and curr and curr > 0:
+            ratio = curr / prev
+            if ratio < _JUMP_LOWER or ratio > _JUMP_UPPER:
+                reverted = False
+                for lookahead in (1, 2):
+                    if i + lookahead < n:
+                        later = close.iloc[i + lookahead]
+                        if later and later > 0 and _JUMP_LOWER < later / prev < _JUMP_UPPER:
+                            reverted = True
+                            revert_idx = i + lookahead
+                            break
+                if reverted:
+                    # Interpola el/los dia(s) de glitch entre el anterior
+                    # (bueno) y el de la vuelta (bueno) -- nunca extrapola
+                    # mas alla de datos reales ya conocidos. Mismo criterio
+                    # que un candle sintetico (open=high=low=close, ver
+                    # services/predictor/main.py): el bar entero de ese dia
+                    # es basura, no solo el close.
+                    good_before, good_after = prev, close.iloc[revert_idx]
+                    span = revert_idx - (i - 1)
+                    for step, idx in enumerate(range(i, revert_idx), start=1):
+                        interpolated = good_before + (good_after - good_before) * (step / span)
+                        for col in price_cols:
+                            if col in df.columns:
+                                df.loc[idx, col] = interpolated
+                    i = revert_idx + 1
+                    continue
+                gap_pct, _clean = _closest_clean_ratio_gap_pct(ratio)
+                if gap_pct <= _RATIO_JUMP_TOLERANCE_PCT:
+                    # Reescala TODO lo anterior al salto multiplicando por
+                    # `ratio` (curr/prev): si prev=56000 y curr=18760
+                    # (ratio=0.335), el historial viejo pasa a terminar en
+                    # ~18760 tambien, continuo con el nivel nuevo -- nunca
+                    # se toca el dato del dia del salto en si ni lo
+                    # posterior, que ES el nivel real vigente.
+                    for col in price_cols:
+                        if col in df.columns:
+                            df.loc[:i - 1, col] = df.loc[:i - 1, col].astype(float) * ratio
+        i += 1
+    return df
+
+
 def _prepare_aligned_series(symbol, asset_type, conn, min_rows):
     """Fetchea + alinea a la MISMA moneda que ve Chronos en produccion
     (build_model_input convierte las 4 columnas de precio a USD CCL para
@@ -1013,11 +1116,14 @@ def _prepare_aligned_series(symbol, asset_type, conn, min_rows):
     date/open/high/low/close/volume o None si no alcanza min_rows o si el
     fetch/conversion falla (ticker nuevo en el universo sin cobertura en
     data912, fuente caida, etc. -- nunca tumba el resto del universo por
-    uno solo)."""
+    uno solo). Aplica _fix_price_discontinuities ANTES de convertir a USD
+    (sobre el precio crudo en su moneda nativa) -- un salto falso en la
+    serie ARS se traslada igual a la serie USD si no se corrige antes."""
     try:
         raw_df = fetch_ticker_history(symbol, asset_type, conn=conn)
         if len(raw_df) < min_rows:
             return None
+        raw_df = _fix_price_discontinuities(raw_df)
         model_df, _ccl, _currency = build_model_input(conn, raw_df, asset_type)
     except Exception:
         return None
@@ -1599,7 +1705,7 @@ def _compute_engine_metrics(daily_returns_pct, idle_weight, trades, ccl_series=N
             profit_factor = float("inf")
 
     daily = daily_returns_pct.to_numpy() / 100
-    sharpe = None
+    sharpe = sharpe_raw = None
     # Bug real encontrado (ver conversacion): con una serie CONSTANTE (ej.
     # 0 trades, 100% del periodo en Caucion con la misma tasa diaria todos
     # los dias), numpy.std(ddof=1) no da exactamente 0.0 -- queda un residuo
@@ -1610,7 +1716,8 @@ def _compute_engine_metrics(daily_returns_pct, idle_weight, trades, ccl_series=N
     STD_EPSILON = 1e-9
     daily_std = daily.std(ddof=1)
     if len(daily) > 1 and daily_std > STD_EPSILON:
-        sharpe = float((daily.mean() / daily_std) * np.sqrt(periods_per_year))
+        sharpe_raw = float(daily.mean() / daily_std)
+        sharpe = sharpe_raw * np.sqrt(periods_per_year)
 
     equity = (1 + daily).cumprod()
     max_drawdown_pct = annualized_return_pct = None
@@ -1630,6 +1737,10 @@ def _compute_engine_metrics(daily_returns_pct, idle_weight, trades, ccl_series=N
         "win_rate_pct": round(win_rate, 1) if win_rate is not None else None,
         "profit_factor": profit_factor,
         "sharpe_ratio": round(sharpe, 2) if sharpe is not None else None,
+        # Ver summarize() mas arriba por la misma razon: version SIN
+        # anualizar, para alimentar deflated_sharpe_ratio en escala
+        # consistente con su propio sr_hat (tambien sin anualizar).
+        "sharpe_ratio_raw": round(sharpe_raw, 4) if sharpe_raw is not None else None,
         "max_drawdown_pct": round(max_drawdown_pct, 1) if max_drawdown_pct is not None else None,
         # USD: la moneda real de la operatoria desde la refactorizacion
         # financiera (ver conversacion) -- el nombre de la clave se mantiene
@@ -2214,6 +2325,95 @@ def _print_live_only_alert_status(conn):
         print("  Carry Trade LECAP/CER: sin pares comparables hoy (sin datos de LECAPs/CER disponibles).")
 
 
+def run_strategy_cpcv_validation(name, result, n_groups=UNIFIED_CPCV_GROUPS,
+                                  n_select=UNIFIED_CPCV_TEST_GROUPS, embargo_days=UNIFIED_CPCV_EMBARGO_DAYS):
+    """Aplica el MISMO CPCV + Deflated Sharpe Ratio que run_unified_cpcv_backtest
+    (ver _cpcv_blended_paths/deflated_sharpe_ratio, reusados tal cual, generico:
+    no les importa si vienen del blend o de UN solo motor), pero a una sola
+    estrategia -- es el gate de OBJETIVO_MARCO.md ("listo para plata real" ==
+    DSR>=0.95) que Canje/Carry cripto/Factor Investing todavia no pasaron: solo
+    corrieron un backtest simple, nunca esta validacion anti-overfitting.
+    `result` es el shape estandar {"daily_returns_pct", "idle_weight", "trades"}
+    que ya devuelven todos los simulate_*_engine del proyecto."""
+    dates = list(result["daily_returns_pct"].index)
+    if len(dates) < n_groups:
+        return {"engine": name, "full_metrics": None, "dsr_result": None,
+                "reason": f"historial insuficiente para CPCV ({len(dates)} dias < {n_groups} grupos)"}
+
+    paths = _cpcv_blended_paths(dates, n_groups, n_select, embargo_days)
+    path_metrics = []
+    for path_dates in paths:
+        path_returns = result["daily_returns_pct"].loc[path_dates]
+        path_idle = result["idle_weight"].loc[path_dates]
+        m = _compute_engine_metrics(path_returns, path_idle, [])
+        if m["sharpe_ratio_raw"] is not None:
+            path_metrics.append(m["sharpe_ratio_raw"])
+
+    engine_trades = [t for t in result["trades"] if "return_pct" in t]
+    full_metrics = _compute_engine_metrics(result["daily_returns_pct"], result["idle_weight"], engine_trades)
+    dsr_result = deflated_sharpe_ratio(result["daily_returns_pct"].dropna().to_numpy(), path_metrics) if path_metrics else None
+    return {
+        "engine": name, "full_metrics": full_metrics, "n_paths": len(paths),
+        "n_evaluable": len(path_metrics), "dsr_result": dsr_result,
+    }
+
+
+def run_strategy_validation_report():
+    """Punto de entrada: `python -m portfolio.backtest validate`. Corre el gate
+    CPCV+DSR de OBJETIVO_MARCO.md sobre los 4 candidatos que mostraron retorno
+    real positivo en la auditoria 2026-10-20 (Canje AL29/GD29, Carry funding
+    rate BTCUSDT/ETHUSDT, Factor Investing) -- NUNCA pasaron por esto antes,
+    solo por un backtest simple sin control de sobreajuste. Cada motor usa su
+    propio lookback real (ver conversacion: Canje necesita ~2000 ruedas para
+    tener 56 trades, Carry cripto usa el historial completo de Binance, Factor
+    usa 600 ruedas) -- un lookback corto comun les daria menos evidencia de la
+    que ya se confirmo disponible."""
+    from portfolio import arbitrage, crypto_carry, factor_investing
+
+    conn = db.get_connection()
+    try:
+        candidates = []
+
+        canje_result = arbitrage.simulate_canje_arbitrage_engine(
+            conn, lookback_days=2000, commission_pct=arbitrage.CANJE_ROUND_TRIP_COMMISSION_PCT)
+        candidates.append(("canje_al29_gd29", canje_result))
+
+        for symbol in ("BTCUSDT", "ETHUSDT"):
+            carry_result = crypto_carry.simulate_funding_rate_carry_engine(symbol)
+            candidates.append((f"crypto_carry_{symbol.lower()}", carry_result))
+
+        factor_result = factor_investing.simulate_factor_engine(
+            conn, lookback_days=600, commission_pct=ROUND_TRIP_COMMISSION_PCT)
+        candidates.append(("factor_investing", factor_result))
+
+        header = "=" * 100
+        print("\n" + header)
+        print("VALIDACION CPCV + DEFLATED SHARPE RATIO -- gate de OBJETIVO_MARCO.md por estrategia")
+        print(header)
+        results = []
+        for name, result in candidates:
+            if not len(result["daily_returns_pct"]):
+                print(f"{name:22s} -- SIN DATOS, no se pudo correr")
+                continue
+            r = run_strategy_cpcv_validation(name, result)
+            results.append(r)
+            if r["full_metrics"] is None:
+                print(f"{name:22s} -- {r['reason']}")
+                continue
+            m = r["full_metrics"]
+            dsr = r["dsr_result"]
+            dsr_txt = "no calculable" if dsr is None else f"{dsr['dsr']:.4f}"
+            veredicto = "evidencia insuficiente" if dsr is None else (
+                "VALIDADO (listo para el siguiente paso del gate)" if dsr["dsr"] >= 0.95 else "NO significativo todavia")
+            print(f"{name:22s} -- Retorno Anual USD: {_fmt_pct(m['annualized_return_pct'])} · "
+                  f"Sharpe: {_fmt_sharpe(m['sharpe_ratio'])} · Max DD: {_fmt_pct(m['max_drawdown_pct'])} · "
+                  f"{m['n_trades']} trades · DSR: {dsr_txt} ({r['n_evaluable']}/{r['n_paths']} caminos) -- {veredicto}")
+        print(header)
+        return results
+    finally:
+        conn.close()
+
+
 def run_unified_cpcv_backtest(universe=UNIVERSE, lookback_days=CORE_BACKTEST_LOOKBACK_DAYS):
     """Punto de entrada: `python -m portfolio.backtest unified`. Simula los 6
     motores backtesteables (Core/Satelite/Pairs/Factor/Canje + sleeve de
@@ -2239,8 +2439,8 @@ def run_unified_cpcv_backtest(universe=UNIVERSE, lookback_days=CORE_BACKTEST_LOO
             path_returns = unified["daily_returns_pct"].loc[path_dates]
             path_idle = unified["idle_weight"].loc[path_dates]
             m = _compute_engine_metrics(path_returns, path_idle, [])  # trades=[] -- win rate/PF no aplican a un sub-camino combinado, solo Sharpe/MaxDD/retorno
-            if m["sharpe_ratio"] is not None:
-                path_metrics.append(m["sharpe_ratio"])
+            if m["sharpe_ratio_raw"] is not None:
+                path_metrics.append(m["sharpe_ratio_raw"])
 
         full_metrics = _compute_engine_metrics(
             unified["daily_returns_pct"], unified["idle_weight"], unified["trades"], ccl_series=ccl_series,
@@ -2284,15 +2484,34 @@ def run_unified_cpcv_backtest(universe=UNIVERSE, lookback_days=CORE_BACKTEST_LOO
                   f"(SR_hat={dsr_result['sr_hat']} · SR0={dsr_result['sr0']} · n={dsr_result['n_trade_returns']} dias)")
 
         print(f"\nDesglose por motor (peso en este reporte / retorno anual USD / Sharpe / Max DD / trades):")
+        metrics_by_engine = {}
         for name, result in unified["per_engine"].items():
             # Factor Investing reporta eventos de REBALANCEO sin 'return_pct'
             # propio (ver docstring de simulate_unified_backtest/all_trades
             # mas arriba) -- mismo filtro aca, nunca un KeyError por motor.
             engine_trades = [t for t in result["trades"] if "return_pct" in t]
             m = _compute_engine_metrics(result["daily_returns_pct"], result["idle_weight"], engine_trades, ccl_series=ccl_series)
+            metrics_by_engine[name] = m
             weight = unified["weights"].get(name, 0.0)
             print(f"  {name.upper():10s} {weight:5.1f}% -- Retorno Anual USD: {_fmt_pct(m['annualized_return_pct'])} · "
                   f"Sharpe: {_fmt_sharpe(m['sharpe_ratio'])} · Max DD: {_fmt_pct(m['max_drawdown_pct'])} · {m['n_trades']} trades")
+
+        # Refresca el "ultimo edge conocido" que usa el Kelly Criterium del
+        # Satelite (ver short_term_engine.kelly_fraction / simulate_satellite_
+        # engine) -- confirmado real (auditoria 2026-10-20): sin esto, esta
+        # corrida (que SI mide el win_rate/profit_factor reales de HOY) nunca
+        # actualiza ese dato si nadie corre ademas "dual" por separado, y el
+        # proximo backtest sigue dimensionando posiciones con un edge viejo
+        # (en ese caso, 58.3%/1.45 de una corrida de varios dias antes,
+        # inflando el tamaño de posicion de una estrategia que en realidad
+        # tenia 35.6% de acierto). No es circular: se guarda DESPUES de medir
+        # esta corrida, para que la PROXIMA la use -- nunca esta misma.
+        if "core" in metrics_by_engine and "satellite" in metrics_by_engine:
+            db.save_dual_engine_backtest_summary(
+                conn, run_at=datetime.now().isoformat(), lookback_days=lookback_days,
+                core_metrics=metrics_by_engine["core"], satellite_metrics=metrics_by_engine["satellite"],
+                capital_allocation=capital_config.get_capital_allocation(conn),
+            )
 
         print(f"\nImpacto del barrido de Caucion (sleeve {unified['weights']['yield']:.1f}%, TNA de referencia {_fmt_pct(caucion_tna)}): "
               f"CON Caucion {_fmt_pct(full_metrics['annualized_return_pct'])}/{_fmt_sharpe(full_metrics['sharpe_ratio'])} Sharpe vs. "
@@ -2319,5 +2538,7 @@ if __name__ == "__main__":
         run_unified_cpcv_backtest()
     elif "allocation" in sys.argv[1:]:
         run_suggested_allocation_report()
+    elif "validate" in sys.argv[1:]:
+        run_strategy_validation_report()
     else:
         run_full_report()

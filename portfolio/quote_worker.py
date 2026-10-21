@@ -28,6 +28,15 @@ MARKET_CLOSE_HOUR = 17
 MARKET_HOURS_INTERVAL_SECONDS = 60
 OFF_HOURS_INTERVAL_SECONDS = 3600  # 1 vez por hora (FX/cierre), fuera de mercado
 
+# Confirmado en produccion (ver _tick): instrumentos que data912 ya no cubre
+# (ej. LETRAS vencidas -- S16O6/S30S6/TO26 no aparecen en NINGUN endpoint
+# live de data912 al 2026-10-20) reintentaban cada MARKET_HOURS_INTERVAL_SECONDS
+# para siempre. Mismo criterio que HISTORY_BACKFILL_RETRY_DAYS en history.py:
+# no se deja de intentar nunca (la fuente podria volver a cubrirlo), pero se
+# espacian los reintentos y se loggea un solo warning corto en vez de un
+# traceback completo en cada ciclo.
+QUOTE_RETRY_COOLDOWN_SECONDS = 1800
+
 _subscribers = []
 _subscribers_lock = threading.Lock()
 
@@ -63,17 +72,26 @@ def _tick():
     conn = db.get_connection()
     try:
         for instrument in db.list_instruments(conn):
+            failed_at = instrument.get("quote_failed_at")
+            if failed_at:
+                age_seconds = (datetime.utcnow() - datetime.fromisoformat(failed_at)).total_seconds()
+                if age_seconds < QUOTE_RETRY_COOLDOWN_SECONDS:
+                    continue
             try:
                 before = db.get_quote(conn, instrument["id"])
                 quote = fetchers.update_quote(conn, instrument)
                 if quote is None:
                     continue  # price_source='manual' -- nada que publicar
+                if failed_at:
+                    db.update_instrument(conn, instrument["id"], quote_failed_at=None)
                 var_pct = None
                 if before and before.get("price"):
                     var_pct = round((quote["price"] - before["price"]) / before["price"] * 100, 2)
                 _publish({"instrument_id": instrument["id"], "precio": quote["price"], "var_pct": var_pct})
-            except Exception:
-                logger.exception("QuoteWorker: fallo actualizando %s", instrument["symbol"])
+            except Exception as exc:
+                db.update_instrument(conn, instrument["id"], quote_failed_at=datetime.utcnow().isoformat())
+                logger.warning("QuoteWorker: fallo actualizando %s (%s) -- reintenta en %ds",
+                               instrument["symbol"], exc, QUOTE_RETRY_COOLDOWN_SECONDS)
     finally:
         conn.close()
 

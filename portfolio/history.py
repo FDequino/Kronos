@@ -25,7 +25,10 @@ import time
 from collections import defaultdict
 from datetime import datetime, timedelta
 
+import pandas as pd
+
 from portfolio import db, fetchers
+from portfolio.backtest import _fix_price_discontinuities
 from portfolio.tz import today_ar
 
 # reconstruct_portfolio_value/compute_twr reconstruyen la serie dia-por-dia
@@ -98,7 +101,21 @@ def _date_range(start, end):
 
 
 def _price_series(price_history_rows):
-    return {row["timestamp"].split("T")[0]: row["close"] for row in price_history_rows}
+    """Bug real encontrado en produccion (auditoria 2026-10-20, ver
+    conversacion "circuit breaker"): el historial de precios GUARDADO tiene
+    saltos falsos de un dia para el otro (cambios de ratio de CEDEAR nunca
+    ajustados hacia atras por data912 -- confirmado real: SPY el 2026-05-29,
+    ~3x) que antes solo se corregian en los backtests de investigacion
+    (portfolio/backtest.py::_fix_price_discontinuities) -- este reconstructor
+    de valor de cartera REAL (el que alimenta Resumen y el circuit breaker de
+    portfolio/risk_engine.py) leia el precio crudo sin corregir, mostrando una
+    caida de ~27% de un dia para el otro que nunca paso. Se aplica el MISMO
+    fix aca, sobre las filas ya guardadas (no se re-fetchea nada nuevo)."""
+    if not price_history_rows:
+        return {}
+    df = pd.DataFrame(price_history_rows).sort_values("timestamp").reset_index(drop=True)
+    df = _fix_price_discontinuities(df, price_cols=("close",))
+    return {row["timestamp"].split("T")[0]: row["close"] for row in df.to_dict("records")}
 
 
 def _predicted_series(forecasts):

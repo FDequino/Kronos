@@ -191,6 +191,7 @@ def compute_factor_scores(conn, universe=None):
         raw_df = backtest.fetch_ticker_history(symbol, asset_type, conn=conn)
         if len(raw_df) < MIN_HISTORY_ROWS:
             continue
+        raw_df = backtest._fix_price_discontinuities(raw_df)
         model_df, _ccl, _currency = build_model_input(conn, raw_df, asset_type)
         close = model_df["close"].reset_index(drop=True)
 

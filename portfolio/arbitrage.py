@@ -55,7 +55,7 @@ diario, ver log_canje_snapshot)."""
 import pandas as pd
 
 from portfolio import db, features, yield_engine
-from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT
+from portfolio.backtest import CORE_BACKTEST_LOOKBACK_DAYS, ROUND_TRIP_COMMISSION_PCT, _fix_price_discontinuities
 from portfolio.fetchers import (
     ensure_underlying_ohlcv_history, fetch_data912_historical, get_underlying_ohlcv_df,
 )
@@ -116,6 +116,7 @@ def _fetch_bond_close_series(symbol):
         df = fetch_data912_historical(symbol, "bono")
     except Exception:
         return None
+    df = _fix_price_discontinuities(df)
     series = df.set_index(df["timestamps"].dt.normalize())["close"]
     return series[~series.index.duplicated(keep="last")].sort_index()
 
@@ -384,6 +385,7 @@ def compute_cedear_underlying_brecha_series(conn, symbol):
         cedear_df = fetch_data912_historical(symbol, "cedear")
     except Exception:
         return None
+    cedear_df = _fix_price_discontinuities(cedear_df)
     cedear_close = cedear_df.set_index(cedear_df["timestamps"].dt.normalize())["close"]
     cedear_close = cedear_close[~cedear_close.index.duplicated(keep="last")].sort_index()
 
