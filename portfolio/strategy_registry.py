@@ -68,9 +68,14 @@ def start_paper_trading(conn, name):
         raise ValueError(f"estrategia desconocida: {name!r}")
     if strategy["status"] != "validated":
         raise ValueError(f"{name!r} esta en estado {strategy['status']!r} -- solo arranca paper trading desde 'validated'")
+    # paper_trading_started_at = HOY, nunca una fecha pasada -- ver
+    # portfolio/paper_ledger.py, que nunca cuenta dias anteriores a esto
+    # como "operado en papel" (el gate mide desempeño hacia adelante, no un
+    # replay del backtest ya conocido).
     conn.execute(
-        "UPDATE strategies SET status = 'paper_trading', paper_trading_paused = 0, updated_at = datetime('now') WHERE name = ?",
-        (name,),
+        "UPDATE strategies SET status = 'paper_trading', paper_trading_paused = 0, "
+        "paper_trading_started_at = ?, updated_at = datetime('now') WHERE name = ?",
+        (datetime.now().date().isoformat(), name),
     )
     conn.commit()
     return get_strategy(conn, name)

@@ -650,6 +650,13 @@ CREATE TABLE IF NOT EXISTS strategies (
     -- solo dice si el scanner (portfolio/monitor.py) debe seguir generando
     -- posiciones virtuales nuevas para esta estrategia ahora mismo.
     paper_trading_paused INTEGER NOT NULL DEFAULT 0,
+    -- Fecha (YYYY-MM-DD) en que arranco Paper Trading (ver
+    -- strategy_registry.start_paper_trading) -- portfolio/paper_ledger.py
+    -- NUNCA cuenta dias anteriores a esta como "paper trading" aunque el
+    -- simulador real devuelva años de historial: el gate mide desempeño
+    -- HACIA ADELANTE, contar el backtest ya conocido como si fuera
+    -- "operado en papel" seria hacer trampa con datos que ya se vieron.
+    paper_trading_started_at TEXT,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -746,6 +753,24 @@ CREATE TABLE IF NOT EXISTS paper_trading_snapshots (
     date TEXT PRIMARY KEY,
     equity_usd REAL NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Ledger diario de Paper Trading para estrategias que NO encajan en el
+-- modelo de posiciones de arriba (1 symbol, TP/SL, ver paper_positions) --
+-- Canje (posicion de PAR, sale por reversion de z-score, no por precio) y
+-- Carry cripto (delta-neutral, sin entrada/salida discreta, devenga
+-- funding todos los dias). Ver portfolio/paper_ledger.py: en vez de
+-- modelar posiciones, se reusa la MISMA serie daily_returns_pct que ya
+-- devuelven los simuladores validados por el gate CPCV+DSR
+-- (capital_allocator.py::_STRATEGY_SIMULATORS) y se acumula dia a dia.
+CREATE TABLE IF NOT EXISTS paper_strategy_ledger (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_name TEXT NOT NULL,
+    date TEXT NOT NULL,
+    daily_return_pct REAL NOT NULL,
+    equity_usd REAL NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE (strategy_name, date)
 );
 
 -- Snapshot de calibracion/precision de Kronos por instrumento (ver

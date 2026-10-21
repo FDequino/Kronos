@@ -2,6 +2,7 @@
 (ver OBJETIVO_MARCO.md, plan "grado-fondo" del 2026-10-20): fuente de verdad
 de que estrategia puede tocar plata real hoy."""
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,7 @@ def test_start_paper_trading_pasa_a_ese_estado(temp_db):
 
     assert s["status"] == "paper_trading"
     assert s["paper_trading_paused"] == 0
+    assert s["paper_trading_started_at"] == datetime.now().date().isoformat()
 
 
 def test_pausar_y_continuar_paper_trading(temp_db):

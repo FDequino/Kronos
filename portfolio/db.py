@@ -40,6 +40,8 @@ def _migrate(conn):
             conn.execute(f"ALTER TABLE strategies ADD COLUMN {col} REAL")
     if "paper_trading_paused" not in strategies_cols:
         conn.execute("ALTER TABLE strategies ADD COLUMN paper_trading_paused INTEGER NOT NULL DEFAULT 0")
+    if "paper_trading_started_at" not in strategies_cols:
+        conn.execute("ALTER TABLE strategies ADD COLUMN paper_trading_started_at TEXT")
     conn.commit()
 
     # 2026-10-21: 'paper_trading' se suma al CHECK de strategies.status (el
@@ -63,10 +65,11 @@ def _migrate(conn):
                 baseline_sharpe REAL,
                 baseline_annualized_return_pct REAL,
                 paper_trading_paused INTEGER NOT NULL DEFAULT 0,
+                paper_trading_started_at TEXT,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
-            INSERT INTO strategies_new (name, status, last_dsr, last_validated_at, automation_mode, capital_pct, baseline_sharpe, baseline_annualized_return_pct, paper_trading_paused, updated_at)
-            SELECT name, status, last_dsr, last_validated_at, automation_mode, capital_pct, baseline_sharpe, baseline_annualized_return_pct, paper_trading_paused, updated_at
+            INSERT INTO strategies_new (name, status, last_dsr, last_validated_at, automation_mode, capital_pct, baseline_sharpe, baseline_annualized_return_pct, paper_trading_paused, paper_trading_started_at, updated_at)
+            SELECT name, status, last_dsr, last_validated_at, automation_mode, capital_pct, baseline_sharpe, baseline_annualized_return_pct, paper_trading_paused, paper_trading_started_at, updated_at
             FROM strategies;
             DROP TABLE strategies;
             ALTER TABLE strategies_new RENAME TO strategies;
