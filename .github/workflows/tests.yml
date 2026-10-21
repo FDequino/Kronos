@@ -1,0 +1,36 @@
+name: Tests
+
+# Gate de correccion antes de cualquier deploy (ver conversacion: "CI con
+# tests") -- corre SOLO tests/ (690 tests reales al momento de escribir
+# esto), nunca el repo completo (finetune/qlib_test.py rompe la coleccion
+# de pytest por un modulo opcional -- `qlib` -- que no esta en
+# requirements.txt a proposito, ver deploy/deploy.sh para el mismo
+# criterio). Un push/PR con tests rojos NUNCA deberia llegar a
+# deploy/deploy.sh sin que alguien lo vea acá primero.
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: |
+            requirements.txt
+            webui/requirements.txt
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r webui/requirements.txt pytest
+
+      - name: Correr tests/
+        run: python -m pytest tests/ -q

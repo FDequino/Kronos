@@ -1,0 +1,36 @@
+# /etc/systemd/system/kronos.service -- fuente de verdad versionada (ver
+# conversación, "servidor de producción real"). Cualquier cambio a este
+# archivo se aplica a mano en el VPS (systemctl daemon-reload + restart),
+# no hay un paso automático que lo sincronice -- mismo criterio "deploy
+# manual" que el resto de este proyecto.
+[Unit]
+Description=Kronos - Mi Cartera (kronos.deglia.xyz)
+After=network.target
+
+[Service]
+Type=simple
+User=kronos
+Group=kronos
+WorkingDirectory=/opt/kronos/app
+EnvironmentFile=/opt/kronos/app/.env
+# gunicorn en vez del dev server de Flask (ver deploy/gunicorn_config.py --
+# workers=1 a propósito, QuoteWorker/Telegram bot asumen un solo proceso).
+ExecStart=/opt/kronos/app/.venv/bin/gunicorn -c deploy/gunicorn_config.py webui.app:app
+Restart=always
+RestartSec=3
+
+# Hardening (mismo criterio que deglia-bi.service en este mismo server)
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/kronos
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

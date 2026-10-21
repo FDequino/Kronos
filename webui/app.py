@@ -882,6 +882,36 @@ def get_model_status():
     """Get model status"""
     return jsonify(model_runtime.status())
 
+# DEBUG (ver conversación, auditoría de seguridad): antes se dejaba
+# debug=True SIEMPRE, incluso en producción -- el debugger interactivo
+# de Werkzeug (ejecución de código arbitrario si una excepción no
+# atrapada llega a mostrarlo) quedaba activo en la instalación real,
+# mitigado solo porque Caddy es el único frente público. Ahora
+# debug/reloader se prenden SOLO si FLASK_DEBUG=1 en el entorno (nunca
+# seteado en el .env de la VPS) -- en desarrollo local seguís pudiendo
+# pedirlo a mano si lo necesitás.
+DEBUG = os.environ.get('FLASK_DEBUG', '0') == '1'
+
+# QuoteWorker (Fase 7) + Telegram bot arrancan AL IMPORTAR el módulo (no
+# adentro de "if __name__ == '__main__':") -- requisito para correr bajo
+# gunicorn (ver kronos.service/deploy/gunicorn_config.py, "server de
+# producción"): un WSGI server IMPORTA la app (`webui.app:app`), nunca la
+# corre como script, así que cualquier arranque de fondo que viviera solo
+# dentro de ese bloque quedaba muerto en producción real. kronos.service
+# corre gunicorn con `--workers 1` a propósito -- más de 1 worker
+# arrancaría 2+ pollers de Telegram contra el MISMO bot token, lo que
+# Telegram rechaza (Conflict: terminated by other getUpdates request).
+#
+# Mismo criterio de reloader que antes (dev local, FLASK_DEBUG=1): con el
+# reloader de Werkzeug este módulo se importa 2 veces (proceso vigilante +
+# proceso hijo real, que ya tiene WERKZEUG_RUN_MAIN=true seteado) --
+# arrancar sin este chequeo duplicaría el poller en los 2 procesos. Sin
+# reloader (producción, FLASK_DEBUG no seteado) no hay proceso duplicado --
+# arranca derecho, una sola vez, apenas se importa el módulo.
+if not DEBUG or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
+    quote_worker.start()
+    telegram_bot.start()
+
 if __name__ == '__main__':
     print("Starting Kronos Web UI...")
     print(f"Model availability: {MODEL_AVAILABLE}")
@@ -890,35 +920,14 @@ if __name__ == '__main__':
     else:
         print("Tip: Will use simulated data for demonstration")
 
-    # DEBUG (ver conversación, auditoría de seguridad): antes se dejaba
-    # debug=True SIEMPRE, incluso en producción -- el debugger interactivo
-    # de Werkzeug (ejecución de código arbitrario si una excepción no
-    # atrapada llega a mostrarlo) quedaba activo en la instalación real,
-    # mitigado solo porque Caddy es el único frente público. Ahora
-    # debug/reloader se prenden SOLO si FLASK_DEBUG=1 en el entorno (nunca
-    # seteado en el .env de la VPS) -- en desarrollo local seguís pudiendo
-    # pedirlo a mano si lo necesitás.
-    DEBUG = os.environ.get('FLASK_DEBUG', '0') == '1'
-
-    # QuoteWorker (Fase 7) arranca aca, no al importar portfolio.quote_worker
-    # (a diferencia de forecast_worker.py) -- CON el reloader de Werkzeug
-    # (solo si DEBUG=True) este script corre COMPLETO como subproceso hijo
-    # con WERKZEUG_RUN_MAIN=true ya seteado desde antes de que Python
-    # arranque, y el proceso original (donde esa variable todavia no existe
-    # en este punto) queda vivo solo para vigilar cambios de archivo y
-    # relanzar el hijo -- nunca sirve requests de verdad. Arrancar el poller
-    # con un simple "al importar" (como forecast_worker.py) lo arrancaria en
-    # los DOS procesos, duplicando las llamadas a data912. SIN reloader
-    # (producción) no hay proceso duplicado -- arranca derecho, una sola vez.
-    if not DEBUG or os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
-        quote_worker.start()
-        telegram_bot.start()
-
+    # Server de desarrollo de Flask -- SOLO para `python webui/app.py`
+    # local. En producción (VPS), kronos.service corre gunicorn directo
+    # sobre el objeto `app` de este módulo (ver deploy/gunicorn_config.py) y
+    # este bloque nunca se ejecuta (gunicorn importa el módulo, no lo corre
+    # como __main__) -- ahí es gunicorn el que resuelve host/puerto/threads.
+    #
     # Host/puerto configurables por env (default sin cambios: 0.0.0.0:7070,
-    # el de siempre en dev local) -- el deploy de la VPS los pisa a
-    # 127.0.0.1:8090 via /opt/kronos/app/.env, mismo criterio "nunca
-    # expuesto directo" que ya usan el resto de los servicios de ese server
-    # (Caddy hace de unico frente publico).
+    # el de siempre en dev local).
     app.run(
         debug=DEBUG,
         use_reloader=DEBUG,
