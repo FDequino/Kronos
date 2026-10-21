@@ -93,12 +93,24 @@ def _badlar_daily_return_pct(tna_pct_series):
     return tna_pct_series / 365.0
 
 
-def simulate_carry_lecap_cer_engine(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_days=REBALANCE_DAYS):
+def simulate_carry_lecap_cer_engine(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_days=REBALANCE_DAYS,
+                                     commission_pct=0.0):
     """Simulador historico APROXIMADO (ver docstring del modulo) -- mismo
     shape de salida que el resto de los motores del proyecto:
     {"engine": "carry_lecap_cer", "daily_returns_pct": pd.Series, "idle_weight":
     pd.Series, "trades": [...]}. Devuelve series vacias si falta cualquiera
-    de las 2 fuentes reales (nunca inventa datos)."""
+    de las 2 fuentes reales (nunca inventa datos).
+
+    commission_pct (ver conversacion 2026-10-21, "investigacion en paralelo"):
+    costo de rotacion real -- CADA rotacion implica vender una pata y comprar
+    la otra de verdad (sea CER->efectivo/corto-plazo o al reves), nunca es
+    gratis. Sin tarifa especifica de "rotacion LECAP/CER" confirmada en
+    ningun tarifario (a diferencia de Canje, que SI tiene una linea explicita
+    de "Canjes de Titulos Valores") -- se usa como piso declarado
+    backtest.ROUND_TRIP_COMMISSION_PCT (2.5%, la comision real estandar de
+    bonos/acciones de IOL/PPI, misma que ya usa Factor Investing para sus
+    rotaciones), nunca inventado aparte. Se cobra UNA vez el dia de cada
+    rotacion (mismo criterio contable que Canje/Carry cripto/Factor)."""
     cer_df = fetchers.fetch_data912_historical(cer_symbol, "bono")
     if cer_df is None or cer_df.empty:
         empty = pd.Series(dtype=float)
@@ -133,6 +145,7 @@ def simulate_carry_lecap_cer_engine(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_
     n = len(common_dates)
     position = []  # "BADLAR" o "CER" por rueda
     current = "BADLAR"
+    current_since = 0  # indice donde arranco el tramo actual -- para armar return_pct al rotar
     trades = []
     for i in range(n):
         if i > 0 and i % rebalance_days == 0:
@@ -141,16 +154,35 @@ def simulate_carry_lecap_cer_engine(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_
             badlar_window_ret = (1 + badlar_daily_ret_pct.iloc[window_start:i].fillna(0) / 100).prod() - 1
             new_position = "CER" if cer_window_ret > badlar_window_ret else "BADLAR"
             if new_position != current:
+                # return_pct del tramo que se cierra (ver conversacion: sin
+                # este campo, backtest.py::run_strategy_cpcv_validation
+                # filtra "trades" por `"return_pct" in t` y reporta n_trades=0
+                # aunque SI hubo rotaciones reales -- mismo criterio de
+                # reporte que Canje/pairs_trading, nunca un numero inventado).
+                held_ret_pct = cer_daily_ret_pct if current == "CER" else badlar_daily_ret_pct
+                segment_return_pct = (1 + held_ret_pct.iloc[current_since:i].fillna(0) / 100).prod() * 100 - 100
                 trades.append({
                     "engine": "carry_lecap_cer", "date": common_dates[i],
                     "from": current, "to": new_position,
+                    "entry_date": common_dates[current_since].date().isoformat(),
+                    "exit_date": common_dates[i].date().isoformat(),
+                    "return_pct": round(float(segment_return_pct), 3),
                 })
+                current_since = i
             current = new_position
         position.append(current)
 
     position_sr = pd.Series(position, index=common_dates)
     daily_returns_pct = cer_daily_ret_pct.where(position_sr == "CER", badlar_daily_ret_pct)
     daily_returns_pct = daily_returns_pct.fillna(0.0)
+
+    # Comision de rotacion, restada UNA vez el dia de cada cambio de pata
+    # (ver docstring de arriba) -- trade["date"] es exactamente el dia `i`
+    # donde new_position != current, el mismo indice que common_dates[i].
+    if commission_pct and trades:
+        trade_dates = {t["date"] for t in trades}
+        for date in trade_dates:
+            daily_returns_pct.loc[date] -= commission_pct
 
     return {
         "engine": "carry_lecap_cer",
@@ -160,11 +192,12 @@ def simulate_carry_lecap_cer_engine(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_
     }
 
 
-def simulate_carry_lecap_cer_engine_usd(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_days=REBALANCE_DAYS):
+def simulate_carry_lecap_cer_engine_usd(conn, cer_symbol=CER_BOND_SYMBOL, rebalance_days=REBALANCE_DAYS,
+                                         commission_pct=0.0):
     """Igual que simulate_carry_lecap_cer_engine pero convertido a USD via
     CCL historico real (portfolio/macro_data.py::get_ccl_series) -- la vara
     de OBJETIVO_MARCO.md es rendimiento en USD, nunca ARS nominal."""
-    result = simulate_carry_lecap_cer_engine(conn, cer_symbol, rebalance_days)
+    result = simulate_carry_lecap_cer_engine(conn, cer_symbol, rebalance_days, commission_pct=commission_pct)
     returns_ars = result["daily_returns_pct"]
     if not len(returns_ars):
         return result
