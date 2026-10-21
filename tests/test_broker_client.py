@@ -435,9 +435,50 @@ def test_iol_cancel_order_llama_delete_con_el_numero_de_operacion(temp_db, manag
 # probado contra una cuenta real ni siquiera testnet -- no hay credenciales
 # de Binance cargadas hoy) -------------------------------------------------
 
-def _binance_adapter(temp_db, manager):
-    account = manager.add_account(temp_db, broker_name="Binance", api_key="apikey123", api_secret="secretkey456")
+def _binance_adapter(temp_db, manager, is_testnet=False):
+    account = manager.add_account(
+        temp_db, broker_name="Binance", api_key="apikey123", api_secret="secretkey456", is_testnet=is_testnet,
+    )
     return broker_client.BinanceAdapter(db.get_broker_account(temp_db, account["id"]))
+
+
+def test_binance_is_testnet_usa_base_urls_de_testnet(temp_db, manager, monkeypatch):
+    # Ver schema.sql::broker_accounts.is_testnet -- paso obligatorio antes de
+    # operar carry trade con credenciales mainnet (BinanceAdapter nunca se
+    # probo ni siquiera en testnet).
+    captured = {}
+    monkeypatch.setattr(
+        broker_client.requests, "get",
+        lambda url, headers=None, timeout=None: (captured.__setitem__("url", url), _fake_response({"balances": []}))[1],
+    )
+    adapter = _binance_adapter(temp_db, manager, is_testnet=True)
+
+    adapter.test_connection()
+    assert captured["url"].startswith(broker_client.BinanceAdapter.TESTNET_SPOT_BASE_URL)
+
+
+def test_binance_sin_testnet_usa_base_urls_de_produccion(temp_db, manager, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        broker_client.requests, "get",
+        lambda url, headers=None, timeout=None: (captured.__setitem__("url", url), _fake_response({"balances": []}))[1],
+    )
+    adapter = _binance_adapter(temp_db, manager, is_testnet=False)
+
+    adapter.test_connection()
+    assert captured["url"].startswith(broker_client.BinanceAdapter.SPOT_BASE_URL)
+
+
+def test_binance_testnet_futuros_usa_base_url_de_testnet(temp_db, manager, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        broker_client.requests, "get",
+        lambda url, headers=None, timeout=None: (captured.__setitem__("url", url), _fake_response({}))[1],
+    )
+    adapter = _binance_adapter(temp_db, manager, is_testnet=True)
+
+    adapter.get_balance()
+    assert captured["url"].startswith(broker_client.BinanceAdapter.TESTNET_FUTURES_BASE_URL)
 
 
 def test_binance_test_connection_firma_y_llama_api_v3_account(temp_db, manager, monkeypatch):

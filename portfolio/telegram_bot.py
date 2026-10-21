@@ -39,7 +39,7 @@ from telegram.error import BadRequest
 from telegram.ext import Application, CallbackQueryHandler, CommandHandler, ContextTypes, MessageHandler, filters
 
 from model.client import ChronosServiceClient
-from portfolio import accuracy, db, fetchers, fixed_income, loans as loans_module, pdf_report, risk, routes
+from portfolio import accuracy, db, execution_router, fetchers, fixed_income, loans as loans_module, pdf_report, risk, routes
 from portfolio import config as capital_config
 from portfolio import live_signals, monitor, paper_ledger, paper_trading, proposals, regime, scanner
 from portfolio.formatting import fmt_es
@@ -780,6 +780,53 @@ async def cmd_senales(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # --- Botones (CallbackQuery) -------------------------------------------------
 
+def _execution_decision_keyboard(decision_id):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Confirmar", callback_data=f"exec:{decision_id}:confirm"),
+        InlineKeyboardButton("❌ Rechazar", callback_data=f"exec:{decision_id}:reject"),
+    ]])
+
+
+def _format_execution_decision(decision):
+    legs_txt = "\n".join(
+        f"  • {leg['side'].upper()} {fmt_es(leg['quantity'], 6)} {leg['symbol']} ({leg['market']}) "
+        f"@ {fmt_es(leg['price_usd'], 2)} USD"
+        for leg in decision["legs"]
+    )
+    return f"*{decision['strategy_name']}* -- {decision['action']}\n{legs_txt}\nMotivo: {decision['reason']}"
+
+
+async def _handle_execution_decision_callback(query, data):
+    """Confirmar/rechazar una decision de ejecucion REAL (ver
+    portfolio/execution_router.py::resolve_decision) -- ya se verifico admin
+    antes de llamar a esto (ver on_callback_query). El mismo chequeo de
+    'already_resolved' que usa la Web: si esto llega tarde (la Web ya
+    resolvio), nunca ejecuta 2 veces, solo avisa que ya se resolvio."""
+    _, decision_id_raw, action = data.split(":")
+    decision_id = int(decision_id_raw)
+    conn = db.get_connection()
+    try:
+        result = execution_router.resolve_decision(
+            conn, decision_id, approved=(action == "confirm"), via="telegram",
+        )
+    except ValueError as e:
+        await _edit_or_send(query, f"⚠️ {e}")
+        return
+    finally:
+        conn.close()
+
+    decision = result["decision"]
+    if result["already_resolved"]:
+        text = f"Esta decisión ya se había resuelto antes (vía {decision['resolved_via']}: {decision['status']})."
+    elif action == "reject":
+        text = f"❌ Rechazada.\n{_format_execution_decision(decision)}"
+    elif decision["status"] in ("executed", "auto_executed"):
+        text = f"✅ Ejecutada.\n{_format_execution_decision(decision)}"
+    else:
+        text = f"⚠️ {decision['status']}: {decision.get('error_detalle') or 'sin detalle'}\n{_format_execution_decision(decision)}"
+    await _edit_or_send(query, text, parse_mode="Markdown")
+
+
 async def _handle_risk_callback(query, data):
     """Procesa un toque de boton del submenu de Ajustes de Riesgo -- ya se
     verifico admin antes de llamar a esto (ver on_callback_query)."""
@@ -880,6 +927,18 @@ async def on_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
         await _handle_risk_callback(query, data)
+        return
+
+    if data.startswith("exec:"):
+        # Confirmar/rechazar una decision de ejecucion REAL -- mismo gate que
+        # risk: (solo admin), ver portfolio/execution_router.py.
+        if user["role"] != "admin":
+            await _edit_or_send(
+                query, "⚠️ Solo el administrador puede confirmar/rechazar ejecuciones reales.",
+                reply_markup=_back_to_menu_keyboard(),
+            )
+            return
+        await _handle_execution_decision_callback(query, data)
         return
 
     await _edit_or_send(query, "No entendí ese botón -- volvé al menú.", reply_markup=_back_to_menu_keyboard())
@@ -1236,6 +1295,65 @@ async def _paper_ledger_job(context: ContextTypes.DEFAULT_TYPE):
         conn.close()
 
 
+async def _execution_router_job(context: ContextTypes.DEFAULT_TYPE):
+    """Ciclo diario de ejecucion REAL (ver portfolio/execution_router.py) --
+    20:05 ART, 5 minutos DESPUES de _paper_ledger_job (que corre a las
+    20:00): asi toda estrategia 'paper_trading' ya quedo al dia antes de que
+    esto evalue las 'live' (ninguna dependencia real entre los 2 hoy, pero
+    mismo orden logico que record_daily_return declara). Nunca notifica
+    directo -- eso lo hace _execution_decisions_sync_job (repeating, mas
+    abajo), que es el UNICO lugar que arma el mensaje/boton de Telegram."""
+    conn = db.get_connection()
+    try:
+        try:
+            execution_router.run_daily_execution_cycle(conn)
+        except Exception:
+            logger.exception("Fallo execution_router.run_daily_execution_cycle")
+    finally:
+        conn.close()
+
+
+EXECUTION_DECISIONS_SYNC_INTERVAL_SECONDS = 5 * 60
+
+
+async def _execution_decisions_sync_job(context: ContextTypes.DEFAULT_TYPE):
+    """Notifica las execution_decisions GENUINAMENTE nuevas (telegram_notified_at
+    IS NULL, mismo patron que _proposals_sync_job) -- 'pending_confirmation'
+    con botones Confirmar/Rechazar (semi_auto), cualquier otro estado
+    terminal (auto_executed/executed/failed/partially_filled/rejected) como
+    aviso informativo (ver conversacion: "avisar por Telegram despues de
+    ejecutar" en full_auto). Solo a usuarios admin -- mismo gate que
+    confirmar/rechazar en si (ver on_callback_query, data.startswith('exec:'))."""
+    conn = db.get_connection()
+    try:
+        pendientes = [d for d in db.list_execution_decisions(conn) if not d.get("telegram_notified_at")]
+        if not pendientes:
+            return
+        admins = [u for u in db.list_telegram_allowed_users(conn) if u["role"] == "admin"]
+        if not admins:
+            return
+        for d in pendientes:
+            if d["status"] == "pending_confirmation":
+                text = f"🔔 *Confirmación pendiente*\n{_format_execution_decision(d)}"
+                keyboard = _execution_decision_keyboard(d["id"])
+            elif d["status"] in ("auto_executed", "executed"):
+                text = f"✅ *Ejecutado automáticamente*\n{_format_execution_decision(d)}"
+                keyboard = None
+            else:  # failed / partially_filled / rejected
+                text = f"⚠️ *{d['status']}*\n{_format_execution_decision(d)}\n{d.get('error_detalle') or ''}"
+                keyboard = None
+            for user in admins:
+                try:
+                    await context.bot.send_message(
+                        chat_id=user["chat_id"], text=text, parse_mode="Markdown", reply_markup=keyboard,
+                    )
+                except Exception:
+                    logger.exception("Fallo notificación de execution_decision id=%s para chat_id=%s", d["id"], user["chat_id"])
+            db.update_execution_decision(conn, d["id"], telegram_notified_at=now_ar().isoformat())
+    finally:
+        conn.close()
+
+
 PROPOSALS_SYNC_INTERVAL_SECONDS = 15 * 60
 
 
@@ -1336,6 +1454,12 @@ def _build_application():
     )
     application.job_queue.run_daily(
         _paper_ledger_job, time=dt_time(hour=20, minute=0, tzinfo=ART_TZ),
+    )
+    application.job_queue.run_daily(
+        _execution_router_job, time=dt_time(hour=20, minute=5, tzinfo=ART_TZ),
+    )
+    application.job_queue.run_repeating(
+        _execution_decisions_sync_job, interval=EXECUTION_DECISIONS_SYNC_INTERVAL_SECONDS, first=25,
     )
     return application
 

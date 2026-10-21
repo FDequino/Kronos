@@ -430,18 +430,23 @@ function setAutoTradingLimitModeActive(mode) {
     });
     $('auto-trading-limit-pct-field').hidden = mode !== 'pct';
     $('auto-trading-limit-ars-field').hidden = mode !== 'fixed';
+    $('auto-trading-limit-usd-field').hidden = mode !== 'fixed';
 }
 
 function renderAutoTradingLimitResolved(settings) {
     const el = $('auto-trading-limit-resolved');
     if (!el) return;
     if (settings.auto_trading_limit_mode === 'fixed') {
-        el.textContent = settings.auto_trading_limit_ars
-            ? `Tope configurado: ${fmt(settings.auto_trading_limit_ars, 0)} ARS fijos.`
-            : 'Sin monto fijo configurado todavía — el tope efectivo es $0 (bloquea todo) hasta que cargues uno.';
+        const ars = settings.auto_trading_limit_ars
+            ? `${fmt(settings.auto_trading_limit_ars, 0)} ARS (IOL/PPI)`
+            : 'sin configurar (IOL/PPI bloqueado)';
+        const usd = settings.auto_trading_limit_usd
+            ? `${fmt(settings.auto_trading_limit_usd, 0)} USD (Binance)`
+            : 'sin configurar (Binance bloqueado)';
+        el.textContent = `Tope configurado: ${ars} · ${usd}.`;
     } else {
         el.textContent = settings.auto_trading_limit_pct
-            ? `Tope configurado: ${fmt(settings.auto_trading_limit_pct, 0)}% del patrimonio total.`
+            ? `Tope configurado: ${fmt(settings.auto_trading_limit_pct, 0)}% del patrimonio (aplica igual a ARS y USD).`
             : 'Sin % configurado todavía — el tope efectivo es $0 (bloquea todo) hasta que cargues uno.';
     }
 }
@@ -452,7 +457,7 @@ async function loadAutoTradingControl() {
     $('auto-trading-enabled-switch').checked = enabled;
     $('auto-trading-status-label').textContent = enabled
         ? 'Ejecución real: ENCENDIDA'
-        : 'Ejecución real: Apagada — hoy no hay ningún código que la use todavía.';
+        : 'Ejecución real: Apagada.';
 
     setAutoTradingLimitModeActive(settings.auto_trading_limit_mode || 'pct');
     if (settings.auto_trading_limit_pct !== null && settings.auto_trading_limit_pct !== undefined) {
@@ -460,6 +465,12 @@ async function loadAutoTradingControl() {
     }
     if (settings.auto_trading_limit_ars !== null && settings.auto_trading_limit_ars !== undefined) {
         $('auto-trading-limit-ars-input').value = settings.auto_trading_limit_ars;
+    }
+    if (settings.auto_trading_limit_usd !== null && settings.auto_trading_limit_usd !== undefined) {
+        $('auto-trading-limit-usd-input').value = settings.auto_trading_limit_usd;
+    }
+    if (settings.auto_trading_capital_usd !== null && settings.auto_trading_capital_usd !== undefined) {
+        $('auto-trading-capital-usd-input').value = settings.auto_trading_capital_usd;
     }
     renderAutoTradingLimitResolved(settings);
 }
@@ -486,6 +497,23 @@ function initAutoTradingControl() {
         const raw = e.target.value.trim();
         limitSaveTimer = setTimeout(async () => {
             await api.updateSettings({ auto_trading_limit_ars: raw === '' ? null : Number(raw) });
+            await loadAutoTradingControl();
+        }, 500);
+    });
+    $('auto-trading-limit-usd-input').addEventListener('input', (e) => {
+        clearTimeout(limitSaveTimer);
+        const raw = e.target.value.trim();
+        limitSaveTimer = setTimeout(async () => {
+            await api.updateSettings({ auto_trading_limit_usd: raw === '' ? null : Number(raw) });
+            await loadAutoTradingControl();
+        }, 500);
+    });
+    let capitalSaveTimer = null;
+    $('auto-trading-capital-usd-input').addEventListener('input', (e) => {
+        clearTimeout(capitalSaveTimer);
+        const raw = e.target.value.trim();
+        capitalSaveTimer = setTimeout(async () => {
+            await api.updateSettings({ auto_trading_capital_usd: raw === '' ? null : Number(raw) });
             await loadAutoTradingControl();
         }, 500);
     });

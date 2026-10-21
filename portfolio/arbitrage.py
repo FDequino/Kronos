@@ -297,6 +297,124 @@ def simulate_canje_arbitrage_engine(conn=None, pair=CANJE_DEFAULT_PAIR, lookback
     return {"engine": "canje", "daily_returns_pct": returns, "idle_weight": idle_weight, "trades": trades}
 
 
+def simulate_canje_real_position_engine(conn=None, pair=CANJE_DEFAULT_PAIR,
+                                         lookback_days=CORE_BACKTEST_LOOKBACK_DAYS,
+                                         commission_pct=CANJE_ROUND_TRIP_COMMISSION_PCT):
+    """Backtest de la posicion REAL que de verdad se puede ejecutar con
+    plata real (ver conversacion 2026-10-21: "hagamos el backtest primero" --
+    antes de construir ejecucion real de Canje, el usuario pidio confirmar
+    que el modelo de posicion REAL, no el teorico, tiene edge por su cuenta).
+
+    Distinto de simulate_canje_arbitrage_engine (la version que SI paso el
+    gate DSR>=0.95 de OBJETIVO_MARCO.md): ESA mide la convergencia algebraica
+    de brecha_pct como si se pudiera estar largo una pata y corto la otra al
+    mismo tiempo (ver su docstring, "LIMITACION declarada") -- irreal para un
+    usuario retail en IOL/PPI, que no puede shortear bonos soberanos. ESTA
+    funcion modela lo unico que SI es ejecutable: comprar la pata barata
+    (cheap_leg, variante "D" liquidada en dolar) y quedarse DOLARIZADO en
+    ella de forma continua, rotando (vender la tenencia actual + comprar la
+    nueva barata) solo cuando |z|>CANJE_ZSCORE_ENTRY_THRESHOLD y la pata
+    barata cambio de lado. Nunca "sale a cash" -- una vez dolarizado, salir a
+    pesos no tiene sentido economico para esta estrategia (el punto es estar
+    en dolares, no apostar a la convergencia del spread). El retorno diario
+    es el cambio real de precio (USD) del bono efectivamente tenido --
+    expuesto a TODO el riesgo propio de ese bono (tasa, riesgo pais), no solo
+    al spread -- a diferencia de la version teorica.
+
+    commission_pct se cobra en cada rotacion (1 vez, vender+comprar) --
+    default CANJE_ROUND_TRIP_COMMISSION_PCT (la tarifa real de "Canje de
+    Titulos Valores" de IOL/PPI, ver arriba) ES optimista si en la practica
+    se ejecuta como 2 ordenes sueltas de compra/venta en vez de un producto
+    de canje nativo del broker (ver portfolio/multi_leg_execution.py,
+    DIFERENCIA HONESTA) -- declarado explicito, nunca asumido sin mas.
+
+    Mismo shape de salida que simulate_canje_arbitrage_engine, para poder
+    pasar esto tal cual a backtest.py::run_strategy_cpcv_validation."""
+    df = compute_canje_brecha_series(pair=pair)
+    if df is None:
+        empty = pd.Series(dtype=float)
+        return {"engine": "canje_real_position", "daily_returns_pct": empty, "idle_weight": empty, "trades": []}
+
+    master_dates = list(df.index)[-lookback_days:]
+    if len(master_dates) < 2:
+        empty = pd.Series(dtype=float)
+        return {"engine": "canje_real_position", "daily_returns_pct": empty, "idle_weight": empty, "trades": []}
+
+    hurdle_tna = float(db.get_signal_config(conn).get("caucion_reference_tna") or 0.0) if conn is not None else 0.0
+    idle_daily_pct = yield_engine.daily_caucion_return_pct(hurdle_tna)
+
+    contributions = {}
+    idle_flags = {}
+    held_leg = None  # "a" | "b" -- que pata (ley_a/ley_b) esta tenida HOY, None = todavia no se doloarizo
+    held_since_date = None
+    held_since_price = None
+    trades = []
+
+    for i, date in enumerate(master_dates):
+        z_now = df.loc[date, "zscore"]
+        brecha_now = df.loc[date, "brecha_pct"]
+        cheap_leg_now = None
+        if not pd.isna(z_now) and abs(float(z_now)) > CANJE_ZSCORE_ENTRY_THRESHOLD:
+            cheap_leg_now = "a" if brecha_now > 0 else "b"  # mismo criterio que compute_canje_arbitrage_signal
+
+        if held_leg is None:
+            # Todavia no se doloarizo -- entra recien con una señal real (no
+            # el primer dia a ciegas), mismo umbral de entrada que la version
+            # teorica, para que "cuando entrar" sea comparable entre ambas.
+            if cheap_leg_now is not None:
+                held_leg = cheap_leg_now
+                held_since_date = date
+                held_since_price = float(df.loc[date, f"{held_leg}_usd"])
+                contributions[date] = idle_daily_pct  # entra al cierre de hoy, rinde caucion el dia de entrada
+                idle_flags[date] = 1.0
+            else:
+                contributions[date] = idle_daily_pct
+                idle_flags[date] = 1.0
+            continue
+
+        price_prev = float(df.loc[master_dates[i - 1], f"{held_leg}_usd"])
+        price_now = float(df.loc[date, f"{held_leg}_usd"])
+        day_return_pct = (price_now / price_prev - 1) * 100
+        idle_flags[date] = 0.0
+
+        if cheap_leg_now is not None and cheap_leg_now != held_leg:
+            # Rotacion: se cobra la comision de vender la tenencia actual +
+            # comprar la nueva, UNA vez, el dia de la rotacion -- mismo
+            # criterio contable (restar una vez al cerrar) que la version
+            # teorica y que paper_trading.py/backtest.py.
+            day_return_pct -= commission_pct
+            cum_return_pct = (price_now / held_since_price - 1) * 100 - commission_pct
+            trades.append({
+                "engine": "canje_real_position", "pair": pair, "leg": held_leg,
+                "entry_date": held_since_date.date().isoformat(), "exit_date": date.date().isoformat(),
+                "hold_days": (date - held_since_date).days, "return_pct": round(cum_return_pct, 3),
+                "exit_reason": "rotacion",
+            })
+            held_leg = cheap_leg_now
+            held_since_date = date
+            held_since_price = float(df.loc[date, f"{held_leg}_usd"])
+
+        contributions[date] = day_return_pct
+
+    # Posicion final (si quedo dolarizado al final de la ventana) -- se
+    # reporta como trade "abierto" para que n_trades/metricas no pierdan esa
+    # tenencia, mismo criterio que portfolio/pairs_trading.py con posiciones
+    # vivas al final del backtest.
+    if held_leg is not None:
+        price_last = float(df.loc[master_dates[-1], f"{held_leg}_usd"])
+        trades.append({
+            "engine": "canje_real_position", "pair": pair, "leg": held_leg,
+            "entry_date": held_since_date.date().isoformat(), "exit_date": master_dates[-1].date().isoformat(),
+            "hold_days": (master_dates[-1] - held_since_date).days,
+            "return_pct": round((price_last / held_since_price - 1) * 100, 3),
+            "exit_reason": "fin_de_ventana",
+        })
+
+    returns = pd.Series(contributions, dtype=float).reindex(master_dates)
+    idle_weight = pd.Series(idle_flags, dtype=float).reindex(master_dates)
+    return {"engine": "canje_real_position", "daily_returns_pct": returns, "idle_weight": idle_weight, "trades": trades}
+
+
 # --- Arbitraje CEDEAR/subyacente real (ver conversacion/auditoria 2026-10-20,
 # "profundizar en mas opciones de Canje") -------------------------------------
 #

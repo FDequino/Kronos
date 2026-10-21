@@ -123,6 +123,22 @@ def compute_auto_trading_limit_ars(conn, patrimonio_ars):
     return patrimonio_ars * pct / 100.0
 
 
+def compute_auto_trading_limit_usd(conn, patrimonio_usd):
+    """Igual que compute_auto_trading_limit_ars pero en USD -- usado por
+    portfolio/binance_execution.py (Carry BTC/ETH, que no tiene ninguna pata
+    en pesos). auto_trading_limit_mode/auto_trading_limit_pct son los MISMOS
+    2 campos de arriba (un % de patrimonio es moneda-agnóstico); solo el
+    monto fijo necesita su propio campo (auto_trading_limit_usd) porque
+    auto_trading_limit_ars está, por nombre y uso, en pesos."""
+    settings = db.get_app_settings(conn)
+    if settings.get("auto_trading_limit_mode") == "fixed":
+        return settings.get("auto_trading_limit_usd") or 0.0
+    pct = settings.get("auto_trading_limit_pct")
+    if not pct:
+        return 0.0
+    return patrimonio_usd * pct / 100.0
+
+
 BROKER_NAMES = ("PPI", "IOL", "Balanz", "Matrix", "Binance")
 
 
@@ -700,7 +716,22 @@ class BinanceAdapter(BrokerAdapter):
     broker_name = "Binance"
     SPOT_BASE_URL = "https://api.binance.com"
     FUTURES_BASE_URL = "https://fapi.binance.com"
+    # Testnet (ver broker_accounts.is_testnet, schema.sql) -- confirmado
+    # contra la doc oficial de Binance (testnet.binance.vision para SPOT,
+    # testnet.binancefuture.com para FUTUROS USDS-M). Paso obligatorio antes
+    # de operar carry trade con credenciales mainnet: BinanceAdapter nunca se
+    # probó contra NINGUNA cuenta real todavía (ver docstring de la clase).
+    TESTNET_SPOT_BASE_URL = "https://testnet.binance.vision"
+    TESTNET_FUTURES_BASE_URL = "https://testnet.binancefuture.com"
     TIMEOUT = 15
+
+    @property
+    def spot_base_url(self):
+        return self.TESTNET_SPOT_BASE_URL if self.account.get("is_testnet") else self.SPOT_BASE_URL
+
+    @property
+    def futures_base_url(self):
+        return self.TESTNET_FUTURES_BASE_URL if self.account.get("is_testnet") else self.FUTURES_BASE_URL
 
     # Confirmado contra la doc oficial (ver HONESTIDAD DECLARADA) -- distingue
     # qué base URL/mercado usa cada operación. "cripto" (el asset_type
@@ -759,7 +790,7 @@ class BinanceAdapter(BrokerAdapter):
         """GET /api/v3/account (SPOT, SIGNED) -- confirmado contra la doc
         oficial como el endpoint estándar de "¿mi key/secret andan?"."""
         try:
-            self._signed_get(self.SPOT_BASE_URL, "/api/v3/account")
+            self._signed_get(self.spot_base_url, "/api/v3/account")
             return {"status": CONNECTION_OK, "detail": "GET /api/v3/account respondió correctamente (Binance)"}
         except Exception as e:
             return {"status": CONNECTION_FAILED, "detail": str(e)}
@@ -768,12 +799,12 @@ class BinanceAdapter(BrokerAdapter):
         """Combina SPOT (GET /api/v3/account, balances no-cero) + FUTUROS
         USDS-M (GET /fapi/v2/balance) -- ver docstring de la clase, un carry
         trade necesita ver las 2 patas juntas."""
-        spot = self._signed_get(self.SPOT_BASE_URL, "/api/v3/account")
+        spot = self._signed_get(self.spot_base_url, "/api/v3/account")
         spot_balances = [
             b for b in spot.get("balances", [])
             if float(b.get("free", 0)) > 0 or float(b.get("locked", 0)) > 0
         ]
-        futures_balances = self._signed_get(self.FUTURES_BASE_URL, "/fapi/v2/balance")
+        futures_balances = self._signed_get(self.futures_base_url, "/fapi/v2/balance")
         return {"spot": spot_balances, "futuros": futures_balances}
 
     def get_holdings(self):
@@ -783,9 +814,9 @@ class BinanceAdapter(BrokerAdapter):
         pasada, se usa el que SÍ se confirmó) + SPOT (balances no-cero,
         mismo criterio que get_balance) -- posiciones con positionAmt=0 se
         excluyen (no es una posición real abierta)."""
-        futures_account = self._signed_get(self.FUTURES_BASE_URL, "/fapi/v2/account")
+        futures_account = self._signed_get(self.futures_base_url, "/fapi/v2/account")
         positions = [p for p in futures_account.get("positions", []) if float(p.get("positionAmt", 0)) != 0]
-        spot = self._signed_get(self.SPOT_BASE_URL, "/api/v3/account")
+        spot = self._signed_get(self.spot_base_url, "/api/v3/account")
         spot_holdings = [
             b for b in spot.get("balances", [])
             if float(b.get("free", 0)) > 0 or float(b.get("locked", 0)) > 0
@@ -851,7 +882,7 @@ class BinanceAdapter(BrokerAdapter):
         if order_type == "LIMIT":
             params["price"] = price
             params["timeInForce"] = "GTC"
-        base_url = self.SPOT_BASE_URL if market == "spot" else self.FUTURES_BASE_URL
+        base_url = self.spot_base_url if market == "spot" else self.futures_base_url
         path = "/api/v3/order" if market == "spot" else "/fapi/v1/order"
         return self._signed_post(base_url, path, params)
 
@@ -859,7 +890,7 @@ class BinanceAdapter(BrokerAdapter):
         """DELETE /api/v3/order (spot) o DELETE /fapi/v1/order (futuros) --
         confirmado contra la doc oficial, ambos piden symbol + orderId."""
         market = self._market_for(asset_type)
-        base_url = self.SPOT_BASE_URL if market == "spot" else self.FUTURES_BASE_URL
+        base_url = self.spot_base_url if market == "spot" else self.futures_base_url
         path = "/api/v3/order" if market == "spot" else "/fapi/v1/order"
         return self._signed_delete(base_url, path, {"symbol": symbol, "orderId": order_id})
 
@@ -914,12 +945,12 @@ class MultiBrokerManager:
         return [mask_account(a) for a in accounts] if masked else accounts
 
     def add_account(self, conn, *, broker_name, alias=None, api_key=None, api_secret=None,
-                     account_number=None, is_active=True):
+                     account_number=None, is_active=True, is_testnet=False):
         if broker_name not in BROKER_NAMES:
             raise ValueError(f"broker_name debe ser uno de {BROKER_NAMES}, se recibió {broker_name!r}")
         account_id = db.add_broker_account(
             conn, broker_name=broker_name, alias=alias, api_key=api_key, api_secret=api_secret,
-            account_number=account_number, is_active=is_active,
+            account_number=account_number, is_active=is_active, is_testnet=is_testnet,
         )
         return mask_account(db.get_broker_account(conn, account_id))
 

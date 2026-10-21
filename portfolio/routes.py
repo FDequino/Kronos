@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 from flask import Blueprint, Response, jsonify, request, send_from_directory, stream_with_context
 
-from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, nlp_agent, paper_trading, projection, proposals, quote_worker, risk, risk_engine, strategy_registry, trendlines, xirr
+from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, execution_router, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, nlp_agent, paper_trading, projection, proposals, quote_worker, risk, risk_engine, strategy_registry, trendlines, xirr
 from portfolio import config as capital_config
 from portfolio.tz import today_ar
 
@@ -917,6 +917,43 @@ def proposal_detail_route(proposal_id):
             return jsonify({'error': 'estado invalido'}), 400
         updated = db.update_proposal(conn, proposal_id, estado=estado)
         return jsonify(updated)
+    finally:
+        conn.close()
+
+
+# --- Decisiones de ejecucion REAL (ver portfolio/execution_router.py) -------------
+# A diferencia de /proposals (aceptar ahi solo cambia un estado en la base,
+# nunca ejecuta nada -- ver portfolio/order_execution.py), aceptar/rechazar
+# ACA SI llama a resolve_decision, que ejecuta de verdad contra el broker.
+
+@bp.route('/execution-decisions')
+def execution_decisions_route():
+    conn = db.get_connection()
+    try:
+        estado = request.args.get('estado')
+        items = db.list_execution_decisions(conn, status=estado)
+        return jsonify(items)
+    finally:
+        conn.close()
+
+
+@bp.route('/execution-decisions/<int:decision_id>', methods=['PUT'])
+def execution_decision_detail_route(decision_id):
+    """Body: {"aprobada": true|false} -- lo que llegue primero entre esto y
+    el boton de Telegram gana (ver execution_router.resolve_decision,
+    already_resolved=True si el otro canal ya actuo)."""
+    conn = db.get_connection()
+    try:
+        data = request.get_json() or {}
+        if 'aprobada' not in data:
+            return jsonify({'error': 'falta "aprobada" (true/false)'}), 400
+        try:
+            result = execution_router.resolve_decision(
+                conn, decision_id, approved=bool(data['aprobada']), via='web',
+            )
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 404
+        return jsonify(result)
     finally:
         conn.close()
 
@@ -1950,6 +1987,7 @@ def broker_accounts():
                     api_secret=data.get('api_secret'),
                     account_number=data.get('account_number'),
                     is_active=data.get('is_active', True),
+                    is_testnet=data.get('is_testnet', False),
                 )
             except (ValueError, KeyError) as e:
                 return jsonify({'error': str(e)}), 400
@@ -1973,7 +2011,7 @@ def broker_account_detail(account_id):
             return jsonify(broker_client.mask_account(existing))
         data = request.get_json(silent=True) or {}
         fields = {}
-        for key in ('broker_name', 'alias', 'api_key', 'api_secret', 'account_number', 'is_active'):
+        for key in ('broker_name', 'alias', 'api_key', 'api_secret', 'account_number', 'is_active', 'is_testnet'):
             if key in data:
                 fields[key] = data[key]
         try:

@@ -233,7 +233,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Estrategias</h2>
-                    <p class="panel-subtitle">Qué estrategia pasó el filtro estadístico (DSR ≥ 0.95), en qué etapa está (Investigación → Validada → Paper Trading → Real) y cuánto capital tiene asignado. Solo lectura — los controles para arrancar/pausar cada etapa viven en Ajustes → Estrategia y Motores.</p>
+                    <p class="panel-subtitle">Qué estrategia pasó el filtro estadístico (DSR ≥ 0.95), en qué etapa está (Investigación → Validada → Paper Trading → Real) y cuánto capital tiene asignado. Los retornos/Sharpe esperados están siempre en <b>dólares (USD) por año, ya netos de la comisión real</b> de cada operación — nunca brutos ni en pesos. Solo lectura — los controles para arrancar/pausar cada etapa viven en Ajustes → Estrategia y Motores.</p>
                 </div>
             </div>
             <div class="panel-body no-bottom">
@@ -241,6 +241,22 @@
             </div>
             <div class="panel-body flush">
                 <div id="strategies-table-container">{{ skeleton_chart(220) }}</div>
+            </div>
+        </div>
+        <!-- Decisiones de ejecucion REAL (ver portfolio/execution_router.py) --
+             a diferencia de Propuestas (aceptar ahi nunca ejecuta nada, ver
+             portfolio/order_execution.py), Aceptar/Rechazar ACA SI ejecuta
+             contra el broker real -- lo que resuelva primero entre esto y el
+             boton de Telegram gana, el otro canal queda en no-op. -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Decisiones de Ejecución Real</h2>
+                    <p class="panel-subtitle">Acciones que el motor diario propone para una estrategia en modo Real (semi-auto pide tu confirmación acá o por Telegram; full-auto ya se ejecutó y solo informa).</p>
+                </div>
+            </div>
+            <div class="panel-body flush">
+                <div id="execution-decisions-container">{{ skeleton_chart(160) }}</div>
             </div>
         </div>
     </div>
@@ -769,7 +785,7 @@
             <div class="panel-header">
                 <div class="panel-header-text">
                     <h2>Ejecución Real de Órdenes</h2>
-                    <p class="panel-subtitle">Hoy ningún código de Kronos ejecuta una orden real — "Aceptar" en una Propuesta solo precarga un formulario que cargás a mano, la compra/venta la seguís apretando vos en la app del bróker. Este interruptor es el gate de seguridad para el día que se construya ejecución automática: arranca apagado por diseño, y cualquier código futuro de órdenes va a tener que chequearlo explícitamente antes de poder mandar algo real.</p>
+                    <p class="panel-subtitle">Interruptor maestro: mientras está apagado, ningún código de Kronos puede mandar una orden real a ningún bróker — ni IOL/PPI (Canje, hoy solo en Paper Trading, ver Estrategias) ni Binance (Carry BTC/ETH, cuando promuevas esa estrategia a Real). Encenderlo no activa nada por sí solo: cada estrategia 'Real' además necesita su modo de automatización en semi-auto o full-auto (ver Estrategia y Motores) para que el motor diario le mande algo.</p>
                 </div>
             </div>
             <div class="panel-body">
@@ -784,7 +800,10 @@
                 <!-- Tope GENERAL de exposición (ver conversación: "tope
                      general, no por orden") -- nunca un límite por
                      operación individual, siempre contra el total que el
-                     bot tenga abierto (ver compute_auto_trading_limit_ars). -->
+                     bot tenga abierto (ver compute_auto_trading_limit_ars/
+                     _usd). Un solo modo (pct/fixed) para las 2 monedas --
+                     en modo fijo, cada bróker tiene su propio monto (ARS
+                     para IOL/PPI, USD para Binance), nunca se mezclan. -->
                 <div class="field-row">
                     <div class="field">
                         <label>Tope de exposición del bot</label>
@@ -798,11 +817,27 @@
                         <input type="number" id="auto-trading-limit-pct-input" min="0" max="100" step="1" placeholder="ej. 20">
                     </div>
                     <div class="field" id="auto-trading-limit-ars-field" hidden>
-                        <label for="auto-trading-limit-ars-input">Monto fijo (ARS)</label>
+                        <label for="auto-trading-limit-ars-input">Monto fijo — IOL/PPI (ARS)</label>
                         <input type="number" id="auto-trading-limit-ars-input" min="0" step="1000" placeholder="ej. 500000">
+                    </div>
+                    <div class="field" id="auto-trading-limit-usd-field" hidden>
+                        <label for="auto-trading-limit-usd-input">Monto fijo — Binance (USD)</label>
+                        <input type="number" id="auto-trading-limit-usd-input" min="0" step="100" placeholder="ej. 5000">
                     </div>
                 </div>
                 <p class="hint" id="auto-trading-limit-resolved"></p>
+                <hr class="rule">
+                <!-- Capital REAL dedicado a estrategias automatizadas (ver
+                     portfolio/live_strategy_engine.py::capital_usd_for_strategy)
+                     -- NUNCA la cartera de 32 instrumentos en otro broker,
+                     un pool aislado y nuevo que decidís vos cuánto poner. -->
+                <div class="field-row">
+                    <div class="field">
+                        <label for="auto-trading-capital-usd-input">Capital real dedicado a estrategias automatizadas (USD)</label>
+                        <input type="number" id="auto-trading-capital-usd-input" min="0" step="100" placeholder="ej. 5000">
+                        <p class="hint">Se reparte entre las estrategias 'Real' según su % de capital asignado (ver Estrategias) — sin esto cargado, ninguna orden real de Carry BTC/ETH se dimensiona (nunca se inventa un monto).</p>
+                    </div>
+                </div>
             </div>
         </div>
 

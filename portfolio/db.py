@@ -151,6 +151,22 @@ def _migrate(conn):
             conn.execute(f"ALTER TABLE instruments ADD COLUMN {col} {ddl}")
     conn.commit()
 
+    # Plataforma de ejecucion real/paper configurable (ver conversacion,
+    # portfolio/live_strategy_engine.py) -- is_testnet solo tiene efecto para
+    # Binance (BinanceAdapter), default 0 nunca cambia el comportamiento de
+    # cuentas PPI/IOL/Balanz/Matrix ya cargadas.
+    broker_accounts_cols = {row["name"] for row in conn.execute("PRAGMA table_info(broker_accounts)").fetchall()}
+    if "is_testnet" not in broker_accounts_cols:
+        conn.execute("ALTER TABLE broker_accounts ADD COLUMN is_testnet INTEGER NOT NULL DEFAULT 0")
+    conn.commit()
+
+    app_settings_cols = {row["name"] for row in conn.execute("PRAGMA table_info(app_settings)").fetchall()}
+    if "auto_trading_limit_usd" not in app_settings_cols:
+        conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_limit_usd REAL")
+    if "auto_trading_capital_usd" not in app_settings_cols:
+        conn.execute("ALTER TABLE app_settings ADD COLUMN auto_trading_capital_usd REAL")
+    conn.commit()
+
     # % variación del día tal cual la calcula la fuente en vivo (ej. el
     # "pct_change" de data912, contra el cierre de AYER real) -- antes el
     # header del detalle de instrumento la recalculaba como
@@ -1071,14 +1087,14 @@ def delete_loan_document(conn, document_id):
 # --- Cuentas de broker externas (Multi-Broker, ver conversacion) ------------
 
 def add_broker_account(conn, *, broker_name, alias=None, api_key=None, api_secret=None,
-                        account_number=None, is_active=True):
+                        account_number=None, is_active=True, is_testnet=False):
     # Cifrado en reposo (ver portfolio/secrets_crypto.py) -- nunca se guarda
     # api_key/api_secret en texto plano en portfolio.db.
     cur = conn.execute(
-        """INSERT INTO broker_accounts (broker_name, alias, api_key, api_secret, account_number, is_active)
-           VALUES (?, ?, ?, ?, ?, ?)""",
+        """INSERT INTO broker_accounts (broker_name, alias, api_key, api_secret, account_number, is_active, is_testnet)
+           VALUES (?, ?, ?, ?, ?, ?, ?)""",
         (broker_name, alias, secrets_crypto.encrypt_secret(api_key),
-         secrets_crypto.encrypt_secret(api_secret), account_number, int(is_active)),
+         secrets_crypto.encrypt_secret(api_secret), account_number, int(is_active), int(bool(is_testnet))),
     )
     conn.commit()
     return cur.lastrowid
@@ -1107,6 +1123,8 @@ def update_broker_account(conn, account_id, **fields):
         return get_broker_account(conn, account_id)
     if "is_active" in fields:
         fields["is_active"] = int(bool(fields["is_active"]))
+    if "is_testnet" in fields:
+        fields["is_testnet"] = int(bool(fields["is_testnet"]))
     if "api_key" in fields:
         fields["api_key"] = secrets_crypto.encrypt_secret(fields["api_key"])
     if "api_secret" in fields:
@@ -2172,3 +2190,122 @@ def list_strategy_signal_log(conn, strategy, since=None):
         d["payload"] = json.loads(d.pop("payload_json"))
         out.append(d)
     return out
+
+
+# --- strategy_positions / execution_decisions (ver portfolio/live_strategy_engine.py,
+# portfolio/execution_router.py) -----------------------------------------------
+
+def _parse_legs(d):
+    if d is None:
+        return d
+    d["legs"] = json.loads(d.pop("legs_json"))
+    return d
+
+
+def get_open_strategy_position(conn, strategy_name, mode):
+    row = conn.execute(
+        "SELECT * FROM strategy_positions WHERE strategy_name = ? AND mode = ? AND status = 'open'",
+        (strategy_name, mode),
+    ).fetchone()
+    return _parse_legs(_row_to_dict(row)) if row else None
+
+
+def insert_strategy_position(conn, *, strategy_name, mode, legs, capital_usd, opened_at=None):
+    cur = conn.execute(
+        """INSERT INTO strategy_positions (strategy_name, mode, status, legs_json, capital_usd, opened_at)
+           VALUES (?, ?, 'open', ?, ?, COALESCE(?, datetime('now')))""",
+        (strategy_name, mode, json.dumps(legs), capital_usd, opened_at),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM strategy_positions WHERE id = ?", (cur.lastrowid,)).fetchone()
+    return _parse_legs(_row_to_dict(row))
+
+
+def close_strategy_position(conn, position_id, *, pnl_usd=None, closed_at=None):
+    conn.execute(
+        """UPDATE strategy_positions SET status = 'closed', pnl_usd = ?,
+               closed_at = COALESCE(?, datetime('now')) WHERE id = ?""",
+        (pnl_usd, closed_at, position_id),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM strategy_positions WHERE id = ?", (position_id,)).fetchone()
+    return _parse_legs(_row_to_dict(row))
+
+
+def list_strategy_positions(conn, strategy_name=None):
+    if strategy_name:
+        rows = conn.execute(
+            "SELECT * FROM strategy_positions WHERE strategy_name = ? ORDER BY opened_at DESC", (strategy_name,)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM strategy_positions ORDER BY opened_at DESC").fetchall()
+    return [_parse_legs(_row_to_dict(r)) for r in rows]
+
+
+def insert_execution_decision(conn, *, strategy_name, mode, action, legs, reason, status="pending_confirmation"):
+    """status default 'pending_confirmation' solo aplica de verdad al modo
+    'real'+semi_auto (ver execution_router.py) -- el llamador para 'paper' o
+    'real'+full_auto pasa el status final directo (nunca queda una fila
+    'paper' pidiendo una confirmacion que nadie va a resolver)."""
+    cur = conn.execute(
+        """INSERT INTO execution_decisions (strategy_name, mode, action, legs_json, reason, status)
+           VALUES (?, ?, ?, ?, ?, ?)""",
+        (strategy_name, mode, action, json.dumps(legs), reason, status),
+    )
+    conn.commit()
+    return get_execution_decision(conn, cur.lastrowid)
+
+
+def get_execution_decision(conn, decision_id):
+    row = conn.execute("SELECT * FROM execution_decisions WHERE id = ?", (decision_id,)).fetchone()
+    return _parse_legs(_row_to_dict(row)) if row else None
+
+
+def list_execution_decisions(conn, status=None):
+    if status:
+        rows = conn.execute(
+            "SELECT * FROM execution_decisions WHERE status = ? ORDER BY created_at DESC", (status,)
+        ).fetchall()
+    else:
+        rows = conn.execute("SELECT * FROM execution_decisions ORDER BY created_at DESC").fetchall()
+    return [_parse_legs(_row_to_dict(r)) for r in rows]
+
+
+def update_execution_decision(conn, decision_id, **fields):
+    if not fields:
+        return get_execution_decision(conn, decision_id)
+    columns = ", ".join(f"{k} = ?" for k in fields)
+    conn.execute(f"UPDATE execution_decisions SET {columns} WHERE id = ?", (*fields.values(), decision_id))
+    conn.commit()
+    return get_execution_decision(conn, decision_id)
+
+
+# --- binance_orders (ver portfolio/binance_execution.py) -----------------------
+
+def add_binance_order(conn, *, broker_account_id, market, symbol, side, cantidad, precio,
+                       monto_usd, estado, external_id, binance_order_id=None, error_detalle=None):
+    cur = conn.execute(
+        """INSERT INTO binance_orders
+               (broker_account_id, market, symbol, side, cantidad, precio, monto_usd,
+                estado, external_id, binance_order_id, error_detalle)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (broker_account_id, market, symbol, side, cantidad, precio, monto_usd,
+         estado, external_id, binance_order_id, error_detalle),
+    )
+    conn.commit()
+    return get_binance_order(conn, cur.lastrowid)
+
+
+def get_binance_order(conn, order_id):
+    row = conn.execute("SELECT * FROM binance_orders WHERE id = ?", (order_id,)).fetchone()
+    return _row_to_dict(row)
+
+
+def list_binance_orders(conn):
+    rows = conn.execute("SELECT * FROM binance_orders ORDER BY created_at DESC").fetchall()
+    return [_row_to_dict(r) for r in rows]
+
+
+def sum_confirmed_binance_exposure_usd(conn):
+    row = conn.execute("SELECT COALESCE(SUM(monto_usd), 0) AS total FROM binance_orders WHERE estado = 'confirmada'").fetchone()
+    return float(row["total"])

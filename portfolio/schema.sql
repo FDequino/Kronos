@@ -441,6 +441,20 @@ CREATE TABLE IF NOT EXISTS app_settings (
     auto_trading_limit_mode TEXT NOT NULL DEFAULT 'pct' CHECK (auto_trading_limit_mode IN ('pct', 'fixed')),
     auto_trading_limit_pct REAL,
     auto_trading_limit_ars REAL,
+    -- Version en USD del tope fijo de arriba (ver
+    -- portfolio/broker_client.py::compute_auto_trading_limit_usd) -- Carry
+    -- BTC/ETH no tiene ninguna pata en pesos, auto_trading_limit_ars no
+    -- aplica. auto_trading_limit_mode/_pct son compartidos (moneda-agnostico).
+    auto_trading_limit_usd REAL,
+    -- Capital REAL (USD) dedicado a estrategias automatizadas (Carry BTC/ETH,
+    -- etc.) -- NULL = "no configurado todavia", nunca se asume un numero
+    -- (ver portfolio/live_strategy_engine.py::capital_usd_for_strategy, que
+    -- se niega a dimensionar una orden real sin esto seteado). Distinto de
+    -- paper_trading_initial_capital_usd (eso es dinero FICTICIO) y de la
+    -- cartera real de 32 instrumentos en otro broker (esto NUNCA la toca,
+    -- ver OBJETIVO_MARCO.md) -- es un pool aislado, nuevo, que el usuario
+    -- decide cuanto poner.
+    auto_trading_capital_usd REAL,
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 INSERT OR IGNORE INTO app_settings (id) VALUES (1);
@@ -823,6 +837,13 @@ CREATE TABLE IF NOT EXISTS broker_accounts (
     api_secret TEXT,
     account_number TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
+    -- Solo tiene efecto para Binance (ver broker_client.py::BinanceAdapter) --
+    -- cambia las base URL a testnet.binance.vision/testnet.binancefuture.com.
+    -- Default 0 (producción) para no romper ninguna cuenta PPI/IOL existente,
+    -- que ignoran esta columna por completo. Ver OBJETIVO_MARCO.md: Binance
+    -- nunca se probó ni siquiera en testnet -- esto es el paso obligatorio
+    -- antes de promover Carry BTC/ETH a 'live' con credenciales de verdad.
+    is_testnet INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -892,3 +913,83 @@ CREATE TABLE IF NOT EXISTS strategy_signal_log (
 );
 CREATE INDEX IF NOT EXISTS idx_strategy_signal_log_strategy_logged
     ON strategy_signal_log (strategy, logged_at DESC);
+
+-- Posicion (abierta/cerrada) de una estrategia que NO encaja en el modelo de
+-- 1 activo/TP-SL de paper_positions (ver portfolio/live_strategy_engine.py):
+-- Canje es un PAR de bonos que se cierra por reversion de z-score, Carry
+-- cripto son 2 patas simultaneas (spot + futuro) que devengan funding sin un
+-- precio de salida discreto. Generaliza a paper Y real (mode) para que el
+-- mismo motor de decision (portfolio/live_strategy_engine.py) sirva para los
+-- 2 casos sin duplicar logica -- lo unico que cambia es que patas se abren
+-- de verdad (real) vs. solo se anotan (paper).
+CREATE TABLE IF NOT EXISTS strategy_positions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_name TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('paper', 'real')),
+    status TEXT NOT NULL CHECK (status IN ('open', 'closed')),
+    -- lista de patas: [{"broker": "IOL"|"Binance", "market": "spot"|"futuros"|null,
+    -- "symbol": ..., "side": "buy"|"sell", "quantity": ..., "price_usd": ...}, ...]
+    legs_json TEXT NOT NULL,
+    capital_usd REAL NOT NULL,
+    opened_at TEXT NOT NULL DEFAULT (datetime('now')),
+    closed_at TEXT,
+    pnl_usd REAL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_strategy_positions_strategy_status
+    ON strategy_positions (strategy_name, status);
+
+-- Una fila por accion que el motor diario (portfolio/live_strategy_engine.py
+-- + portfolio/execution_router.py) decide que hay que tomar -- NUNCA una fila
+-- por dia sin cambios (si la estrategia ya esta bien posicionada, no se
+-- genera nada). 'paper' se autoejecuta siempre (cero riesgo real, ver
+-- OBJETIVO_MARCO.md). 'real' respeta automation_mode de strategies
+-- (portfolio/strategy_registry.py): full_auto ejecuta y queda en
+-- 'auto_executed'/'executed', semi_auto queda 'pending_confirmation' hasta
+-- que Telegram o la Web lo resuelvan (lo que llegue primero, ver
+-- resolved_via) -- nunca los dos a la vez (execution_router.resolve_decision
+-- chequea el estado antes de actuar).
+CREATE TABLE IF NOT EXISTS execution_decisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_name TEXT NOT NULL,
+    mode TEXT NOT NULL CHECK (mode IN ('paper', 'real')),
+    action TEXT NOT NULL CHECK (action IN ('open', 'close', 'adjust')),
+    legs_json TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending_confirmation' CHECK (
+        status IN ('pending_confirmation', 'confirmed', 'rejected', 'auto_executed', 'executed', 'failed', 'partially_filled')
+    ),
+    position_id INTEGER REFERENCES strategy_positions(id),
+    resolved_via TEXT CHECK (resolved_via IN ('auto', 'telegram', 'web')),
+    resolved_at TEXT,
+    error_detalle TEXT,
+    -- Mismo patron que proposals.telegram_notified_at -- evita re-notificar
+    -- la misma decision en cada ciclo del job de Telegram (ver
+    -- portfolio/telegram_bot.py::_execution_decisions_sync_job).
+    telegram_notified_at TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_execution_decisions_status ON execution_decisions (status, created_at DESC);
+
+-- Ledger de ejecucion real contra Binance (ver portfolio/binance_execution.py)
+-- -- analogo a auto_trading_orders pero en USD y SIN instrument_id (las
+-- patas spot/futuro de Carry no estan modeladas como filas de `instruments`,
+-- ver conversacion: forzarlas ahi no encaja con el modelo de 1 symbol+market
+-- por fila que ya usa order_execution.py para BYMA). market distingue spot
+-- de futuro perpetuo -- misma pata (symbol) puede existir en ambos.
+CREATE TABLE IF NOT EXISTS binance_orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    broker_account_id INTEGER NOT NULL REFERENCES broker_accounts(id),
+    market TEXT NOT NULL CHECK (market IN ('spot', 'futuros')),
+    symbol TEXT NOT NULL,
+    side TEXT NOT NULL CHECK (side IN ('buy', 'sell')),
+    cantidad REAL NOT NULL CHECK (cantidad > 0),
+    precio REAL NOT NULL CHECK (precio >= 0),
+    monto_usd REAL NOT NULL CHECK (monto_usd >= 0),
+    estado TEXT NOT NULL CHECK (estado IN ('confirmada', 'rechazada', 'error')),
+    external_id TEXT NOT NULL,
+    binance_order_id TEXT,
+    error_detalle TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_binance_orders_broker_account ON binance_orders(broker_account_id);

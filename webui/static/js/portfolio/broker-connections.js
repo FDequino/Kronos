@@ -8,7 +8,7 @@ import { openModal } from '../shared/modal.js';
 import { infoTooltipHtml } from '../shared/info-tooltip.js';
 import { api } from './api.js';
 
-const BROKER_NAMES = ['PPI', 'IOL', 'Balanz', 'Matrix'];
+const BROKER_NAMES = ['PPI', 'IOL', 'Balanz', 'Matrix', 'Binance'];
 
 // Por broker, que es REALMENTE cada campo generico api_key/api_secret de
 // broker_accounts (ver conversacion: "no se de donde sacar mi clave api en
@@ -34,6 +34,10 @@ const BROKER_CREDENTIAL_LABELS = {
         key: 'API Key', secret: 'API Secret',
         hint: 'Matrix: sin documentación pública de API verificada todavía — integración pendiente, "Probar conexión" lo va a avisar.',
     },
+    Binance: {
+        key: 'API Key', secret: 'Secret Key',
+        hint: 'El par real ApiKey/SecretKey de Binance (no tu usuario/contraseña). Usado para Carry BTC/ETH — probá primero con credenciales de TESTNET (testnet.binancefuture.com/testnet.binance.vision, gratis) antes de cargar las de tu cuenta real.',
+    },
 };
 
 function brokerOptionsHtml(selected) {
@@ -56,7 +60,7 @@ function accountRowHtml(account) {
     const accountNumber = account.account_number || '—';
     return `
         <tr data-id="${account.id}">
-            <td><b>${account.broker_name}</b></td>
+            <td><b>${account.broker_name}</b>${account.is_testnet ? ' <span class="hint">(testnet)</span>' : ''}</td>
             <td>${alias}</td>
             <td class="mono">${accountNumber}</td>
             <td class="mono">${account.api_key || '—'}</td>
@@ -89,6 +93,12 @@ function brokerAccountFormHtml(account) {
             <div class="field"><label for="broker-api-secret-input" id="broker-api-secret-label">${labels.secret}</label><input type="password" id="broker-api-secret-input" autocomplete="off" placeholder="${a.id ? 'dejar vacío para no cambiar' : ''}"></div>
         </div>
         <p class="hint" id="broker-credential-hint">${labels.hint}</p>
+        <div class="field-row" id="broker-testnet-row" style="${(a.broker_name || 'PPI') === 'Binance' ? '' : 'display:none'}">
+            <label class="checkbox-field">
+                <input type="checkbox" id="broker-testnet-input" ${a.is_testnet ? 'checked' : ''}>
+                Cuenta de TESTNET (recomendado hasta confirmar que todo funciona)
+            </label>
+        </div>
         <p class="modal-error"></p>
         <div class="modal-footer">
             <button type="submit" class="btn btn-primary">${a.id ? 'Guardar cambios' : 'Agregar cuenta'}</button>
@@ -106,6 +116,7 @@ function openBrokerAccountModal(account) {
                 form.querySelector('#broker-api-key-label').textContent = labels.key;
                 form.querySelector('#broker-api-secret-label').textContent = labels.secret;
                 form.querySelector('#broker-credential-hint').textContent = labels.hint;
+                form.querySelector('#broker-testnet-row').style.display = e.target.value === 'Binance' ? '' : 'none';
             });
         },
         onSubmit: async (form) => {
@@ -113,6 +124,7 @@ function openBrokerAccountModal(account) {
                 broker_name: form.querySelector('#broker-name-select').value,
                 alias: form.querySelector('#broker-alias-input').value.trim() || null,
                 account_number: form.querySelector('#broker-account-number-input').value.trim() || null,
+                is_testnet: form.querySelector('#broker-testnet-input').checked,
             };
             const apiKey = form.querySelector('#broker-api-key-input').value;
             const apiSecret = form.querySelector('#broker-api-secret-input').value;
