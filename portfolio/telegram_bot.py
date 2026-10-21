@@ -41,7 +41,7 @@ from telegram.ext import Application, CallbackQueryHandler, CommandHandler, Cont
 from model.client import ChronosServiceClient
 from portfolio import accuracy, db, fetchers, fixed_income, loans as loans_module, pdf_report, risk, routes
 from portfolio import config as capital_config
-from portfolio import live_signals, monitor, paper_trading, proposals, regime, scanner
+from portfolio import live_signals, monitor, paper_ledger, paper_trading, proposals, regime, scanner
 from portfolio.formatting import fmt_es
 from portfolio.tz import ART_TZ, now_ar, today_ar
 
@@ -1218,6 +1218,24 @@ async def _pdf_report_schedule_check_job(context: ContextTypes.DEFAULT_TYPE):
 # Trading (15 min) y mismo gate de horario de rueda (monitor.is_market_hours,
 # reusada aca) -- no tiene sentido recalcular propuestas fuera de rueda, el
 # universo de precios no cambia.
+async def _paper_ledger_job(context: ContextTypes.DEFAULT_TYPE):
+    """Paper Trading diario de Canje/Carry cripto (ver portfolio/paper_ledger.py)
+    -- 20:00 ART, despues del cierre de rueda de bonos (17hs) y del Reporte
+    de Cierre de Core/Satelite (17:05), para que ya haya precio de cierre
+    asentado cuando corre record_daily_return. Silencioso (sin notificacion
+    por Telegram): el track record recien arranca, todavia no hay nada que
+    mostrarle al usuario dia a dia -- ver 'fuera de alcance explicito' del
+    plan del 2026-10-21."""
+    conn = db.get_connection()
+    try:
+        try:
+            paper_ledger.run_all(conn)
+        except Exception:
+            logger.exception("Fallo paper_ledger.run_all")
+    finally:
+        conn.close()
+
+
 PROPOSALS_SYNC_INTERVAL_SECONDS = 15 * 60
 
 
@@ -1315,6 +1333,9 @@ def _build_application():
     )
     application.job_queue.run_repeating(
         _proposals_sync_job, interval=PROPOSALS_SYNC_INTERVAL_SECONDS, first=20,
+    )
+    application.job_queue.run_daily(
+        _paper_ledger_job, time=dt_time(hour=20, minute=0, tzinfo=ART_TZ),
     )
     return application
 

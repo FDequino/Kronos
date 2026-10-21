@@ -434,3 +434,22 @@ def test_closing_report_manda_mensaje_si_hay_usuarios(temp_db, admin_update, mon
     chat_id, text, _ = context.bot.sent[0]
     assert chat_id == admin_update
     assert "Reporte de Cierre de Rueda" in text
+
+
+# --- Paper Trading diario (ledger) de Canje/Carry cripto -------------------
+
+def test_paper_ledger_job_corre_run_all(temp_db, monkeypatch):
+    calls = []
+    monkeypatch.setattr(telegram_bot.paper_ledger, "run_all", lambda conn: calls.append(conn) or {})
+
+    run(telegram_bot._paper_ledger_job(FakeContext()))
+
+    assert len(calls) == 1
+
+
+def test_paper_ledger_job_no_propaga_excepcion(temp_db, monkeypatch):
+    def fake_run_all(conn):
+        raise RuntimeError("boom")
+    monkeypatch.setattr(telegram_bot.paper_ledger, "run_all", fake_run_all)
+
+    run(telegram_bot._paper_ledger_job(FakeContext()))  # no debe levantar
