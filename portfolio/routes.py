@@ -8,7 +8,7 @@ from datetime import datetime
 import pandas as pd
 from flask import Blueprint, Response, jsonify, request, send_from_directory, stream_with_context
 
-from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, nlp_agent, paper_trading, projection, proposals, quote_worker, risk, trendlines, xirr
+from portfolio import accuracy, benchmarks, broker_client, byma_universe, cash, db, fetchers, fixed_income, forecast_worker, forecasting, fundamentals, history, indicators, loans, monitor, nlp_agent, paper_trading, projection, proposals, quote_worker, risk, risk_engine, strategy_registry, trendlines, xirr
 from portfolio import config as capital_config
 from portfolio.tz import today_ar
 
@@ -1754,6 +1754,86 @@ def activate_risk_profile():
     try:
         try:
             result = capital_config.activate_risk_profile(conn, profile_id)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+# --- Registro de Estrategias / Motor de Riesgo (ver OBJETIVO_MARCO.md, plan ----
+# "grado-fondo" 2026-10-20/21) -- solo lectura del ultimo estado ya persistido
+# + 2 acciones humanas (cambiar modo de automatizacion, promover a live).
+# NUNCA dispara una re-simulacion desde un click (ver portfolio/
+# capital_allocator.py/strategy_health.py, pensados para cron, tardan
+# minutos) -- mismo criterio ya declarado en run_suggested_allocation_report.
+
+@bp.route('/strategies')
+def list_strategies():
+    conn = db.get_connection()
+    try:
+        return jsonify({
+            'strategies': strategy_registry.list_strategies(conn),
+            'circuit_breaker': risk_engine.check_circuit_breaker(conn),
+        })
+    finally:
+        conn.close()
+
+
+@bp.route('/strategies/<name>/automation-mode', methods=['POST'])
+def set_strategy_automation_mode(name):
+    data = request.get_json(silent=True) or {}
+    mode = data.get('mode')
+    if not mode:
+        return jsonify({'error': "falta 'mode'"}), 400
+    conn = db.get_connection()
+    try:
+        try:
+            result = strategy_registry.set_automation_mode(conn, name, mode)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+@bp.route('/strategies/<name>/promote-to-live', methods=['POST'])
+def promote_strategy_to_live(name):
+    conn = db.get_connection()
+    try:
+        try:
+            result = strategy_registry.promote_to_live(conn, name)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+@bp.route('/strategies/<name>/paper-trading/start', methods=['POST'])
+def start_strategy_paper_trading(name):
+    conn = db.get_connection()
+    try:
+        try:
+            result = strategy_registry.start_paper_trading(conn, name)
+        except ValueError as e:
+            return jsonify({'error': str(e)}), 400
+        return jsonify(result)
+    finally:
+        conn.close()
+
+
+@bp.route('/strategies/<name>/paper-trading/pause', methods=['POST'])
+def toggle_strategy_paper_trading_pause(name):
+    data = request.get_json(silent=True) or {}
+    paused = data.get('paused')
+    if paused is None:
+        return jsonify({'error': "falta 'paused' (true/false)"}), 400
+    conn = db.get_connection()
+    try:
+        try:
+            fn = strategy_registry.pause_paper_trading if paused else strategy_registry.resume_paper_trading
+            result = fn(conn, name)
         except ValueError as e:
             return jsonify({'error': str(e)}), 400
         return jsonify(result)

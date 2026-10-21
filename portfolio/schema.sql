@@ -618,6 +618,41 @@ CREATE TABLE IF NOT EXISTS dual_engine_signals_cache (
     result_json TEXT NOT NULL
 );
 
+-- Registro de Estrategias (ver OBJETIVO_MARCO.md, plan "grado-fondo" del
+-- 2026-10-20/21) -- fuente de verdad unica de que estrategia puede tocar
+-- plata real hoy. 'status' lo setea SOLO portfolio/strategy_registry.py
+-- (nunca a mano desde la UI): 'research' hasta pasar el gate CPCV+DSR>=0.95,
+-- 'validated' una vez que lo pasa, 'paper_trading' mientras corre sobre
+-- equity VIRTUAL (ver portfolio/paper_trading.py) para juntar el resto del
+-- gate (periodo sin salvada manual + drawdown real + batir benchmark, ver
+-- OBJETIVO_MARCO.md) sin arriesgar plata real, 'live' recien cuando ESE paso
+-- por papel ya se evaluo y el usuario lo confirma -- nunca se salta
+-- 'paper_trading' para llegar a 'live' (ver promote_to_live).
+-- automation_mode (full_auto/semi_auto/off) solo tiene sentido real en
+-- 'live' -- en 'paper_trading' no hay nada que "aprobar", es ficticio.
+CREATE TABLE IF NOT EXISTS strategies (
+    name TEXT PRIMARY KEY,
+    status TEXT NOT NULL DEFAULT 'research' CHECK (status IN ('research', 'validated', 'paper_trading', 'live')),
+    last_dsr REAL,
+    last_validated_at TEXT,
+    automation_mode TEXT NOT NULL DEFAULT 'off' CHECK (automation_mode IN ('full_auto', 'semi_auto', 'off')),
+    capital_pct REAL NOT NULL DEFAULT 0.0,
+    -- Sharpe/retorno anualizado del backtest de validacion que la paso a
+    -- 'validated' -- la linea de base que portfolio/strategy_health.py (Fase
+    -- 4) compara contra el rendimiento RECIENTE real una vez que esta 'live'.
+    -- Nunca se pisa en corridas posteriores de record_validation_result una
+    -- vez que la estrategia ya es 'live' (ver docstring de esa funcion).
+    baseline_sharpe REAL,
+    baseline_annualized_return_pct REAL,
+    -- Pausa del paper trading (ver portfolio/strategy_registry.py::
+    -- pause_paper_trading/resume_paper_trading) -- un booleano aparte del
+    -- status: pausar NO es una regresion del gate (sigue 'paper_trading'),
+    -- solo dice si el scanner (portfolio/monitor.py) debe seguir generando
+    -- posiciones virtuales nuevas para esta estrategia ahora mismo.
+    paper_trading_paused INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 -- Ultimo resultado de portfolio/backtest.py::run_suggested_allocation_report
 -- (Fase 0 del plan de unificacion, ver conversacion: "la asignacion dinamica
 -- de capital por motor, ya construida en risk.py::compute_dynamic_strategy_allocation,

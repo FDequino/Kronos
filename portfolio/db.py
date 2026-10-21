@@ -28,6 +28,51 @@ def _migrate(conn):
         conn.execute("ALTER TABLE forecasts ADD COLUMN as_of_date TEXT")
         conn.commit()
 
+    # Bug real encontrado (auditoria 2026-10-21): baseline_sharpe/
+    # baseline_annualized_return_pct se agregaron a schema.sql DESPUES de que
+    # la tabla 'strategies' ya existia en bases reales (CREATE TABLE IF NOT
+    # EXISTS no agrega columnas a una tabla preexistente) -- promote_to_live
+    # tiraba KeyError en vez del ValueError declarado, confirmado probando
+    # el endpoint real con el test client de Flask.
+    strategies_cols = {row["name"] for row in conn.execute("PRAGMA table_info(strategies)").fetchall()}
+    for col in ("baseline_sharpe", "baseline_annualized_return_pct"):
+        if col not in strategies_cols:
+            conn.execute(f"ALTER TABLE strategies ADD COLUMN {col} REAL")
+    if "paper_trading_paused" not in strategies_cols:
+        conn.execute("ALTER TABLE strategies ADD COLUMN paper_trading_paused INTEGER NOT NULL DEFAULT 0")
+    conn.commit()
+
+    # 2026-10-21: 'paper_trading' se suma al CHECK de strategies.status (el
+    # usuario corrigio el diseño: Validada -> Paper Trading -> Live, nunca
+    # Validada -> Live directo) -- mismo patron de reconstruccion de tabla
+    # que 'cripto' en instruments mas abajo (SQLite no permite ALTER sobre un
+    # CHECK existente). 'strategies' no tiene FKs entrantes todavia, rebuild
+    # mas simple que el de instruments.
+    strategies_sql = conn.execute(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='strategies'"
+    ).fetchone()[0]
+    if "'paper_trading'" not in strategies_sql:
+        conn.executescript("""
+            CREATE TABLE strategies_new (
+                name TEXT PRIMARY KEY,
+                status TEXT NOT NULL DEFAULT 'research' CHECK (status IN ('research', 'validated', 'paper_trading', 'live')),
+                last_dsr REAL,
+                last_validated_at TEXT,
+                automation_mode TEXT NOT NULL DEFAULT 'off' CHECK (automation_mode IN ('full_auto', 'semi_auto', 'off')),
+                capital_pct REAL NOT NULL DEFAULT 0.0,
+                baseline_sharpe REAL,
+                baseline_annualized_return_pct REAL,
+                paper_trading_paused INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            INSERT INTO strategies_new (name, status, last_dsr, last_validated_at, automation_mode, capital_pct, baseline_sharpe, baseline_annualized_return_pct, paper_trading_paused, updated_at)
+            SELECT name, status, last_dsr, last_validated_at, automation_mode, capital_pct, baseline_sharpe, baseline_annualized_return_pct, paper_trading_paused, updated_at
+            FROM strategies;
+            DROP TABLE strategies;
+            ALTER TABLE strategies_new RENAME TO strategies;
+        """)
+        conn.commit()
+
     # Fase 11: sumar 'cripto' al CHECK de instruments.type -- SQLite no permite
     # ALTER sobre un CHECK existente, hay que reconstruir la tabla (patron
     # estandar: tabla nueva, copiar filas, drop, rename -- el rename ya
@@ -90,6 +135,13 @@ def _migrate(conn):
         # ningun lugar donde recordar "esto ya se probo y no existe". Con 3-5
         # instrumentos asi, eso solo explicaba +60-100s por carga.
         "history_backfill_failed_at": "TEXT",
+        # Mismo criterio que history_backfill_failed_at de arriba, pero para
+        # el polling de cotizacion en vivo (quote_worker.py): sin esto, un
+        # instrumento que data912 ya no cubre (ej. una LETRA vencida, como
+        # S16O6/S30S6 -- confirmado en produccion, ver quote_worker.py)
+        # reintentaba el fetch cada 60s para siempre, cada vez tirando un
+        # traceback completo al log sin que nadie lo fuera a leer.
+        "quote_failed_at": "TEXT",
     }
     for col, ddl in new_instrument_cols.items():
         if col not in instrument_cols:

@@ -288,11 +288,18 @@ def evaluate_all(conn):
     holdings_display = [dict(h, instrument=dict(h['instrument'])) for h in holdings_native]
     holdings_display = _apply_display_currency(holdings_display, settings)
 
+    # El Motor de Riesgo global (ver OBJETIVO_MARCO.md, plan "grado-fondo")
+    # solo filtra señales ESTADISTICAS nuevas (senal_kronos/senal_tecnica) --
+    # SL/TP y vencimientos son gestion de riesgo de posiciones YA abiertas,
+    # nunca se bloquean por un circuit breaker de cartera (ver docstring de
+    # portfolio/risk_engine.py).
+    from portfolio import risk_engine
+
     candidates = []
     candidates += _sl_tp_candidates(conn, holdings_native)
     candidates += _event_candidates(conn, instruments)
     candidates += _rebalance_candidates(conn, holdings_display, cauciones, config, settings.get('display_currency', 'ARS'))
-    candidates += _validated_signal_candidates(conn, holdings_native, config)
+    candidates += risk_engine.filter_signal_candidates(conn, _validated_signal_candidates(conn, holdings_native, config))
     return candidates
 
 

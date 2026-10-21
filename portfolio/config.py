@@ -210,9 +210,22 @@ def get_core_params(conn):
 # si no hay un backtest corrido exactamente a esa asignacion, el perfil
 # queda sin metricas en vez de inventar un numero.
 RISK_PROFILES = {
-    "conservador": {"label": "Conservador", "core_pct": 70.0, "stop_loss_pct": 4.0, "take_profit_pct": 3.5},
-    "moderado": {"label": "Moderado", "core_pct": 20.0, "stop_loss_pct": 9.0, "take_profit_pct": 4.0},
-    "agresivo": {"label": "Agresivo", "core_pct": 0.0, "stop_loss_pct": 12.0, "take_profit_pct": 6.0},
+    "conservador": {
+        "label": "Conservador", "core_pct": 70.0, "stop_loss_pct": 4.0, "take_profit_pct": 3.5,
+        # Limites de cartera del gate "listo para plata real" (ver
+        # OBJETIVO_MARCO.md, definidos 2026-10-20) -- consultados por
+        # portfolio/risk_engine.py para el circuit breaker de drawdown y el
+        # tope de concentracion. Defaults razonables, no un techo fijo.
+        "max_drawdown_pct": 10.0, "max_concentration_instrument_pct": 15.0, "max_concentration_type_pct": 40.0,
+    },
+    "moderado": {
+        "label": "Moderado", "core_pct": 20.0, "stop_loss_pct": 9.0, "take_profit_pct": 4.0,
+        "max_drawdown_pct": 20.0, "max_concentration_instrument_pct": 25.0, "max_concentration_type_pct": 50.0,
+    },
+    "agresivo": {
+        "label": "Agresivo", "core_pct": 0.0, "stop_loss_pct": 12.0, "take_profit_pct": 6.0,
+        "max_drawdown_pct": 35.0, "max_concentration_instrument_pct": 35.0, "max_concentration_type_pct": 70.0,
+    },
 }
 # Orden de presentacion (Ajustes/Telegram) -- del mas defensivo al mas
 # agresivo, nunca el orden de insercion incidental de un dict.
