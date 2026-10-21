@@ -3,6 +3,7 @@ import { initTransactionsView, populateInstrumentSelect, loadTransactionHistory,
 import { initPlazosFijosView, loadPlazosFijos, loadCauciones } from './plazos-fijos.js';
 import { initHoldingsView, loadHoldings } from './holdings.js';
 import { initCoreSatelliteView } from './core-satellite.js';
+import { initEstrategiasView } from './estrategias.js';
 import { initNewsView } from './news.js';
 import { initPaperTradingView } from './paper-trading.js';
 import { initKronosHistoryView } from './kronos-history.js';
@@ -36,6 +37,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initPlazosFijosView();
     initHoldingsView();
     initCoreSatelliteView();
+    initEstrategiasView();
     initNewsView();
     initPaperTradingView();
     initKronosHistoryView();

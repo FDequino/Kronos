@@ -71,6 +71,7 @@
         <button class="subtab-btn" type="button" data-subtab-target="propuestas">Propuestas</button>
         <button class="subtab-btn" type="button" data-subtab-target="paper-trading">Paper Trading</button>
         <button class="subtab-btn" type="button" data-subtab-target="rendimiento">Backtest</button>
+        <button class="subtab-btn" type="button" data-subtab-target="estrategias">Estrategias</button>
         <button class="subtab-btn" type="button" data-subtab-target="noticias">Noticias</button>
     </div>
 
@@ -217,6 +218,30 @@
                 </div>
             </div>
             <div class="panel-body" id="rendimiento-kronos-leaderboard">{{ skeleton_chart(180) }}</div>
+        </div>
+    </div>
+
+    <!-- Registro de Estrategias / Motor de Riesgo (ver OBJETIVO_MARCO.md,
+         plan "grado-fondo" 2026-10-20/21) -- capa de gobierno del mismo
+         motor de decisiones: que estrategia puede generar propuestas/operar
+         sola, cuanto capital tiene asignado, y el freno de cartera. Solo
+         lectura del ultimo estado ya persistido + 2 acciones humanas (modo
+         de automatizacion, promover a live) -- nunca dispara una
+         re-simulacion desde un click (ver estrategias.js). -->
+    <div class="subtab-panel" data-subtab-panel="estrategias">
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Estrategias</h2>
+                    <p class="panel-subtitle">Qué estrategia pasó el filtro estadístico (DSR ≥ 0.95), en qué etapa está (Investigación → Validada → Paper Trading → Real) y cuánto capital tiene asignado. Solo lectura — los controles para arrancar/pausar cada etapa viven en Ajustes → Estrategia y Motores.</p>
+                </div>
+            </div>
+            <div class="panel-body no-bottom">
+                <div id="strategies-circuit-breaker-banner" class="status"></div>
+            </div>
+            <div class="panel-body flush">
+                <div id="strategies-table-container">{{ skeleton_chart(220) }}</div>
+            </div>
         </div>
     </div>
 
@@ -640,6 +665,27 @@
                 <div class="view-toolbar-actions" style="margin-top: 18px;">
                     <button id="ajustes-save-scanner-btn" class="btn btn-primary" type="button">Guardar Configuración</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Registro de Estrategias / Motor de Riesgo (ver OBJETIVO_MARCO.md,
+             plan "grado-fondo" 2026-10-20/21) -- los CONTROLES (arrancar/
+             pausar/continuar Paper Trading, promover a Live) viven acá, no en
+             Decisiones (esa pestaña -- "Estrategias" dentro de Decisiones --
+             quedó de SOLO LECTURA, un espejo de este mismo estado). Mismo
+             módulo JS que esa vista (estrategias.js), container distinto. -->
+        <div class="panel">
+            <div class="panel-header">
+                <div class="panel-header-text">
+                    <h2>Registro de Estrategias</h2>
+                    <p class="panel-subtitle">Investigación → Validada (pasa el filtro estadístico) → Paper Trading (automático, plata ficticia, cero riesgo) → Real. Arrancás y pausás cada etapa acá — nunca se activa ni avanza sola.</p>
+                </div>
+            </div>
+            <div class="panel-body no-bottom">
+                <div id="strategies-settings-circuit-breaker-banner" class="status"></div>
+            </div>
+            <div class="panel-body flush">
+                <div id="strategies-controls-container">{{ skeleton_chart(220) }}</div>
             </div>
         </div>
     </div>
