@@ -26,6 +26,10 @@ const STRATEGY_LABELS = {
     canje_al29_gd29: 'Canje AL29/GD29',
     crypto_carry_btcusdt: 'Carry Cripto BTC',
     crypto_carry_ethusdt: 'Carry Cripto ETH',
+    crypto_carry_adausdt: 'Carry Cripto ADA',
+    crypto_carry_dogeusdt: 'Carry Cripto DOGE',
+    crypto_carry_linkusdt: 'Carry Cripto LINK',
+    crypto_carry_ltcusdt: 'Carry Cripto LTC',
     factor_investing: 'Factor Investing',
 };
 
@@ -52,8 +56,12 @@ const STRATEGY_DESCRIPTIONS = {
     core: 'Pronóstico direccional con el modelo de IA Chronos-Bolt + un meta-modelo encima. Confirmado SIN edge real: ni el modelo base ni un ajuste (LoRA) con datos propios superan el punto de partida, y la literatura externa muestra que este tipo de modelo apenas le gana a una caminata aleatoria en acciones líquidas. Descartado para seguir iterando tal cual. <i>Retorno en USD, ya neto de la comisión real de ida y vuelta (~2.5%).</i>',
     satellite: 'Reglas técnicas de corto plazo (RSI) sobre el mismo universo que Core. Con la tasa de acierto REAL medida (35.6%, no un número viejo desactualizado), el propio sistema de manejo de riesgo (Kelly) decide no apostar nada — no pierde, pero tampoco gana. Sin backtest de Sharpe/retorno propio todavía (por eso no tiene número en la tabla).',
     canje_al29_gd29: 'Dos bonos soberanos económicamente equivalentes (misma deuda, distinta ley: Argentina vs. Nueva York) que deberían moverse pegados. Cuando se separan más de lo normal, convendría dolarizarse por el más barato. <b>El 24.8% de la tabla es un número TEÓRICO en USD</b> (mide el spread achicándose, ya neto de la comisión real de canje de IOL/PPI de 1.21% — pero no una posición real) — el único modelo que sí se puede ejecutar con IOL/PPI (comprar y rotar entre los 2 bonos, también neto de comisión) se probó con datos reales y <b>pierde -20.8% anual en USD</b> (Max Drawdown -68.8%). Por eso sigue solo en Paper Trading, sin ejecución real.',
-    crypto_carry_btcusdt: 'Cash-and-carry: comprás BTC de contado y vendés el futuro perpetuo al mismo tiempo (delta-neutral, sin apuesta a que el precio suba o baje), cobrando el funding rate que el mercado de futuros paga cada 8 horas. Totalmente ejecutable con plata real — es la estrategia con la evidencia más sólida de las 6. <i>Retorno en USD (todo cripto cotiza en USD), ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
+    crypto_carry_btcusdt: 'Cash-and-carry: comprás BTC de contado y vendés el futuro perpetuo al mismo tiempo (delta-neutral, sin apuesta a que el precio suba o baje), cobrando el funding rate que el mercado de futuros paga cada 8 horas. Totalmente ejecutable con plata real — es la estrategia con la evidencia más sólida. <i>Retorno en USD (todo cripto cotiza en USD), ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
     crypto_carry_ethusdt: 'Mismo mecanismo que Carry BTC pero sobre ETH: comprás spot, vendés el futuro perpetuo, cobrás el funding. Delta-neutral, ejecutable con plata real. <i>Retorno en USD, ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
+    crypto_carry_adausdt: 'Mismo mecanismo de Carry cripto (cash-and-carry delta-neutral) aplicado a ADA — pasó el mismo filtro estadístico que BTC/ETH con datos reales de Binance (2026-10-24). <i>Retorno en USD, ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
+    crypto_carry_dogeusdt: 'Mismo mecanismo de Carry cripto aplicado a DOGE — pasó el mismo filtro estadístico que BTC/ETH con datos reales de Binance (2026-10-24). <i>Retorno en USD, ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
+    crypto_carry_linkusdt: 'Mismo mecanismo de Carry cripto aplicado a LINK — pasó el mismo filtro estadístico que BTC/ETH con datos reales de Binance (2026-10-24). <i>Retorno en USD, ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
+    crypto_carry_ltcusdt: 'Mismo mecanismo de Carry cripto aplicado a LTC — pasó el mismo filtro estadístico que BTC/ETH con datos reales de Binance (2026-10-24). <i>Retorno en USD, ya neto de la comisión real de Binance por ciclo (~0.15%).</i>',
     factor_investing: 'Rota el portfolio de CEDEARs hacia los que combinan mejor 3 factores: Momentum, Baja Volatilidad y Value. Da retorno real positivo pero todavía no pasa el filtro estadístico (DSR) con margen suficiente para confiar en que no sea ruido — sigue en investigación. <i>Retorno en USD, ya neto de la comisión real de ida y vuelta (~2.5%).</i>',
 };
 

@@ -39,6 +39,14 @@ def test_carry_btc_eth_tienen_builder_real(temp_db):
     assert live_strategy_engine.has_real_intent_builder("crypto_carry_ethusdt") is True
 
 
+def test_carry_ampliacion_2026_10_24_tiene_builder_real(temp_db):
+    # ADA/DOGE/LINK/LTC pasaron el mismo gate DSR>=0.95 que BTC/ETH (ver
+    # docstring de crypto_carry.py, "AMPLIACION 2026-10-24") -- mismo
+    # mecanismo spot+futuro, mismo criterio de executabilidad real.
+    for name in ("crypto_carry_adausdt", "crypto_carry_dogeusdt", "crypto_carry_linkusdt", "crypto_carry_ltcusdt"):
+        assert live_strategy_engine.has_real_intent_builder(name) is True
+
+
 # --- capital_usd_for_strategy ------------------------------------------------
 
 def test_capital_sin_configurar_devuelve_none_nunca_inventa(temp_db):
@@ -103,6 +111,21 @@ def test_con_posicion_abierta_y_señal_viva_no_hace_nada(temp_db, monkeypatch):
         lambda symbol: {"note": "sigue rindiendo"},
     )
     assert live_strategy_engine.build_real_intent(temp_db, "crypto_carry_btcusdt") is None
+
+
+def test_carry_ampliacion_abre_2_patas_con_el_symbol_correcto(temp_db, monkeypatch):
+    _make_live(temp_db, "crypto_carry_adausdt", capital_pct=100.0)
+    db.update_app_settings(temp_db, auto_trading_capital_usd=1_000)
+    monkeypatch.setattr(
+        live_strategy_engine.crypto_carry, "compute_funding_rate_carry_signal",
+        lambda symbol: {"note": "funding bueno"},
+    )
+    monkeypatch.setattr(live_strategy_engine, "_spot_price_usd", lambda symbol: 1.0)
+
+    intent = live_strategy_engine.build_real_intent(temp_db, "crypto_carry_adausdt")
+
+    assert intent["action"] == "open"
+    assert {leg["symbol"] for leg in intent["legs"]} == {"ADAUSDT"}
 
 
 def test_con_posicion_abierta_y_señal_muerta_cierra(temp_db, monkeypatch):

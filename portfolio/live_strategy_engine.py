@@ -8,10 +8,13 @@ posicionado).
 Solo cubre lo que de verdad es ejecutable 1:1 contra lo que paso su propio
 gate DSR>=0.95 (ver OBJETIVO_MARCO.md):
 
-- Carry BTC/ETH (crypto_carry_btcusdt/crypto_carry_ethusdt): cash-and-carry
-  real -- comprar spot + vender futuro perpetuo, delta-neutral, exactamente
-  lo que portfolio/crypto_carry.py::simulate_funding_rate_carry_engine
-  valida. Registrado abajo.
+- Carry cripto (crypto_carry_btcusdt/ethusdt/adausdt/dogeusdt/linkusdt/
+  ltcusdt): cash-and-carry real -- comprar spot + vender futuro perpetuo,
+  delta-neutral, exactamente lo que portfolio/crypto_carry.py::
+  simulate_funding_rate_carry_engine valida. Las 4 ultimas monedas se
+  sumaron 2026-10-24 (ver docstring de crypto_carry.py, "AMPLIACION
+  2026-10-24") tras pasar el mismo gate DSR>=0.95 que BTC/ETH. Registrado
+  abajo.
 
 - Canje AL29/GD29 (canje_al29_gd29): DELIBERADAMENTE SIN intent builder real
   (ver conversacion 2026-10-21, "hagamos el backtest primero"). El backtest
@@ -123,6 +126,10 @@ def _spot_price_usd(symbol):
 _REAL_INTENT_BUILDERS = {
     "crypto_carry_btcusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_btcusdt", "BTCUSDT"),
     "crypto_carry_ethusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_ethusdt", "ETHUSDT"),
+    "crypto_carry_adausdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_adausdt", "ADAUSDT"),
+    "crypto_carry_dogeusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_dogeusdt", "DOGEUSDT"),
+    "crypto_carry_linkusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_linkusdt", "LINKUSDT"),
+    "crypto_carry_ltcusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_ltcusdt", "LTCUSDT"),
 }
 
 

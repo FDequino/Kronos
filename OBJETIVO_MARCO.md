@@ -35,7 +35,7 @@ sostiene, sea cuando sea.
 |---|---|---|---|---|
 | Carry Trade funding rate BTCUSDT | **+6.9%**, Sharpe 6.64 | 87 rebalanceos, ~7 años reales de Binance | **1.0000** | **VALIDADO** — falta paper trading + drawdown real + batir benchmark |
 | Carry Trade funding rate ETHUSDT | **+8.5%**, Sharpe 6.54 | 84 rebalanceos, ~7 años reales de Binance | **1.0000** | **VALIDADO** — ídem |
-| Canje AL29/GD29 (arbitraje de bonos) | **+24.8%**, Sharpe 1.54 | 56 operaciones, 1233 ruedas | **0.9864** | **VALIDADO** — ídem |
+| Canje AL29/GD29 (arbitraje de bonos) | **+24.8%**, Sharpe 1.54 | 56 operaciones, 1233 ruedas | **0.9864** | **VALIDADO sobre un modelo TEÓRICO — ver nota 2026-10-24 abajo, el modelo real ejecutable PIERDE plata** |
 | Factor Investing (Momentum+Low-Vol+Value en CEDEARs) | **+15.3%**, Sharpe 0.73 | 0 trades discretos (rotación), 600 ruedas | 0.2188 | NO significativo todavía (menos consistente entre sub-períodos que los otros 3) |
 
 **Confirmado que NO funciona (o no se puede medir todavía):**
@@ -60,10 +60,15 @@ sostiene, sea cuando sea.
 ## Qué entra en el alcance de estrategias (y qué no, por ahora)
 
 **Entra**, en este orden de evidencia:
-1. **Canje AL29/GD29, Carry cripto BTC, Carry cripto ETH — ya VALIDADOS**
+1. **Canje AL29/GD29, Carry cripto (BTC/ETH/ADA/DOGE/LINK/LTC) — ya VALIDADOS**
    (DSR≥0.95 real, ver tabla arriba). Siguiente paso del gate: período de
    paper trading/semi-auto sin salvada manual + drawdown real dentro del
-   perfil + batir el benchmark — recién ahí "listo para plata real".
+   perfil + batir el benchmark — recién ahí "listo para plata real". **Canje
+   es un caso especial: el DSR 0.9864 mide un modelo TEÓRICO no ejecutable
+   por un retail en IOL/PPI — ver "Investigación 2026-10-24" al final de
+   este documento, el único modelo real pierde plata (DSR~0). Sigue en
+   paper trading para seguir juntando evidencia, pero no avanza a "live" con
+   la evidencia actual.**
    **Factor Investing** mostró retorno real positivo pero todavía NO pasó el
    DSR (0.2188) — sigue en investigación, no pasa a la siguiente etapa del
    gate todavía.
@@ -147,3 +152,18 @@ Las 4 piezas del estado final (ver sección "Estado final" más arriba) ya está
 2. Diseñar y conectar el sleeve de Caución/Yield como el primer candidato real a full-auto (más simple: no depende de un forecast).
 3. Decidir, con el resultado de (1), si vale la pena seguir iterando el meta-modelo (features/horizonte/universo) o si el motor de señal actual necesita un cambio más de fondo antes de volver a correr CPCV.
 4. Recién con (1)-(3) resueltos, dimensionar qué significa "semi-auto" en términos concretos de UI/bot (qué aprobás, dónde, con qué fricción).
+
+## Investigación 2026-10-24: ampliar Pairs Trading + buscar estrategias nuevas en paralelo
+
+(Ver conversación: "profundiza en ampliar el universo de pairs trading, pero también investiga estrategias nuevas en paralelo". Todo lo de abajo se corrió de nuevo HOY contra datos/código reales, nunca asumido de commits o conversaciones anteriores.)
+
+- **Pairs Trading, universo ampliado — SIN edge nuevo**: se agregaron 18 símbolos candidatos nuevos a `portfolio/pairs_trading.py` (`PAIRS_ONLY_SYMBOLS`/`PAIRS_SECTOR_GROUPS`, additivo, nunca toca el universo de Core/Satélite), todos con ≥300 filas reales confirmadas en data912. De los pares que cointegraron (Engle-Granger p<0.05), los 5 corridos contra el gate CPCV+DSR dieron **DSR < 0.44 todos** (la mayoría cerca de 0). Confirma que no es un problema de tamaño de universo — Pairs Trading en este mercado no tiene edge robusto, ni con 17 ni con 35 activos. Tests de regresión agregados (`tests/test_pairs_trading.py`, 25/25 pasan).
+- **Gap de ejecución de Canje confirmado, independientemente**: se corrió `arbitrage.py::simulate_canje_real_position_engine` (el único modelo que un retail puede ejecutar de verdad en IOL/PPI — comprar la pata barata y rotar, sin shortear) contra el mismo gate: **-20.6% anual, Sharpe -0.40, Max DD -68.8%, DSR 0.0000 — pierde plata**. El DSR 0.9864 de la tabla de arriba mide un modelo teórico (largo una pata + corto la otra) que no es ejecutable hoy. Canje sigue en paper trading (evidencia en curso), pero NO avanza a "live" con la evidencia actual — ver nota agregada en la tabla de estrategias validadas.
+- **Arbitraje CEDEAR/subyacente — re-verificado, NO pasa el gate**: un commit de investigación previo (20/10) sugería que AAPL/MSFT/GOOGL "sostienen edge real" con un split OOS simple (Sharpe 0.63-0.73). Se corrió `arbitrage.py::simulate_cedear_underlying_arbitrage_engine` contra el gate CPCV+DSR real sobre los 9 símbolos declarados (`CEDEAR_ARBITRAGE_SYMBOLS`): mejor resultado MELI con DSR 0.84, ninguno llega a 0.95. Además siguen sin resolver los problemas de ejecución real (2 mercados, 2 monedas, ratio de conversión CEDEAR/acción no confirmado — ver docstring "GAP DE EJECUCION" en `arbitrage.py`). Conclusión: no califica, ni en el papel ni en la práctica.
+- **Estrategia nueva con edge real: ampliar Carry cripto a 4 monedas más**: el motor de `crypto_carry.py` (genérico desde el día 1, no específico a BTC/ETH) se corrió con datos reales de Binance sobre 7 monedas más. **ADA, DOGE, LINK y LTC pasan el mismo gate DSR≥0.95** (DSR=1.0000 los 4, Sharpe 4.9-6.5, Max DD <6%, ~2300-2600 ruedas reales cada uno) — mismo mecanismo delta-neutral spot+futuro ya ejecutable 1:1 en Binance que BTC/ETH. XRP quedó justo abajo del gate (DSR 0.94). BNB y SOL **no sirven** (DSR~0, Max DD >30%) — confirma que no es "cualquier altcoin cobra funding gratis", hay que probarlas una por una. Registradas en `strategy_registry` (`crypto_carry_adausdt/dogeusdt/linkusdt/ltcusdt`) y arrancadas en Paper Trading (2026-10-24), con intent builder real agregado en `live_strategy_engine.py` y simulador en `capital_allocator.py` (mismo patrón que BTC/ETH).
+
+**Conclusión honesta de esta ronda**: de las 4 líneas de investigación (ampliar Pairs Trading, re-verificar Canje, re-verificar CEDEAR/subyacente, ampliar Carry cripto), **la única que suma una estrategia nueva con DSR≥0.95 y genuinamente ejecutable es Carry cripto con más monedas** — que es la MISMA estrategia (cash-and-carry de funding rate) aplicada a más activos, no una estrategia distinta. Hoy, de todo lo validado Y ejecutable con plata real, todo vive en un solo mercado (cripto/Binance) y una sola fuente de edge (funding rate de futuros perpetuos).
+
+**Nota sobre Carry LECAP/CER** (re-verificado hoy, no solo citado del commit `17c47fb` del 21/10): se volvió a correr `carry_lecap_cer_backtest.py::simulate_carry_lecap_cer_engine_usd` con datos de hoy sobre los 4 bonos CER (TX26, TX28, DICP, PARP) contra el gate real — mejor caso TX28 con DSR 0.027, el resto peor (DSR 0.0001-0.0075), todos muy lejos de 0.95. **Confirma que esta vía ya está agotada, no es una palanca de diversificación pendiente** — ya se había descartado correctamente, no es un hallazgo nuevo de hoy.
+
+Con Pairs Trading, CEDEAR/subyacente y LECAP/CER los tres confirmados sin edge, y Canje limitado a un modelo que pierde plata en su versión ejecutable, **hoy no hay ninguna fuente de diversificación real fuera de cripto que haya pasado el gate** — la concentración de toda la plata operable en un solo mecanismo (funding rate de futuros perpetuos, aunque sea en 6 monedas distintas) es un riesgo real de la cartera, no resuelto por esta ronda de investigación. Las palancas que siguen abiertas con evidencia externa pero sin probar en este proyecto (ver "Cómo hacer que el resto funcione" arriba) son: Dólar Sintético (bloqueado por credenciales de A3 Mercados, depende de una decisión tuya) y un modelo de forecasting distinto a Chronos para Core (Moirai/TimesFM, trabajo de integración real, no una corrida de una tarde).

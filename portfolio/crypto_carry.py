@@ -34,6 +34,16 @@ precio esta hedgeado, solo queda la volatilidad del funding mismo) y Max
 Drawdown chico (<2.3%). De las 7+ estrategias auditadas en este proyecto
 hasta ahora, esta es la que tiene la muestra mas larga y mas limpia.
 
+AMPLIACION 2026-10-24 (ver conversacion "investiga estrategias nuevas en
+paralelo"): el mismo motor (generico, no especifico a BTC/ETH) corrido con
+datos reales de Binance contra ADA/DOGE/LINK/LTC pasa el mismo gate
+CPCV+DSR>=0.95 (DSR=1.0000 los 4, Sharpe 4.9-6.5, Max DD <6%, ~2300-2600
+ruedas cada uno) -- registrados en strategy_registry y arrancados en Paper
+Trading, mismo mecanismo delta-neutral spot+futuro ya ejecutable en
+Binance. Tambien se probo BNBUSDT y SOLUSDT: ambos con DSR~0 (Sharpe
+negativo, Max DD >30%) -- NO todo funding de altcoin tiene este edge, se
+descartan.
+
 CAVEATS reales NO capturados en el backtest de arriba (riesgos genuinos,
 declarados, no ocultos):
   - Riesgo de LIQUIDACION de la pata de futuros en un movimiento de precio
@@ -70,9 +80,9 @@ SPOT_TAKER_FEE_PCT = 0.10
 FUTURES_TAKER_FEE_PCT = 0.05
 CARRY_ROUND_LEG_COST_PCT = SPOT_TAKER_FEE_PCT + FUTURES_TAKER_FEE_PCT  # abrir O cerrar LAS 2 PATAS juntas, una vez
 
-# Los 2 simbolos que ya usa el resto del proyecto (ver portfolio/fetchers.py)
-# -- nunca se opera un simbolo que el resto de la app no conozca ya.
-FUNDING_SYMBOLS = ("BTCUSDT", "ETHUSDT")
+# Simbolos con edge confirmado contra el gate CPCV+DSR>=0.95 (ver docstring
+# del modulo) -- nunca se opera un simbolo que no haya pasado este gate.
+FUNDING_SYMBOLS = ("BTCUSDT", "ETHUSDT", "ADAUSDT", "DOGEUSDT", "LINKUSDT", "LTCUSDT")
 
 # Umbral de funding anualizado NETO minimo para considerar "hay oportunidad
 # hoy" en compute_funding_rate_carry_signal -- por debajo de esto el costo

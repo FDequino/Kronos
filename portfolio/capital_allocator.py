@@ -28,6 +28,10 @@ _STRATEGY_SIMULATORS = {
         conn, lookback_days=2000, commission_pct=arbitrage.CANJE_ROUND_TRIP_COMMISSION_PCT),
     "crypto_carry_btcusdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("BTCUSDT"),
     "crypto_carry_ethusdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("ETHUSDT"),
+    "crypto_carry_adausdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("ADAUSDT"),
+    "crypto_carry_dogeusdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("DOGEUSDT"),
+    "crypto_carry_linkusdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("LINKUSDT"),
+    "crypto_carry_ltcusdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("LTCUSDT"),
     "factor_investing": lambda conn: factor_investing.simulate_factor_engine(
         conn, lookback_days=600, commission_pct=backtest.ROUND_TRIP_COMMISSION_PCT),
 }
