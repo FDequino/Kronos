@@ -66,6 +66,61 @@ def test_candidate_pairs_from_sectors_incluye_los_3_pedidos_explicitamente():
         assert tuple(sorted(requested)) in normalized
 
 
+# --- PAIRS_SECTOR_GROUPS / PAIRS_ONLY_SYMBOLS (ampliacion 2026-10-24) ---------
+
+def test_pairs_sector_groups_amplia_sin_tocar_core_sector_groups():
+    from portfolio.signals import CORE_SECTOR_GROUPS
+    # La ampliacion es ADITIVA: todo lo que ya estaba en CORE_SECTOR_GROUPS
+    # sigue igual (Core/Satelite nunca ven los simbolos nuevos de Pairs).
+    for symbol, sector in CORE_SECTOR_GROUPS.items():
+        assert pt.PAIRS_SECTOR_GROUPS[symbol] == sector
+    assert "BBAR" not in CORE_SECTOR_GROUPS
+    assert pt.PAIRS_SECTOR_GROUPS["BBAR"] == "bancos_arg"
+
+
+def test_pairs_sector_groups_genera_mas_candidatos_que_el_universo_original():
+    original = pt.candidate_pairs_from_sectors()
+    ampliado = pt.candidate_pairs_from_sectors(pt.PAIRS_SECTOR_GROUPS)
+    assert len(ampliado) > len(original)
+    assert set(original).issubset(set(ampliado))
+
+
+def test_pairs_only_symbols_resuelven_asset_type():
+    # Todo simbolo nuevo de Pairs Trading debe tener su asset_type resuelto
+    # para que _usd_close_series no reviente con "no se conoce su asset_type".
+    for symbol, asset_type in pt.PAIRS_ONLY_SYMBOLS:
+        assert pt._SYMBOL_ASSET_TYPE[symbol] == asset_type
+
+
+# --- scan_candidate_cointegrations --------------------------------------------
+
+def test_scan_candidate_cointegrations_reporta_cointegrados_y_no_cointegrados(monkeypatch):
+    coint_a, coint_b = _cointegrated_pair(n=400, seed=5)
+    indep_a, indep_b = _independent_pair(n=400, seed=6)
+    series_by_symbol = {"A": coint_a, "B": coint_b, "C": indep_a, "D": indep_b}
+    monkeypatch.setattr(pt, "_usd_close_series", lambda symbol, conn: series_by_symbol[symbol])
+
+    results = pt.scan_candidate_cointegrations(_FakeConn(), pairs=[("A", "B"), ("C", "D")])
+    by_pair = {r["pair"]: r for r in results}
+    assert by_pair[("A", "B")]["coint_result"]["is_cointegrated"] is True
+    assert by_pair[("C", "D")]["coint_result"]["is_cointegrated"] is False
+
+
+def test_scan_candidate_cointegrations_nunca_omite_un_par_que_falla(monkeypatch):
+    # A diferencia de scan_pairs (que omite pares sin señal), aca interesa
+    # ver TAMBIEN los que fallan -- investigacion, no generacion de señal.
+    def _fake_series(symbol, conn):
+        if symbol == "BAD":
+            raise RuntimeError("sin datos")
+        return _cointegrated_pair(n=400, seed=7)[0]
+
+    monkeypatch.setattr(pt, "_usd_close_series", _fake_series)
+    results = pt.scan_candidate_cointegrations(_FakeConn(), pairs=[("BAD", "X"), ("OK", "Y")])
+    assert len(results) == 2
+    bad = next(r for r in results if r["pair"] == ("BAD", "X"))
+    assert "error" in bad
+
+
 # --- test_cointegration -------------------------------------------------------
 
 def test_cointegration_detecta_par_cointegrado():

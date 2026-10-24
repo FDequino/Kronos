@@ -69,7 +69,55 @@ MIN_HISTORY_ROWS = 300
 # ya sirve como fuente de candidatos razonable (ver candidate_pairs_from_sectors).
 DEFAULT_PAIRS = [("GGAL", "BMA"), ("SPY", "QQQ"), ("AAPL", "MSFT")]
 
-_SYMBOL_ASSET_TYPE = dict(UNIVERSE)
+# Ampliacion del universo SOLO para Pairs Trading (investigacion 2026-10-24,
+# ver conversacion "ampliar universo de pairs trading"; solo 1/18 pares del
+# universo original pasaba cointegracion, ver OBJETIVO_MARCO.md) -- Core
+# nunca pronostica estos simbolos (no estan en portfolio.backtest.UNIVERSE,
+# que determina que pronostica Core), Pairs Trading solo necesita su serie
+# de precio para medir cointegracion/reversion, no una señal direccional.
+# Cada simbolo confirmado HTTP 200 + >= MIN_HISTORY_ROWS filas reales en
+# data912 antes de sumarlo (mismo criterio ya declarado para UNIVERSE
+# arriba) -- excluidos explicitamente por no llegar a ese piso: VALO, AVGO,
+# MU, TXN, AMAT, LRCX, KLAC, JPM, BAC, MS, C, CVX, SLB, OXY, COP, NU, PAGS,
+# STNE y casi todos los sector-SPDR (XLK/XLV/XLI/XLU/XLY/XLP/XLB/XLC/XLRE)
+# -- cotizan en BYMA recien desde nov-2025 (~230 ruedas), sin suficiente
+# historia para que el test de cointegracion tenga sentido.
+PAIRS_ONLY_SYMBOLS = [
+    ("BBAR", "accion"), ("SUPV", "accion"), ("CEPU", "accion"), ("EDN", "accion"),
+    ("TGNO4", "accion"), ("TGSU2", "accion"), ("IRSA", "accion"), ("TXAR", "accion"),
+    ("AMD", "cedear"), ("INTC", "cedear"), ("QCOM", "cedear"), ("WFC", "cedear"),
+    ("GS", "cedear"), ("XOM", "cedear"), ("XLE", "cedear"), ("XLF", "cedear"),
+    ("DIA", "cedear"), ("IWM", "cedear"),
+]
+
+# Sector groups ampliados solo para generar candidatos de Pairs Trading (ver
+# PAIRS_ONLY_SYMBOLS arriba) -- NUNCA se le pasa a rank_core_candidates (ese
+# filtro de concentracion de Core/Satelite sigue usando CORE_SECTOR_GROUPS
+# tal cual, sin estos simbolos nuevos que Core ni conoce). Grupos nuevos
+# declarados por exposicion economica real, no optimizados para dar mas
+# pares: bancos/energia argentinos se extienden (mas jugadores del mismo
+# sector ya cubierto), TGNO4/TGSU2 son transportadoras de gas reguladas
+# (negocio distinto a generacion electrica, sector propio "gas_arg"), TXAR
+# (acero) se agrupa con ALUA (aluminio) en "industrial_arg" -- metalurgia
+# argentina, exposicion economica de fondo similar aunque no identica; si no
+# estan realmente cointegrados el test de Engle-Granger los descarta solo.
+PAIRS_SECTOR_GROUPS = dict(CORE_SECTOR_GROUPS)
+PAIRS_SECTOR_GROUPS.update({
+    "BBAR": "bancos_arg", "SUPV": "bancos_arg",
+    "CEPU": "energia_arg", "EDN": "energia_arg",
+    "TGNO4": "gas_arg", "TGSU2": "gas_arg",
+    "IRSA": "real_estate_arg",
+    "TXAR": "industrial_arg",
+    "AMD": "semis_us", "INTC": "semis_us", "QCOM": "semis_us",
+    "WFC": "bancos_us", "GS": "bancos_us",
+    "XLE": "etf_sectorial_us", "XLF": "etf_sectorial_us",
+    "DIA": "indices_us", "IWM": "indices_us",
+    # XOM queda sin grupo con 2+ miembros (unica petrolera con historia
+    # suficiente, ver docstring arriba) -- no genera ningun par, declarado
+    # explicitamente en vez de forzarlo en un grupo sin sentido economico.
+})
+
+_SYMBOL_ASSET_TYPE = dict(UNIVERSE + PAIRS_ONLY_SYMBOLS)
 
 REGIME_SPREAD_WIDE_POSITIVE = "spread_ancho_positivo"  # leg A cara respecto de B
 REGIME_SPREAD_WIDE_NEGATIVE = "spread_ancho_negativo"  # leg A barata respecto de B
@@ -241,6 +289,30 @@ def scan_pairs(conn, pairs=None, held_symbols=None):
             continue
         if signal is not None:
             out.append(signal)
+    return out
+
+
+def scan_candidate_cointegrations(conn, pairs=None, pvalue_threshold=COINTEGRATION_PVALUE_THRESHOLD):
+    """Investigacion/research (ver conversacion "ampliar universo de pairs
+    trading") -- a diferencia de scan_pairs (señal de HOY, solo sobre
+    DEFAULT_PAIRS), esto corre SOLO el test de cointegracion sobre TODOS los
+    `pairs` (default: candidate_pairs_from_sectors(PAIRS_SECTOR_GROUPS), el
+    universo ampliado) sin importar el z-score actual -- sirve para medir
+    cuantos pares de un universo mas grande realmente estan cointegrados,
+    no para generar una propuesta de operatoria. Devuelve UNA fila por par
+    pedido (a diferencia de scan_pairs, nunca omite silenciosamente un par
+    sin cointegracion -- aca interesa ver tambien los que fallan)."""
+    pairs = pairs if pairs is not None else candidate_pairs_from_sectors(PAIRS_SECTOR_GROUPS)
+    out = []
+    for symbol_a, symbol_b in pairs:
+        try:
+            series_a = _usd_close_series(symbol_a, conn)
+            series_b = _usd_close_series(symbol_b, conn)
+            coint_result = test_cointegration(series_a, series_b, pvalue_threshold)
+        except Exception as exc:
+            out.append({"pair": (symbol_a, symbol_b), "error": str(exc)})
+            continue
+        out.append({"pair": (symbol_a, symbol_b), "coint_result": coint_result})
     return out
 
 
