@@ -44,13 +44,28 @@ _STRATEGY_SIMULATORS = {
 
 def run_dynamic_allocation(conn, method="risk_parity"):
     """Corre compute_dynamic_strategy_allocation sobre las estrategias HOY
-    'validated'/'live' y persiste result['weights'] en strategy_registry
-    (capital_pct, 0-100). Nunca toca una estrategia en 'research' -- ni para
-    incluirla en el calculo ni para asignarle capital. {'available': False,
-    'reason': ...} si no hay evidencia suficiente (nunca pesos inventados)."""
-    eligible = [s for s in strategy_registry.list_strategies(conn) if s["status"] in ("validated", "live")]
+    'validated'/'paper_trading'/'live' y persiste result['weights'] en
+    strategy_registry (capital_pct, 0-100). Nunca toca una estrategia en
+    'research' -- ni para incluirla en el calculo ni para asignarle capital.
+    {'available': False, 'reason': ...} si no hay evidencia suficiente
+    (nunca pesos inventados).
+
+    BUG REAL encontrado y corregido (ver conversacion, "como mejoramos el
+    rendimiento" 2026-11-10): esta funcion solo consideraba 'validated'/
+    'live' -- una vez que TODAS las estrategias candidatas avanzaron a
+    'paper_trading' (el flujo normal del gate, ver OBJETIVO_MARCO.md), la
+    funcion quedo con 0 elegibles para siempre y nunca mas pudo re-balancear
+    -- confirmado: las 4 monedas de Carry cripto agregadas el 24/10 (ADA/
+    DOGE/LINK/LTC) seguian con capital_pct=0 congelado, pese a estar
+    validadas, porque nunca volvio a correr desde que pasaron a
+    paper_trading. 'paper_trading' NO usa capital_pct para su propio libro
+    (ver portfolio/paper_ledger.py::record_daily_return, arranca cada
+    estrategia en DEFAULT_INITIAL_CAPITAL_USD por separado) -- actualizarlo
+    durante paper trading es seguro, y necesario para que la asignacion este
+    al dia el dia que algo pase a 'live' de verdad."""
+    eligible = [s for s in strategy_registry.list_strategies(conn) if s["status"] in ("validated", "paper_trading", "live")]
     if len(eligible) < 2:
-        return {"available": False, "reason": f"necesita >= 2 estrategias validated/live, hay {len(eligible)}"}
+        return {"available": False, "reason": f"necesita >= 2 estrategias validated/paper_trading/live, hay {len(eligible)}"}
 
     returns_by_strategy = {}
     for s in eligible:
