@@ -838,10 +838,12 @@ CREATE TABLE IF NOT EXISTS broker_accounts (
     account_number TEXT,
     is_active INTEGER NOT NULL DEFAULT 1,
     -- Solo tiene efecto para Binance (ver broker_client.py::BinanceAdapter) --
-    -- cambia las base URL a testnet.binance.vision/testnet.binancefuture.com.
+    -- cambia las base URL a demo-api.binance.com/demo-fapi.binance.com (Demo
+    -- Trading, el entorno de prueba vigente desde que Binance discontinuo el
+    -- viejo testnet.binance.vision/testnet.binancefuture.com en 2025).
     -- Default 0 (producción) para no romper ninguna cuenta PPI/IOL existente,
     -- que ignoran esta columna por completo. Ver OBJETIVO_MARCO.md: Binance
-    -- nunca se probó ni siquiera en testnet -- esto es el paso obligatorio
+    -- nunca se probó ni siquiera en demo -- esto es el paso obligatorio
     -- antes de promover Carry BTC/ETH a 'live' con credenciales de verdad.
     is_testnet INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))

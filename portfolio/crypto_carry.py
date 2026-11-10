@@ -59,12 +59,13 @@ declarados, no ocultos):
 
 ESTADO DE EJECUCION REAL (ver CryptoBinanceAdapter en portfolio/
 broker_client.py): NUNCA probado contra una cuenta real, ni siquiera
-testnet -- hoy no hay credenciales de Binance cargadas en absoluto
+demo -- hoy no hay credenciales de Binance cargadas en absoluto
 (confirmado, broker_accounts no tiene ninguna fila 'Binance'). Antes de
-operar esto con plata real, el paso logico es Binance Futures Testnet
-(testnet.binancefuture.com, cuenta de prueba real con fondos ficticios,
-misma API) -- no usado aca por falta de credenciales, ni siquiera de
-testnet, no por limitacion tecnica."""
+operar esto con plata real, el paso logico es Binance Demo Trading
+(demo.binance.com, cuenta de prueba real con fondos ficticios, misma API
+que produccion -- reemplazo del viejo testnet.binancefuture.com,
+descontinuado por Binance en 2025) -- no usado aca por falta de
+credenciales, ni siquiera de demo, no por limitacion tecnica."""
 import time
 
 import pandas as pd

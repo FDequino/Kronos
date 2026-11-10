@@ -40,11 +40,13 @@ no existe): se investigaron las 4 APIs públicas ANTES de escribir esto
     oficial (nunca hubo que inspeccionar un SDK de terceros como con PPI).
     api_key/api_secret de broker_accounts son el par real de Binance (API
     Key/Secret Key, no usuario+contraseña como IOL). NUNCA probado contra
-    una cuenta real NI SIQUIERA testnet -- hoy no hay ninguna credencial de
+    una cuenta real NI SIQUIERA demo -- hoy no hay ninguna credencial de
     Binance cargada (confirmado, ver BinanceAdapter). Binance ofrece un
-    testnet real (testnet.binancefuture.com) como paso lógico siguiente
-    antes de una cuenta real -- no usado acá por falta de credenciales, ni
-    siquiera de testnet, no por limitación técnica.
+    entorno de prueba real ("Demo Trading", ver HONESTIDAD DECLARADA en
+    las URLs de testnet abajo -- el viejo testnet.binancefuture.com quedó
+    descontinuado en 2025 y hoy redirige a demo.binance.com) como paso
+    lógico siguiente antes de una cuenta real -- no usado acá por falta de
+    credenciales, no por limitación técnica.
 
 Seguridad (corregido 2026-10-20, ver conversación/auditoría -- antes
 guardaba api_key/api_secret en TEXTO PLANO, encontrado con credenciales
@@ -710,19 +712,22 @@ class BinanceAdapter(BrokerAdapter):
     de diseño a tomar junto con el usuario antes de operar esto de verdad,
     no algo para inventar acá.
 
-    NUNCA probado contra una cuenta real NI SIQUIERA testnet (ver
+    NUNCA probado contra una cuenta real NI SIQUIERA demo (ver
     HONESTIDAD DECLARADA) -- no hay credenciales de Binance en
     broker_accounts hoy, confirmado."""
     broker_name = "Binance"
     SPOT_BASE_URL = "https://api.binance.com"
     FUTURES_BASE_URL = "https://fapi.binance.com"
-    # Testnet (ver broker_accounts.is_testnet, schema.sql) -- confirmado
-    # contra la doc oficial de Binance (testnet.binance.vision para SPOT,
-    # testnet.binancefuture.com para FUTUROS USDS-M). Paso obligatorio antes
-    # de operar carry trade con credenciales mainnet: BinanceAdapter nunca se
-    # probó contra NINGUNA cuenta real todavía (ver docstring de la clase).
-    TESTNET_SPOT_BASE_URL = "https://testnet.binance.vision"
-    TESTNET_FUTURES_BASE_URL = "https://testnet.binancefuture.com"
+    # Demo Trading (ver broker_accounts.is_testnet, schema.sql) -- CORREGIDO
+    # 2026-11-10: testnet.binance.vision/testnet.binancefuture.com (el
+    # testnet clasico) fueron descontinuados por Binance en 2025 -- la web
+    # hoy redirige directo a demo.binance.com, el nuevo entorno unificado
+    # "Demo Trading" (confirmado real, doc oficial developers.binance.com/
+    # docs/binance-spot-api-docs/demo-mode). Las API keys se generan desde
+    # demo.binance.com/en/my/settings/api-management (misma cuenta de
+    # Binance, no un registro aparte como antes) y pegan contra estas URLs.
+    TESTNET_SPOT_BASE_URL = "https://demo-api.binance.com"
+    TESTNET_FUTURES_BASE_URL = "https://demo-fapi.binance.com"
     TIMEOUT = 15
 
     @property

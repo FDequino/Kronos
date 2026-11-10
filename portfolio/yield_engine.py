@@ -14,13 +14,23 @@ import pandas as pd
 
 
 def daily_caucion_return_pct(tna_pct):
-    """Retorno diario SIMPLE prorateado de una TNA -- mismo criterio que
-    portfolio/backtest.py::compute_hurdle_pct (TNA/100 * dias/365). Nunca se
-    inventa una tasa de interes compuesto diario que ninguna caucion real
-    publica -- la composicion de varios dias se obtiene ENCADENANDO este
-    retorno diario en una curva de equity (ver compound_idle_capital_curve),
-    no inflando la tasa diaria misma."""
-    return float(tna_pct) / 100.0 / 365.0
+    """Retorno diario SIMPLE prorateado de una TNA, en PUNTOS PORCENTUALES
+    (mismo criterio que portfolio/backtest.py::compute_hurdle_pct: TNA/100 *
+    dias/365 * 100, que al cancelar el /100 y el *100 da TNA*dias/365 -- acá
+    para 1 día es TNA/365). Nunca se inventa una tasa de interés compuesto
+    diario que ninguna caución real publica -- la composición de varios días
+    se obtiene ENCADENANDO este retorno diario en una curva de equity (ver
+    compound_idle_capital_curve), no inflando la tasa diaria misma.
+
+    BUG REAL encontrado y corregido (ver conversación, "opciones con menos
+    riesgo" / auditoría 2026-11-10, ya detectado antes en
+    carry_lecap_cer_backtest.py pero nunca corregido acá): la versión
+    anterior dividía por 100 DE MÁS (TNA/100/365), devolviendo un valor
+    ~100 veces más chico que el real. Todo motor que blendea capital
+    ocioso con esta función (Core, Satélite, Factor Investing, Pairs
+    Trading, Canje, RL trader) venía subestimando el aporte de la Caución
+    por ese mismo factor de ~100x en sus backtests."""
+    return float(tna_pct) / 365.0
 
 
 def compound_idle_capital_curve(idle_weight_series, tna_pct):

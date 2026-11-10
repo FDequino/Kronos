@@ -47,6 +47,31 @@ from portfolio.fundamentals import fetch_fundamentals
 
 CEDEAR_UNIVERSE = [(symbol, asset_type) for symbol, asset_type in backtest.UNIVERSE if asset_type == "cedear"]
 
+# Ampliacion SOLO para Factor Investing (ver conversacion, "por que
+# analizamos 17 instrumentos" / investigacion 2026-11-10) -- NUNCA se le pasa
+# a Core/Satelite (backtest.UNIVERSE sigue intacto), mismo criterio aditivo
+# que portfolio/pairs_trading.py::PAIRS_ONLY_SYMBOLS. Escaneados los ~365
+# tickers del catalogo live de data912 (`/live/arg_cedears`, variantes de
+# clase C/D excluidas -- mismo ticker base que ya usa backtest.UNIVERSE) y
+# confirmados con >=300 filas reales en `/historical/cedears/<symbol>`
+# (2026-11-10) -- de 365 candidatos, solo estos 35 tienen suficiente
+# historial. Nota declarada: algunos tickers de CEDEAR difieren del ticker
+# real en yfinance (ej. DISN=Disney, NOKA=Nokia, TXR=Texas... -- fuente de
+# precio es data912 igual, pero fetch_fundamentals(yfinance) puede no
+# encontrar el PE para estos con el mismo symbol string; compute_value_factor
+# ya tolera PE=None sin romper, solo pierden el factor Value puntual).
+FACTOR_ONLY_SYMBOLS = [
+    ("GE", "cedear"), ("VALE", "cedear"), ("KO", "cedear"), ("DISN", "cedear"),
+    ("IBM", "cedear"), ("BABA", "cedear"), ("QCOM", "cedear"), ("T", "cedear"),
+    ("CSCO", "cedear"), ("TXR", "cedear"), ("PFE", "cedear"), ("ARCO", "cedear"),
+    ("NOKA", "cedear"), ("NFLX", "cedear"), ("ADGO", "cedear"), ("TEN", "cedear"),
+    ("PBR", "cedear"), ("V", "cedear"), ("AIG", "cedear"), ("CAT", "cedear"),
+    ("MO", "cedear"), ("PYPL", "cedear"), ("HPQ", "cedear"), ("LMT", "cedear"),
+    ("TRIP", "cedear"), ("GS", "cedear"), ("ARKK", "cedear"), ("DIA", "cedear"),
+    ("EEM", "cedear"), ("EWZ", "cedear"), ("IWM", "cedear"), ("WMT", "cedear"),
+    ("XLE", "cedear"), ("XLF", "cedear"), ("XOM", "cedear"),
+]
+
 # Momentum: combinacion declarada (promedio simple, no un peso optimizado) de
 # 3 meses (reaccion reciente) y 12 meses (tendencia de fondo) -- "N ruedas"
 # aproxima meses calendario a ruedas habiles (21/mes), mismo criterio usado

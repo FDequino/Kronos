@@ -17,7 +17,7 @@ portfolio/log_strategy_signals.py), nunca sincronico en un request HTTP --
 implica re-simular cada estrategia elegible, puede tardar minutos."""
 import sys
 
-from portfolio import arbitrage, backtest, crypto_carry, db, factor_investing, risk, strategy_registry
+from portfolio import arbitrage, backtest, crypto_carry, crypto_options_vrp, db, factor_investing, risk, strategy_registry
 
 # Estrategia en el Registro -> como conseguir su serie real de retornos
 # diarios -- MISMOS parametros que portfolio/backtest.py::
@@ -34,6 +34,11 @@ _STRATEGY_SIMULATORS = {
     "crypto_carry_ltcusdt": lambda conn: crypto_carry.simulate_funding_rate_carry_engine("LTCUSDT"),
     "factor_investing": lambda conn: factor_investing.simulate_factor_engine(
         conn, lookback_days=600, commission_pct=backtest.ROUND_TRIP_COMMISSION_PCT),
+    # Ver portfolio/crypto_options_vrp.py, HONESTIDAD DECLARADA -- DSR alto
+    # que NO significa lo mismo que el de Carry cripto (backtest ciego a
+    # riesgo de margen/liquidacion). Paper trading real decide si esto
+    # avanza, nunca este numero solo.
+    "crypto_options_vrp": lambda conn: crypto_options_vrp.simulate_crypto_options_vrp_engine(conn),
 }
 
 

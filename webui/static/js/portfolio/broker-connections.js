@@ -36,7 +36,7 @@ const BROKER_CREDENTIAL_LABELS = {
     },
     Binance: {
         key: 'API Key', secret: 'Secret Key',
-        hint: 'El par real ApiKey/SecretKey de Binance (no tu usuario/contraseña). Usado para Carry BTC/ETH — probá primero con credenciales de TESTNET (testnet.binancefuture.com/testnet.binance.vision, gratis) antes de cargar las de tu cuenta real.',
+        hint: 'El par real ApiKey/SecretKey de Binance (no tu usuario/contraseña). Usado para Carry BTC/ETH — probá primero con credenciales de DEMO TRADING (demo.binance.com/en/my/settings/api-management, gratis, misma cuenta de Binance) antes de cargar las de tu cuenta real.',
     },
 };
 
