@@ -1,8 +1,27 @@
 """Ejecución REAL de UNA pata contra Binance (ver portfolio/order_execution.py,
 el mismo patrón pero para BYMA/instruments) -- place_real_binance_order es el
 ÚNICO punto de entrada permitido para que cualquier código de este proyecto
-mande una orden real a Binance. Nunca se llama a BinanceAdapter.get_order_budget/
-confirm_order directo desde otro lugar.
+mande una orden real a Binance.
+
+BUG REAL encontrado y corregido (ver conversación, auditoría del camino de
+ejecución 2026-11-10, antes de conectar la primera cuenta real): esta
+función persistía SIEMPRE `cantidad`/`precio`/`monto_usd` tal como los pasó
+el llamador (la estimación PRE-trade, usada para el chequeo de tope) -- para
+una orden MARKET (el default, `operation_type="PRECIO-DE-MERCADO"`), el
+precio real de ejecución lo decide el mercado en ese instante, nunca el
+estimado. Eso significa que `sum_confirmed_binance_exposure_usd` (el tope de
+exposición real) compondría sobre números cada vez más desactualizados, no
+sobre lo que de verdad se ejecutó. Corregido extrayendo el fill REAL (ver
+_extract_real_fill): para spot viene en la misma respuesta de la orden
+(`fills`/`executedQty`/`cummulativeQuoteQty`, confirmado contra la doc
+oficial); para futuros la respuesta de POST /fapi/v1/order NO trae
+`avgPrice` (solo aparece en GET /fapi/v1/order, confirmado contra la doc
+oficial) -- hace falta una consulta extra (`BinanceAdapter.query_order`)
+para saber el precio real ejecutado. Si la orden todavía no tiene fill real
+(ej. una LIMIT que queda 'NEW'), se conserva el estimado -- nunca se
+inventa un fill que no pasó.
+
+Nunca se llama a BinanceAdapter.get_order_budget/confirm_order directo desde otro lugar.
 
 Sin `instruments` de por medio a propósito (ver schema.sql::binance_orders):
 Carry BTC/ETH son 2 patas (spot + futuro perpetuo) del MISMO symbol
@@ -35,6 +54,37 @@ class BinanceExecutionError(Exception):
     """Cualquier motivo por el que place_real_binance_order abortó ANTES de
     tocar la red -- distinto de una falla DEL lado de Binance ya en vuelo
     (esa persiste un registro 'error' y re-lanza la excepción original)."""
+
+
+def _extract_real_fill(adapter, result, *, market, symbol, asset_type, fallback_cantidad, fallback_precio):
+    """Devuelve (cantidad, precio) REALES de la orden recien ejecutada, o el
+    estimado pre-trade si todavia no hay fill real (ver docstring del
+    modulo). spot: viene en la misma respuesta (fills/executedQty/
+    cummulativeQuoteQty). futuros: la respuesta de POST no trae avgPrice --
+    hace falta un query_order extra para conseguirlo."""
+    if not isinstance(result, dict):
+        return fallback_cantidad, fallback_precio
+
+    if market == "spot":
+        executed_qty = float(result.get("executedQty") or 0)
+        cumulative_quote = float(result.get("cummulativeQuoteQty") or 0)
+        if executed_qty > 0 and cumulative_quote > 0:
+            return executed_qty, cumulative_quote / executed_qty
+        return fallback_cantidad, fallback_precio
+
+    # futuros -- consultar la orden para conseguir avgPrice real (no viene en el POST)
+    order_id = result.get("orderId")
+    if order_id is None:
+        return fallback_cantidad, fallback_precio
+    try:
+        queried = adapter.query_order(symbol=symbol, order_id=order_id, asset_type=asset_type)
+    except Exception:
+        return fallback_cantidad, fallback_precio  # nunca rompe la orden ya confirmada por no poder consultarla despues
+    executed_qty = float(queried.get("executedQty") or 0)
+    avg_price = float(queried.get("avgPrice") or 0)
+    if executed_qty > 0 and avg_price > 0:
+        return executed_qty, avg_price
+    return fallback_cantidad, fallback_precio
 
 
 def _active_binance_account(conn):
@@ -95,8 +145,12 @@ def place_real_binance_order(conn, *, market, symbol, side, cantidad, precio, pa
         raise
 
     binance_order_id = str(result.get("orderId") or "") if isinstance(result, dict) else ""
+    cantidad_real, precio_real = _extract_real_fill(
+        adapter, result, market=market, symbol=symbol, asset_type=asset_type,
+        fallback_cantidad=cantidad, fallback_precio=precio,
+    )
     return db.add_binance_order(
         conn, broker_account_id=account["id"], market=market, symbol=symbol, side=side,
-        cantidad=cantidad, precio=precio, monto_usd=monto_usd,
+        cantidad=cantidad_real, precio=precio_real, monto_usd=cantidad_real * precio_real,
         estado="confirmada", external_id=external_id, binance_order_id=binance_order_id,
     )

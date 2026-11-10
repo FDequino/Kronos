@@ -40,9 +40,20 @@ def _apply_decision(conn, decision, *, resolved_via):
         return result
 
     if decision["action"] == "open":
+        # BUG REAL encontrado y corregido (ver conversacion, auditoria del
+        # camino de ejecucion 2026-11-10): esto persistia decision["legs"]
+        # (la INTENCION pre-trade) en vez de result["filled_legs"] (lo que
+        # Binance ejecuto de verdad, ya con el fill real desde que se
+        # corrigio binance_execution.py) -- strategy_positions quedaba con
+        # cantidad/precio/capital_usd estimados para siempre, nunca lo real.
+        real_legs = [
+            {"broker": "Binance", "market": leg["market"], "symbol": leg["symbol"], "side": leg["side"],
+             "quantity": leg["cantidad"], "price_usd": leg["precio"]}
+            for leg in result["filled_legs"]
+        ]
         position = db.insert_strategy_position(
             conn, strategy_name=decision["strategy_name"], mode="real",
-            legs=decision["legs"], capital_usd=decision["legs"][0]["quantity"] * decision["legs"][0]["price_usd"],
+            legs=real_legs, capital_usd=real_legs[0]["quantity"] * real_legs[0]["price_usd"],
         )
         status = "auto_executed" if resolved_via == "auto" else "executed"
         db.update_execution_decision(

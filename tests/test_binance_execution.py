@@ -116,12 +116,67 @@ def test_orden_futuros_exitosa_se_confirma(temp_db, monkeypatch):
     db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_usd=10**6)
     _setup_binance_account(temp_db)
     monkeypatch.setattr(broker_client.requests, "post", lambda url, **kw: _fake_response({"orderId": 999}))
+    monkeypatch.setattr(broker_client.requests, "get", lambda url, **kw: _fake_response({}))  # sin avgPrice -- query_order no aporta nada
 
     order = binance_execution.place_real_binance_order(temp_db, **_base_kwargs(market="futuros", side="sell"))
 
     assert order["estado"] == "confirmada"
     assert order["market"] == "futuros"
     assert order["side"] == "sell"
+
+
+def test_orden_spot_usa_el_fill_real_no_el_estimado(temp_db, monkeypatch):
+    """Bug real corregido 2026-11-10: antes esto quedaba persistido con el
+    precio/cantidad ESTIMADOS pre-trade (60000.0 * 0.1 = 6000.0 USD), nunca
+    con lo que Binance realmente ejecuto -- ver docstring del modulo."""
+    db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_usd=10**6)
+    _setup_binance_account(temp_db)
+    monkeypatch.setattr(broker_client.requests, "post", lambda url, **kw: _fake_response({
+        "orderId": 123456, "executedQty": "0.1", "cummulativeQuoteQty": "6050.00",
+        "fills": [{"price": "60500.00", "qty": "0.1", "commission": "0.0001", "commissionAsset": "BTC"}],
+    }))
+
+    order = binance_execution.place_real_binance_order(temp_db, **_base_kwargs(precio=60000.0))
+
+    assert order["cantidad"] == pytest.approx(0.1)
+    assert order["precio"] == pytest.approx(60500.0)  # el fill real (60500), NO el estimado (60000)
+    assert order["monto_usd"] == pytest.approx(6050.0)
+    assert db.sum_confirmed_binance_exposure_usd(temp_db) == pytest.approx(6050.0)
+
+
+def test_orden_futuros_usa_avg_price_real_via_query_order(temp_db, monkeypatch):
+    """Bug real corregido 2026-11-10: la respuesta de POST /fapi/v1/order NO
+    trae avgPrice (confirmado contra la doc oficial) -- hace falta el GET de
+    query_order para conseguir el precio real de ejecucion."""
+    db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_usd=10**6)
+    _setup_binance_account(temp_db)
+    monkeypatch.setattr(broker_client.requests, "post", lambda url, **kw: _fake_response({
+        "orderId": 999, "executedQty": "0.1", "status": "FILLED",  # sin avgPrice, como la doc real
+    }))
+    monkeypatch.setattr(broker_client.requests, "get", lambda url, **kw: _fake_response({
+        "orderId": 999, "executedQty": "0.1", "avgPrice": "60750.00", "status": "FILLED",
+    }))
+
+    order = binance_execution.place_real_binance_order(temp_db, **_base_kwargs(market="futuros", side="sell", precio=60000.0))
+
+    assert order["cantidad"] == pytest.approx(0.1)
+    assert order["precio"] == pytest.approx(60750.0)
+    assert order["monto_usd"] == pytest.approx(6075.0)
+
+
+def test_orden_sin_fill_real_todavia_conserva_el_estimado(temp_db, monkeypatch):
+    """Una LIMIT que queda 'NEW' (sin ejecutar) no debe inventar un fill --
+    se queda con el estimado pre-trade, nunca con 0."""
+    db.update_app_settings(temp_db, auto_trading_enabled=1, auto_trading_limit_mode="fixed", auto_trading_limit_usd=10**6)
+    _setup_binance_account(temp_db)
+    monkeypatch.setattr(broker_client.requests, "post", lambda url, **kw: _fake_response({
+        "orderId": 123456, "executedQty": "0.0", "cummulativeQuoteQty": "0.0", "fills": [], "status": "NEW",
+    }))
+
+    order = binance_execution.place_real_binance_order(temp_db, **_base_kwargs(precio=60000.0))
+
+    assert order["cantidad"] == pytest.approx(0.1)
+    assert order["precio"] == pytest.approx(60000.0)
 
 
 def test_falla_del_broker_persiste_error_y_relanza(temp_db, monkeypatch):

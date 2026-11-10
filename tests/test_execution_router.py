@@ -37,6 +37,16 @@ _OPEN_INTENT = {
     ],
 }
 
+# Shape REAL de una fila de binance_orders (ver db.add_binance_order) -- no
+# un {"id": 1} generico -- _apply_decision lee market/symbol/side/cantidad/
+# precio de esto para reconstruir los legs reales de strategy_positions (ver
+# auditoria 2026-11-10, bug real: antes persistia decision["legs"], el
+# ESTIMADO pre-trade, nunca lo que Binance ejecuto de verdad).
+_FILLED_LEGS = [
+    {"market": "spot", "symbol": "BTCUSDT", "side": "buy", "cantidad": 0.1, "precio": 60050.0},
+    {"market": "futuros", "symbol": "BTCUSDT", "side": "sell", "cantidad": 0.1, "precio": 60050.0},
+]
+
 
 def _no_breaker(monkeypatch):
     monkeypatch.setattr(execution_router.risk_engine, "check_circuit_breaker", lambda conn: {"tripped": False, "drawdown_pct": None, "limit_pct": -20})
@@ -115,7 +125,7 @@ def test_full_auto_ejecuta_y_abre_posicion(temp_db, monkeypatch):
     monkeypatch.setattr(execution_router.live_strategy_engine, "build_real_intent", lambda conn, name: _OPEN_INTENT)
     monkeypatch.setattr(
         execution_router.multi_leg_execution, "execute_legs",
-        lambda conn, **kw: {"status": "executed", "filled_legs": [{"id": 1}, {"id": 2}], "error": None},
+        lambda conn, **kw: {"status": "executed", "filled_legs": _FILLED_LEGS, "error": None},
     )
 
     summary = execution_router.run_daily_execution_cycle(temp_db)
@@ -127,6 +137,9 @@ def test_full_auto_ejecuta_y_abre_posicion(temp_db, monkeypatch):
     positions = db.list_strategy_positions(temp_db, "crypto_carry_btcusdt")
     assert len(positions) == 1
     assert positions[0]["status"] == "open"
+    # El fill REAL (60050), no el estimado del intent (60000) -- bug real corregido 2026-11-10
+    assert positions[0]["capital_usd"] == pytest.approx(6005.0)
+    assert positions[0]["legs"][0]["price_usd"] == pytest.approx(60050.0)
 
 
 def test_full_auto_falla_marca_decision_como_failed(temp_db, monkeypatch):
@@ -157,7 +170,7 @@ def test_resolve_decision_aprobada_ejecuta(temp_db, monkeypatch):
     )
     monkeypatch.setattr(
         execution_router.multi_leg_execution, "execute_legs",
-        lambda conn, **kw: {"status": "executed", "filled_legs": [{"id": 1}, {"id": 2}], "error": None},
+        lambda conn, **kw: {"status": "executed", "filled_legs": _FILLED_LEGS, "error": None},
     )
 
     result = execution_router.resolve_decision(temp_db, decision["id"], approved=True, via="telegram")

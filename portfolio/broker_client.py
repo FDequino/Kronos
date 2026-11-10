@@ -899,6 +899,19 @@ class BinanceAdapter(BrokerAdapter):
         path = "/api/v3/order" if market == "spot" else "/fapi/v1/order"
         return self._signed_delete(base_url, path, {"symbol": symbol, "orderId": order_id})
 
+    def query_order(self, *, symbol, order_id, asset_type="cripto"):
+        """GET /api/v3/order (spot) o GET /fapi/v1/order (futuros) --
+        confirmado contra la doc oficial (developers.binance.com): la
+        respuesta de FUTUROS de confirm_order (POST /fapi/v1/order) NO
+        incluye 'avgPrice' (solo aparece acá, en Query Order) -- hallazgo
+        real, ver binance_execution.py::_extract_real_fill, que llama a esto
+        para saber el precio REAL de ejecucion de una orden de futuros en
+        vez de confiar en el precio estimado pre-trade."""
+        market = self._market_for(asset_type)
+        base_url = self.spot_base_url if market == "spot" else self.futures_base_url
+        path = "/api/v3/order" if market == "spot" else "/fapi/v1/order"
+        return self._signed_get(base_url, path, {"symbol": symbol, "orderId": order_id})
+
 
 class _PendingIntegrationAdapter(BrokerAdapter):
     """Balanz y Matrix (ver HONESTIDAD DECLARADA arriba): búsqueda real no
