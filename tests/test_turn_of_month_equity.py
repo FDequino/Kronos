@@ -30,6 +30,31 @@ def test_is_turn_of_month_day_marca_ultimos_y_primeros_3_dias_habiles():
     assert turn_of_month_equity._is_turn_of_month_day(pd.Timestamp("2026-11-15")) is False
 
 
+def test_costo_se_resta_una_vez_por_ventana_no_por_dia():
+    # BUG REAL 2026-11-11: la primera version no restaba ningun costo. Una
+    # "ventana" turn-of-month combina los ultimos 3 dias habiles de un mes +
+    # los primeros 3 del siguiente (Ariel 1987) -- son CONSECUTIVOS salvo por
+    # un fin de semana normal (gap de 3 dias corridos), eso sigue siendo LA
+    # MISMA ventana. Recien un gap grande (el resto del mes sin operar)
+    # marca el inicio de una ventana nueva, ahi se vuelve a pagar el costo.
+    tom_ret = pd.Series(
+        [1.0, 1.0, 1.0, 2.0, 3.0, 3.0],
+        index=pd.to_datetime([
+            "2026-01-28", "2026-01-29", "2026-01-30",  # ultimos 3 dias habiles de enero
+            "2026-02-02",                                # primer dia habil de febrero -- mismo gap de fin de semana, MISMA ventana
+            "2026-02-25", "2026-02-26",                  # ultimos dias de febrero -- gap grande desde el 2/2, VENTANA NUEVA
+        ]),
+    )
+    adjusted = turn_of_month_equity._apply_round_trip_cost(tom_ret)
+    cost = turn_of_month_equity.ROUND_TRIP_COST_PCT
+    assert adjusted.iloc[0] == pytest.approx(1.0 - cost)  # primer dia de la 1ra ventana -- paga el costo
+    assert adjusted.iloc[1] == pytest.approx(1.0)  # resto de la 1ra ventana -- no paga de nuevo
+    assert adjusted.iloc[2] == pytest.approx(1.0)
+    assert adjusted.iloc[3] == pytest.approx(2.0)  # sigue siendo la 1ra ventana (solo cruzo un fin de semana normal)
+    assert adjusted.iloc[4] == pytest.approx(3.0 - cost)  # primer dia de la 2da ventana (gap grande) -- paga el costo
+    assert adjusted.iloc[5] == pytest.approx(3.0)
+
+
 def test_cache_vacio_dispara_descarga_y_persiste(temp_db, monkeypatch):
     fake_series = pd.Series(
         [0.5, -0.2, 0.3],

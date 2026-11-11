@@ -466,4 +466,21 @@ Reusando la serie real ya calculada (498 tickers, mean return diario en días tu
 
 **Caveats declarados, sin exagerar**: (1) sigue aplicando el sesgo de supervivencia (constituyentes de HOY del S&P 500 aplicados hacia atrás), aunque mucho menos severo en 32 años que en 64; (2) **el proyecto no tiene today ningún broker para acciones de EEUU** (IOL/PPI son BYMA/Argentina, Binance es solo cripto) -- esto queda como hallazgo de investigación validado por CPCV, no como estrategia ejecutable todavía; (3) sigue siendo un efecto de mercado agregado (promedio de 498 tickers simultáneos), no una selección de acciones individuales.
 
-**Veredicto**: primera candidata de acciones de este proyecto que pasa el gate DSR≥0.95 de forma robusta (no por un cuarto anómalo). Se promueve a `validated` en `strategy_registry` bajo el nombre `turn_of_month_sp500` para que quede trackeada (research→validated→paper_trading, sin necesitar decidir todavía el broker de ejecución real -- paper trading no requiere broker, solo bookkeeping).
+**Veredicto (corregido más abajo)**: ~~primera candidata de acciones de este proyecto que pasa el gate DSR≥0.95 de forma robusta~~ -- este número era BRUTO, sin costo de transacción (ver corrección inmediata abajo). Se había promovido a `validated`/`paper_trading` en `strategy_registry` bajo el nombre `turn_of_month_sp500` con este número bruto; corregido horas más tarde.
+
+## Investigación 2026-11-11 (continuación): el turn-of-month de arriba estaba calculado SIN costo de transacción — corregido, ya NO pasa el gate
+
+(El usuario preguntó directamente: "¿esos rendimientos contemplan comisiones?" -- se audito el código real de cada motor y se encontró que `turn_of_month_equity.py` era el ÚNICO de todos los motores del proyecto sin ningún costo aplicado -- Carry cripto, Canje y Opciones VRP todos restan su propio costo declarado, este no restaba nada.)
+
+Ejecutar esto en la práctica implica entrar y salir de la ventana turn-of-month en cada mes (confirmado real: 390 ventanas distintas en 32 años = 12.1/año) -- el vehículo realista para replicar "todo el S&P 500" sin operar 500 acciones individuales es un ETF líquido (SPY/IVV). Se aplicó el mismo supuesto de costo ya usado hoy en el screening de swing trading para un broker de EEUU moderno (0.05% round-trip), restado UNA vez por ventana (no por día):
+
+| Costo round-trip | Sharpe | Max DD | Anualizado | DSR |
+|---|---|---|---|---|
+| 0.00% (bruto, el número de arriba) | 1.79 | -19.2% | 36.5% | 0.9689 |
+| **0.05% (realista, ETF líquido EEUU)** | **1.64** | **-19.2%** | **32.9%** | **0.9403** |
+| 0.10% | 1.50 | -19.3% | 29.4% | 0.8929 |
+| 0.20% | 1.21 | -19.5% | 22.7% | 0.7245 |
+
+**Con el costo realista de 0.05%, el DSR cae de 0.9689 a 0.9403 -- por debajo del gate de 0.95.** A diferencia del efecto "overnight" (donde el costo mataba CASI TODO el retorno), acá el costo apenas mueve el Sharpe de 1.79 a 1.64 -- la estrategia en sí sigue siendo razonablemente sólida, pero no alcanza el umbral estricto que exige este proyecto para todo lo demás.
+
+**Corregido**: `turn_of_month_equity.py` ahora resta `ROUND_TRIP_COST_PCT=0.05` una vez por ventana (ver `_apply_round_trip_cost`). Se re-corrió `record_validation_result` con el DSR real (0.9403) -- la estrategia vuelve automáticamente a `research` (no pasa el gate), no queda en `paper_trading`. Sigue siendo la candidata de acciones más prometedora del proyecto (más cerca del gate que cualquier otra), pero no se declara validada mientras no lo cruce con un costo realista.

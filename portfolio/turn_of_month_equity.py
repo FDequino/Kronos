@@ -37,6 +37,20 @@ FETCH_SLEEP_SECONDS = 0.1
 MIN_HISTORY_ROWS = 500
 MODERN_START_DATE = "1994-07-01"  # ver docstring del modulo -- excluye a proposito el cuarto anomalo 1962-1994
 
+# BUG REAL encontrado y corregido (ver conversacion, "esos rendimientos
+# contemplan comisiones?" 2026-11-11): la primera version de este motor NO
+# restaba ningun costo de transaccion -- a diferencia de TODOS los demas
+# motores del proyecto (Carry cripto, Canje, Opciones VRP, todos con su
+# propio costo declarado). Ejecutar esto en la practica implica entrar y
+# salir de la ventana turn-of-month ~12 veces por año (confirmado real: 390
+# ventanas distintas en 32 años = 12.1/año) -- el vehiculo realista para
+# replicar "todo el S&P 500" sin operar 500 acciones individuales es un ETF
+# liquido (SPY/IVV), mismo supuesto de costo que ya uso el screening de
+# swing trading de hoy para un broker de EEUU moderno (spread+comision).
+# Con este costo real aplicado, el DSR de la mitad moderna (1994-2026) BAJA
+# de 0.9689 a 0.9403 -- YA NO PASA el gate de 0.95 (ver OBJETIVO_MARCO.md).
+ROUND_TRIP_COST_PCT = 0.05
+
 STRATEGY_NAME = "turn_of_month_sp500"
 
 # Constituyentes ACTUALES del S&P 500 (snapshot 2026-11-10, ver docstring --
@@ -102,13 +116,27 @@ def _is_turn_of_month_day(ts):
     return dom >= ts.days_in_month - 2 or dom <= 3
 
 
+def _apply_round_trip_cost(tom_ret):
+    """Resta ROUND_TRIP_COST_PCT UNA vez por ventana turn-of-month distinta
+    (en el primer día de cada bloque de días hábiles consecutivos) -- nunca
+    por día, un costo de entrada+salida es por CICLO completo, mismo
+    criterio que CARRY_ROUND_LEG_COST_PCT en crypto_carry.py."""
+    if tom_ret.empty:
+        return tom_ret
+    gap_days = tom_ret.index.to_series().diff().dt.days.fillna(1)
+    new_window = (gap_days > 4) | (gap_days.index == tom_ret.index[0])
+    adjusted = tom_ret.copy()
+    adjusted[new_window.values] = adjusted[new_window.values] - ROUND_TRIP_COST_PCT
+    return adjusted
+
+
 def _fetch_fresh_daily_returns():
     """Descarga el historial completo (yfinance period='max') de todo
     SP500_TICKERS, arma el retorno diario promedio de los días de ventana
-    turn-of-month, recortado a MODERN_START_DATE en adelante. Nunca se llama
-    directo desde fuera del módulo -- siempre a través de
-    _load_or_refresh_cache (TTL), para no volver a pegarle a Yahoo en cada
-    llamada al simulador."""
+    turn-of-month, recortado a MODERN_START_DATE en adelante, neto de
+    ROUND_TRIP_COST_PCT por ventana. Nunca se llama directo desde fuera del
+    módulo -- siempre a través de _load_or_refresh_cache (TTL), para no
+    volver a pegarle a Yahoo en cada llamada al simulador."""
     import time
 
     all_close = {}
@@ -129,7 +157,8 @@ def _fetch_fresh_daily_returns():
     ret_df.index = pd.to_datetime(ret_df.index).tz_localize(None)
     is_tom = ret_df.index.map(_is_turn_of_month_day)
     tom_ret = ret_df[is_tom].mean(axis=1).dropna()
-    return tom_ret[tom_ret.index >= MODERN_START_DATE]
+    tom_ret = tom_ret[tom_ret.index >= MODERN_START_DATE]
+    return _apply_round_trip_cost(tom_ret)
 
 
 def _load_or_refresh_cache(conn):
