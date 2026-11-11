@@ -367,3 +367,27 @@ Nota declarada: `XRPUSDT` dio DSR=0.9555 hoy (pasa) vs. "0.94, justo debajo del 
 Después de varios intentos bloqueados por un bug real de Binance (Demo Trading nunca terminaba de mostrar el Secret Key al crear la API key, confirmado en múltiples intentos, distintos navegadores), se conectó una cuenta REAL de Binance (producción, no demo) con una API key limitada a **solo lectura** (Binance fuerza esto automáticamente si la IP queda sin restringir). `BinanceAdapter.test_connection()`/`get_balance()` respondieron reales por primera vez en la historia del proyecto — confirma que la firma HMAC-SHA256, las URLs y el parseo de respuesta funcionan de punta a punta contra Binance real.
 
 **Alcance real de esto, sin exagerar**: valida CONEXIÓN y LECTURA. NO valida ejecución (`confirm_order`, mandar una orden de verdad) — la key no tiene permiso de trading, a propósito, y seguirá sin probarse hasta que (a) se resuelva el bug de Demo Trading, o (b) se tome la decisión explícita de habilitar trading en una cuenta real con capital acotado. Documentado en `broker_client.py`/`crypto_carry.py`, reemplazando el disclaimer "nunca probado" que ya no es cierto para la parte de lectura.
+
+## Investigación 2026-11-10 (continuación): lending DeFi confirmado en 4 protocolos establecidos — mismo yield, mejor diversificado
+
+(Ver conversación: "armemos la estrategia nosotros" — aplicando el mismo principio que acaba de funcionar con Carry cripto, screening amplio en vez de un solo pool elegido a mano, sobre el hallazgo de Aave de antes.)
+
+Se filtró el catálogo completo de `yields.llama.fi/pools` (15.620 pools reales) por: protocolo establecido y auditado (Aave v3, Compound v3, Venus), solo stablecoins (USDC/USDT/GHO), TVL>USD 20M — 9 candidatos reales. Con ≥300 días de historial (4 quedaron afuera por ser demasiado nuevos):
+
+| Pool | Días reales | APY promedio | DSR |
+|---|---|---|---|
+| Aave v3 (Ethereum) USDC | 1.375 | 4.70% | 0.9997 |
+| Compound v3 (Ethereum) USDC | 1.494 | 4.90% | 1.0 |
+| Aave v3 (Arbitrum) USDC | 1.233 | 4.94% | 0.99997 |
+| Venus (BSC) USDT | 1.590 | 4.39% | 1.0 |
+| Aave v3 (Ethereum) USDT | 1.368 | 4.44% | 0.828 (más débil) |
+
+**Conclusión**: el yield (~3-5% real en USD) es consistente entre 4 protocolos grandes e independientes, no una casualidad de uno solo. Esto no cambia la magnitud (sigue siendo modesto, mismo carácter que el hallazgo de Aave ya documentado), pero sí da una mejora concreta y real: **diversificar el capital entre Aave/Compound/Arbitrum/Venus en vez de concentrarlo en un solo protocolo reduce el riesgo de un solo contrato inteligente fallando, sin resignar retorno esperado** — mismo principio de risk parity que ya se aplica en Carry cripto, aplicado acá a riesgo de custodia en vez de riesgo de mercado.
+
+## Investigación 2026-11-10 (continuación): lado de ACCIONES (EEUU) — 2 candidatas probadas, ninguna pasa el gate todavía
+
+(Ver conversación: "pensar una estrategia que no sea cripto, del lado de acciones" — datos reales de yfinance, 36 tickers líquidos de EEUU (SPY/QQQ/DIA/IWM + 32 large caps de varios sectores), 10 años de historial diario real.)
+
+**Efecto "overnight" (cierre→apertura) — descartado.** Documentado en literatura académica: el retorno de EEUU se concentra históricamente en el tramo nocturno, no durante el pregón. En bruto (sin costos): Sharpe 1.12, retorno anualizado 12.8%, pero **DSR=0.028** (lejos del gate) — y el retorno diario promedio bruto (0.050%) es casi idéntico al costo de transacción realista asumido (0.05%), o sea que ni siquiera hace falta el DSR para descartarlo: es económicamente marginal apenas se le resta fricción real. Coincide con la literatura, que ya declara este efecto como "real pero poco práctico para minoristas por costos".
+
+**Efecto "turn-of-month" (últimos 3 + primeros 3 días hábiles del mes) — la candidata de acciones más prometedora de hoy, pero todavía NO pasa el gate.** Definición estándar (Ariel 1987). Resultado real: Sharpe 1.33, Max DD -10.6% (vs. -30.6% del resto del mes), retorno anualizado 21.7%, **DSR=0.682** — no llega a 0.95, pero es el DSR más alto de cualquier estrategia de acciones probada en este proyecto. Partido en 2 mitades de 5 años cada una para chequear consistencia (mismo criterio que ya detectó que el día de la semana en cripto era ruido): acá el retorno diario promedio es casi idéntico en ambas mitades (0.081% vs 0.087%) y el Sharpe también (1.24 vs 1.46) — **consistente, no se invierte como el día de la semana cripto**. Palancas que quedan sin probar antes de declararlo descartado: (1) más historial (yfinance permite ir más atrás de 10 años), (2) universo más amplio (S&P 500 completo en vez de 36 tickers elegidos a mano) — mismo patrón que ya funcionó para Carry cripto (escanear todo en vez de elegir a mano).

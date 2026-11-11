@@ -57,6 +57,37 @@ def capital_usd_for_strategy(conn, strategy_name):
     return total * strategy["capital_pct"] / 100.0
 
 
+def _round_carry_quantity(conn, symbol, raw_quantity):
+    """BUG REAL encontrado y corregido (ver conversación, primera orden de
+    prueba real en Demo Trading, 2026-11-11): redondear a 6 decimales FIJOS
+    (lo que hacía esta función antes) rechaza la orden en Binance con
+    'Filter failure: LOT_SIZE' para símbolos que piden otra cantidad de
+    decimales (confirmado real con BTCUSDT, que pide 5, no 6). Usa el
+    stepSize REAL de cada pata (spot y futuros pueden pedir uno distinto) y
+    redondea con el MÁS GRANDE de los dos (el más restrictivo), para que la
+    MISMA cantidad sea válida en ambas patas -- nunca deja el carry trade
+    desbalanceado entre spot y futuro por redondear cada pata por separado.
+    Devuelve None si no hay cuenta Binance activa (no se puede consultar el
+    filtro real) -- nunca asume/inventa un stepSize."""
+    from portfolio import binance_execution, broker_client
+
+    try:
+        account = binance_execution._active_binance_account(conn)
+    except Exception:
+        return None
+    adapter = broker_client._adapter_for(account)
+    try:
+        step_spot, _ = adapter.get_lot_size_filters(symbol=symbol, asset_type="cripto")
+        step_fut, _ = adapter.get_lot_size_filters(symbol=symbol, asset_type="futuro_perpetuo")
+    except Exception:
+        return None
+    step = max(s for s in (step_spot, step_fut) if s) if (step_spot or step_fut) else None
+    if not step:
+        return round(raw_quantity, 6)  # ningun filtro confirmado -- conserva el comportamiento anterior como fallback declarado
+    steps = int(raw_quantity / step + 1e-9)
+    return round(steps * step, 10)
+
+
 def _crypto_carry_intent(conn, strategy_name, symbol):
     """symbol: 'BTCUSDT'/'ETHUSDT'. Devuelve un intent dict ({"action",
     "legs", "reason"}) o None (sin cambios)."""
@@ -72,8 +103,8 @@ def _crypto_carry_intent(conn, strategy_name, symbol):
         price = _spot_price_usd(symbol)
         if not price:
             return None
-        quantity = round(capital_usd / price, 6)
-        if quantity <= 0:
+        quantity = _round_carry_quantity(conn, symbol, capital_usd / price)
+        if not quantity or quantity <= 0:
             return None
         return {
             "action": "open",

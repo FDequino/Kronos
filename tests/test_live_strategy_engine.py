@@ -8,7 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from portfolio import db, live_strategy_engine, strategy_registry
+from portfolio import broker_client, db, live_strategy_engine, strategy_registry
 
 
 @pytest.fixture
@@ -18,6 +18,14 @@ def temp_db(tmp_path, monkeypatch):
     conn = db.get_connection(db_path)
     yield conn
     conn.close()
+
+
+def _setup_binance_account(conn, *, is_active=True):
+    manager = broker_client.MultiBrokerManager()
+    account = manager.add_account(
+        conn, broker_name="Binance", api_key="k", api_secret="s", is_active=is_active,
+    )
+    return account["id"]
 
 
 def _make_live(conn, name, capital_pct=50.0):
@@ -80,6 +88,8 @@ def test_sin_posicion_sin_capital_configurado_nunca_abre(temp_db, monkeypatch):
 
 
 def test_sin_posicion_con_señal_y_capital_abre_2_patas(temp_db, monkeypatch):
+    _setup_binance_account(temp_db)
+    monkeypatch.setattr(broker_client.BinanceAdapter, "get_lot_size_filters", lambda self, **kw: (0.00001, 5.0))
     _make_live(temp_db, "crypto_carry_btcusdt", capital_pct=100.0)
     db.update_app_settings(temp_db, auto_trading_capital_usd=6_000)
     monkeypatch.setattr(
@@ -114,6 +124,8 @@ def test_con_posicion_abierta_y_señal_viva_no_hace_nada(temp_db, monkeypatch):
 
 
 def test_carry_ampliacion_abre_2_patas_con_el_symbol_correcto(temp_db, monkeypatch):
+    _setup_binance_account(temp_db)
+    monkeypatch.setattr(broker_client.BinanceAdapter, "get_lot_size_filters", lambda self, **kw: (0.00001, 5.0))
     _make_live(temp_db, "crypto_carry_adausdt", capital_pct=100.0)
     db.update_app_settings(temp_db, auto_trading_capital_usd=1_000)
     monkeypatch.setattr(

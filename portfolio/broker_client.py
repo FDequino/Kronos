@@ -855,6 +855,55 @@ class BinanceAdapter(BrokerAdapter):
             )
         return market
 
+    _lot_size_cache = {}  # (base_url, symbol) -> (step_size, min_notional) -- compartido entre instancias, exchangeInfo no cambia seguido
+
+    def get_lot_size_filters(self, *, symbol, asset_type):
+        """BUG REAL encontrado y corregido (ver conversación, primera orden de
+        prueba real en Demo Trading, 2026-11-11): Binance rechaza CUALQUIER
+        orden cuya cantidad no sea múltiplo exacto del `stepSize` real de ESE
+        símbolo puntual (error real confirmado: 'Filter failure: LOT_SIZE') --
+        `live_strategy_engine.py` redondeaba la cantidad a 6 decimales FIJOS
+        para TODAS las monedas por igual, lo que habría bloqueado cualquier
+        orden real de Carry cripto la primera vez que se intentara ejecutar
+        (BTCUSDT pide 5 decimales, no 6; otras monedas piden otra cosa
+        distinta). Devuelve (step_size, min_notional) reales de
+        GET /api/v3/exchangeInfo (spot) o /fapi/v1/exchangeInfo (futuros) --
+        público, sin auth, cacheado en memoria (exchangeInfo no cambia
+        seguido)."""
+        market = self._market_for(asset_type)
+        base_url = self.spot_base_url if market == "spot" else self.futures_base_url
+        cache_key = (base_url, symbol)
+        if cache_key in self._lot_size_cache:
+            return self._lot_size_cache[cache_key]
+
+        path = "/api/v3/exchangeInfo" if market == "spot" else "/fapi/v1/exchangeInfo"
+        resp = requests.get(f"{base_url}{path}", params={"symbol": symbol}, timeout=self.TIMEOUT)
+        resp.raise_for_status()
+        info = resp.json()["symbols"][0]
+        step_size = min_notional = None
+        for f in info["filters"]:
+            if f["filterType"] == "LOT_SIZE":
+                step_size = float(f["stepSize"])
+            elif f["filterType"] in ("NOTIONAL", "MIN_NOTIONAL"):
+                min_notional = float(f.get("minNotional") or 0)
+        result = (step_size, min_notional)
+        self._lot_size_cache[cache_key] = result
+        return result
+
+    def round_to_lot_size(self, *, symbol, asset_type, quantity):
+        """Redondea `quantity` HACIA ABAJO al múltiplo real de stepSize más
+        cercano (nunca hacia arriba -- redondear para arriba podría mandar
+        una orden más grande que el capital asignado). Devuelve 0.0 si el
+        resultado queda por debajo de minQty (equivalente a stepSize en la
+        practica de Binance) -- el llamador debe tratar 0.0 como "no hay
+        operación posible con este capital", nunca forzar un mínimo
+        inventado."""
+        step_size, _min_notional = self.get_lot_size_filters(symbol=symbol, asset_type=asset_type)
+        if not step_size:
+            return quantity  # sin filtro conocido -- no inventa un redondeo que no se confirmó
+        steps = int(quantity / step_size + 1e-9)  # epsilon chico: nunca que 0.00015/0.00001 de 14.999999 por flotante
+        return round(steps * step_size, 10)
+
     def get_order_budget(self, *, symbol, asset_type, operation, quantity, price,
                           quantity_type="Papeles", operation_type="PRECIO-LIMITE",
                           operation_term="HASTA-SU-EJECUCIÓN", settlement="INMEDIATA"):
