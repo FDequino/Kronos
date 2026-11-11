@@ -316,3 +316,54 @@ Se backtesteó sostener pesos a tasa BADLAR (proxy real de Caución, mismo que y
 2. **`execution_router.py::_apply_decision`** (bug conectado al anterior): al abrir una posición, persistía `decision["legs"]` (la INTENCIÓN pre-trade) en `strategy_positions` en vez de `result["filled_legs"]` (lo que Binance ejecutó de verdad, ya disponible gracias al fix anterior) — el registro de la posición real hubiera quedado con cantidad/precio/capital_usd estimados para siempre. Corregido, con test de regresión que confirma que ahora se persiste el fill real (60050, no el estimado 60000 del intent).
 
 124 tests de la cadena de ejecución (`broker_client`, `binance_execution`, `multi_leg_execution`, `execution_router`, `order_execution`, `live_strategy_engine`, `strategy_registry`, `capital_allocator`) pasan con ambos fixes aplicados. Ninguno de los dos bugs había tocado plata real todavía (confirmado: `broker_accounts` sin ninguna fila de Binance) — se encontraron y corrigieron ANTES de que importaran, que es el momento correcto.
+
+## Investigación 2026-11-10 (continuación): modelado de margen/liquidación real para Opciones Cripto (VRP) — riesgo confirmado, pero no concluyente
+
+(Ver conversación: "terminá de analizar la de opciones" — se había declarado que el backtest delta-hedgeado no podía ver el riesgo de margen/liquidación forzada. Se modeló explícitamente usando la fórmula pública de margen de Deribit, standard/naked: MM por pata corta = 7.5% del subyacente + valor mark de la opción, SIN el netting favorable de portfolio margin.)
+
+Se simuló, hora a hora, si el colateral inicial (como múltiplo del margen requerido al momento de abrir la posición) alcanzaba para cubrir el margen requerido real en cada punto de los 97 períodos:
+
+| Colateral inicial | Liquidaciones | Sharpe | Max DD | DSR |
+|---|---|---|---|---|
+| 3.0x el margen inicial | 0 de 97 | 0.68 | -8.8% | 0.99997 |
+| 2.0x | 1 de 97 | 0.68 | -8.8% | 0.99997 |
+| 1.5x | 8 de 97 | 0.68 | -8.8% | 0.99997 |
+| 1.2x | 12 de 97 | 0.67 | -8.8% | 0.99998 |
+
+**Hallazgo real e importante**: las liquidaciones SÍ ocurren (hasta 12 de 97 períodos con poco colateral) — confirma que el riesgo de margen es real, no teórico. Pero en los 5.6 años de esta muestra, **cada vez que se liquidó fue durante un movimiento FAVORABLE grande** (ej. el rally de sept-oct 2021), no uno adverso — el valor nocional bruto de la pata corta en problemas se dispara igual aunque el hedge esté funcionando bien (el margen "naked" de Deribit no neta el riesgo real de la posición cubierta). Por eso el Sharpe/DSR casi no cambian con menos colateral: la posición se cierra forzadamente ya estando ganadora, no en una pérdida.
+
+**Por qué esto NO cierra la investigación, ni para bien ni para mal**: el modelo de margen es una aproximación pública declarada (sin acceso a portfolio margining real, que Deribit sí ofrece y sería más eficiente). Y, más importante: esta muestra de 5.6 años **nunca tuvo un evento de estrés con movimiento extremo simultáneo a IV disparándose sin tiempo de reaccionar** (el escenario que realmente revienta posiciones cortas de volatilidad, tipo COVID-2020 o Mt.Gox-2014) — no estar en la muestra no significa que no pueda pasar. El hallazgo real es: "el riesgo de margen existe y es medible, y en este período no se materializó en pérdida" — sigue sin ser el mismo nivel de certeza que Carry cripto. Conclusión sin cambios: necesita paper trading real contra Deribit antes de confiar más.
+
+## Investigación 2026-11-10 (continuación): búsqueda de estrategias ya documentadas en GitHub — nada nuevo encontrado
+
+(Ver conversación: "busquemos motores en github para probarlos también".)
+
+Se buscaron repositorios con una estrategia ESPECÍFICA y documentada (no solo infraestructura/frameworks) para testear con nuestro propio rigor. Resultado: la inmensa mayoría de lo encontrado es infraestructura de backtesting genérica (`backtesting.py`, `vectorbt-backtesting-skills`, `freqtrade`, `lumibot`) sin una regla concreta propia, o investigaciones que prueban EXACTAMENTE el mismo mecanismo que ya tenemos validado (`martinjmz97/crypto-quant-research`: "long spot + short perp para cobrar funding" — es Carry cripto, ya lo tenemos). Un dato real y útil que sí apareció: un research de terceros (`sbOogway/sbt2` issue #358) reporta que **el basis trade de futuros CON VENCIMIENTO pierde ~3 veces más que el basis de perpetuos durante movimientos grandes** — esto descarta, antes de invertir tiempo en backtestearlo nosotros mismos, la línea que se había empezado a investigar (futuros trimestrales de Binance, BTCUSDT_261225/270326, datos confirmados disponibles) por ser estructuralmente peor que lo que ya tenemos, no mejor. **Candidata descartada sin necesidad de backtest propio.**
+
+También se evaluó Hyperliquid (DEX de perpetuos) como venue alternativo para el MISMO mecanismo de Carry cripto: funding de BTC ahí da 8.16% anualizado bruto (vs ~5.22% de Binance en la misma ventana reciente), pero con solo 18 meses de historial real (el endpoint arrancó en mayo 2025, muy por debajo de los 5-7 años de Binance) y 55.8% de las horas clavadas en la misma tasa (probable piso fijo, no prima de mercado real) — y ejecutarlo requeriría wallet on-chain + riesgo de base entre Binance spot y Hyperliquid, un salto operativo real. **Anotado para revisar en unos meses con más historial, no para construir ahora.**
+
+## Investigación 2026-11-10 (continuación): lending de USDC en Aave — mecanismo estructural nuevo, real, pero modesto
+
+(Ver conversación: "cómo hacemos nuestra propia estrategia funcional" — buscando un mecanismo con la MISMA firma estructural que Carry cripto (pago recurrente real por proveer capital a traders apalancados, no predicción de precio) pero en un lugar nuevo. Confirmado: `/sapi/v1/margin/interestRateHistory` de Binance —el lending de margen, el análogo centralizado— es un endpoint `USER_DATA` que exige cuenta autenticada, no se puede backtestear sin credenciales que todavía no tenemos. En su lugar se usó Aave (protocolo de préstamos DeFi, datos 100% públicos vía `yields.llama.fi`, sin necesitar cuenta).)
+
+**Datos reales**: 1.374 días (2023-02 a hoy) de APY real de supply de USDC en Aave v3 (Ethereum). APY promedio 4.7% (rango 0.3%-56.7%, picos raros). Sharpe/DSR calculados dan números artificialmente altos (22.95 / 0.9997) por la misma razón que ya vimos con Caución antes de ajustar: es un producto de yield casi sin volatilidad día a día, no un trade — esos números no son comparables a los de las demás estrategias.
+
+**Por qué esto SÍ es relevante, aunque modesto**: a diferencia de la Caución en pesos (que resultó de las PEORES ideas del día por la devaluación), este yield está **100% denominado en USD real** (USDC) — sin riesgo cambiario. El único riesgo real es de contrato inteligente (Aave, auditado, +4 años en producción, TVL grande) y de despegue del stablecoin (USDC se despegó brevemente en el colapso de SVB, marzo 2023). Es probablemente la respuesta más honesta a "¿hay algo con menos riesgo?" que surgió antes en la conversación — pero el retorno (4.7% anual) es modesto, no un motor de rendimiento grande. Requiere wallet cripto para ejecutar (no es una cuenta de broker tradicional) — mismo tipo de salto operativo que Hyperliquid.
+
+## Investigación 2026-11-10 (continuación): screening sistemático de ~518 perpetuos reales de Binance — 22 monedas nuevas confirmadas y agregadas a Carry cripto
+
+(Ver conversación: "cómo hacemos nuestra propia estrategia funcional" — en vez de inventar un mecanismo nuevo, se aplicó el MISMO mecanismo ya validado de Carry cripto (cash-and-carry de funding rate) a TODO el universo real de perpetuos de Binance Futures, no solo a las 6 monedas elegidas a mano hasta ahora.)
+
+Se filtró el catálogo real de Binance Futures por `underlyingType=='COIN'` (excluyendo los perpetuos sintéticos de acciones/commodities, ver investigación de momentum del mismo día) — **518 símbolos reales**. Se corrió `simulate_funding_rate_carry_engine` + `run_strategy_cpcv_validation` sobre los 518, con el mismo filtro mínimo de historial (≥180 días para calcular, pero ver el filtro más estricto abajo antes de confiar en el resultado).
+
+**73 símbolos cruzaron DSR≥0.95 en crudo** — pero la mayoría con muy poca historia real (182-500 días, monedas meme/hype recién listadas: `USELESSUSDT`, `FARTCOINUSDT`, `CHILLGUYUSDT`, etc.) — el mismo patrón de "ruido de poca muestra disfrazado de edge" que ya se había detectado con el universo de momentum del mismo día. **Aplicando el mismo piso de historial (≥900 días) que ya se usó ahí, quedan 22 candidatas nuevas, genuinamente sólidas** (DSR≥0.95, 900-2600 días reales cada una), varias de ellas monedas grandes y líquidas, no solo nichos: UNI, AAVE, ALGO, XMR, NEO, VET, ENS, XRP, SUSHI, BAT, ZEN, AR, KAS, MAVIA, SLP, TWT, CFX, PENDLE, 1000SATS, ETHW, SSV, 1000RATS.
+
+**Integradas al pipeline en vivo** (mismo patrón que la ampliación del 24/10): agregadas a `crypto_carry.py::FUNDING_SYMBOLS`, intent builders reales en `live_strategy_engine.py`, simuladores en `capital_allocator.py`, y las 22 arrancadas en Paper Trading (`strategy_registry`). De 6 monedas con Carry cripto pasamos a **28** — la base ejecutable de esta estrategia se multiplicó por ~4.7x. Esto no es una estrategia nueva (sigue siendo el mismo mecanismo, el mismo riesgo estructural) pero SÍ es una expansión real y rigurosa de la única cosa que ya funciona.
+
+Nota declarada: `XRPUSDT` dio DSR=0.9555 hoy (pasa) vs. "0.94, justo debajo del gate" el 24/10 — misma explicación que las demás discrepancias del día (ventana de datos que se mueve con el tiempo), no una corrección de un error.
+
+## Hito real 2026-11-11: primera conexión real a Binance (solo lectura)
+
+Después de varios intentos bloqueados por un bug real de Binance (Demo Trading nunca terminaba de mostrar el Secret Key al crear la API key, confirmado en múltiples intentos, distintos navegadores), se conectó una cuenta REAL de Binance (producción, no demo) con una API key limitada a **solo lectura** (Binance fuerza esto automáticamente si la IP queda sin restringir). `BinanceAdapter.test_connection()`/`get_balance()` respondieron reales por primera vez en la historia del proyecto — confirma que la firma HMAC-SHA256, las URLs y el parseo de respuesta funcionan de punta a punta contra Binance real.
+
+**Alcance real de esto, sin exagerar**: valida CONEXIÓN y LECTURA. NO valida ejecución (`confirm_order`, mandar una orden de verdad) — la key no tiene permiso de trading, a propósito, y seguirá sin probarse hasta que (a) se resuelva el bug de Demo Trading, o (b) se tome la decisión explícita de habilitar trading en una cuenta real con capital acotado. Documentado en `broker_client.py`/`crypto_carry.py`, reemplazando el disclaimer "nunca probado" que ya no es cierto para la parte de lectura.

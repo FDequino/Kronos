@@ -58,14 +58,15 @@ declarados, no ocultos):
     de futuros (no modelado como un costo explicito).
 
 ESTADO DE EJECUCION REAL (ver CryptoBinanceAdapter en portfolio/
-broker_client.py): NUNCA probado contra una cuenta real, ni siquiera
-demo -- hoy no hay credenciales de Binance cargadas en absoluto
-(confirmado, broker_accounts no tiene ninguna fila 'Binance'). Antes de
-operar esto con plata real, el paso logico es Binance Demo Trading
-(demo.binance.com, cuenta de prueba real con fondos ficticios, misma API
-que produccion -- reemplazo del viejo testnet.binancefuture.com,
-descontinuado por Binance en 2025) -- no usado aca por falta de
-credenciales, ni siquiera de demo, no por limitacion tecnica."""
+broker_client.py): CONFIRMADO REAL 2026-11-11 -- conexion/lectura (balance)
+probadas contra una cuenta real de Binance (produccion, key de
+solo-lectura). confirm_order (mandar una orden de verdad) todavia NO se
+probo -- la key sigue en solo-lectura a proposito. Binance Demo Trading
+(demo.binance.com, el reemplazo del viejo testnet.binancefuture.com,
+descontinuado en 2025) seria el paso logico para probar ordenes sin
+arriesgar nada, pero la plataforma demo tuvo un bug real del lado de
+Binance (el secret de la API key nunca terminaba de mostrarse al crearla)
+que bloqueo ese camino en varios intentos."""
 import time
 
 import pandas as pd
@@ -83,7 +84,21 @@ CARRY_ROUND_LEG_COST_PCT = SPOT_TAKER_FEE_PCT + FUTURES_TAKER_FEE_PCT  # abrir O
 
 # Simbolos con edge confirmado contra el gate CPCV+DSR>=0.95 (ver docstring
 # del modulo) -- nunca se opera un simbolo que no haya pasado este gate.
-FUNDING_SYMBOLS = ("BTCUSDT", "ETHUSDT", "ADAUSDT", "DOGEUSDT", "LINKUSDT", "LTCUSDT")
+FUNDING_SYMBOLS = (
+    "BTCUSDT", "ETHUSDT", "ADAUSDT", "DOGEUSDT", "LINKUSDT", "LTCUSDT",
+    # AMPLIACION 2026-11-10 (ver conversacion, "hagamos nuestra propia estrategia
+    # funcional" -> screening sistematico de los ~518 perpetuos reales de
+    # Binance Futures, underlyingType=COIN) -- confirmados DSR>=0.95 Y >=900
+    # dias reales de historial (mismo piso que ya se uso para el universo de
+    # momentum, para no contar ruido de monedas recien listadas como edge).
+    # 73 simbolos cruzaron el DSR crudo, pero la mayoria con <900 dias eran
+    # monedas meme/hype de pocos meses -- descartadas por falta de evidencia,
+    # no incluidas aca.
+    "UNIUSDT", "AAVEUSDT", "ALGOUSDT", "XMRUSDT", "NEOUSDT", "VETUSDT",
+    "ENSUSDT", "XRPUSDT", "SUSHIUSDT", "BATUSDT", "ZENUSDT", "ARUSDT",
+    "KASUSDT", "MAVIAUSDT", "SLPUSDT", "TWTUSDT", "CFXUSDT", "PENDLEUSDT",
+    "1000SATSUSDT", "ETHWUSDT", "SSVUSDT", "1000RATSUSDT",
+)
 
 # Umbral de funding anualizado NETO minimo para considerar "hay oportunidad
 # hoy" en compute_funding_rate_carry_signal -- por debajo de esto el costo

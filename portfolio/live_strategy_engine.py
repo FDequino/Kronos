@@ -130,6 +130,31 @@ _REAL_INTENT_BUILDERS = {
     "crypto_carry_dogeusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_dogeusdt", "DOGEUSDT"),
     "crypto_carry_linkusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_linkusdt", "LINKUSDT"),
     "crypto_carry_ltcusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_ltcusdt", "LTCUSDT"),
+    # Ampliacion 2026-11-10 (ver crypto_carry.py::FUNDING_SYMBOLS) -- mismo
+    # mecanismo generico, 22 monedas nuevas confirmadas DSR>=0.95 con >=900
+    # dias reales de historial.
+    "crypto_carry_uniusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_uniusdt", "UNIUSDT"),
+    "crypto_carry_aaveusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_aaveusdt", "AAVEUSDT"),
+    "crypto_carry_algousdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_algousdt", "ALGOUSDT"),
+    "crypto_carry_xmrusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_xmrusdt", "XMRUSDT"),
+    "crypto_carry_neousdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_neousdt", "NEOUSDT"),
+    "crypto_carry_vetusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_vetusdt", "VETUSDT"),
+    "crypto_carry_ensusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_ensusdt", "ENSUSDT"),
+    "crypto_carry_xrpusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_xrpusdt", "XRPUSDT"),
+    "crypto_carry_sushiusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_sushiusdt", "SUSHIUSDT"),
+    "crypto_carry_batusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_batusdt", "BATUSDT"),
+    "crypto_carry_zenusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_zenusdt", "ZENUSDT"),
+    "crypto_carry_arusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_arusdt", "ARUSDT"),
+    "crypto_carry_kasusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_kasusdt", "KASUSDT"),
+    "crypto_carry_maviausdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_maviausdt", "MAVIAUSDT"),
+    "crypto_carry_slpusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_slpusdt", "SLPUSDT"),
+    "crypto_carry_twtusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_twtusdt", "TWTUSDT"),
+    "crypto_carry_cfxusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_cfxusdt", "CFXUSDT"),
+    "crypto_carry_pendleusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_pendleusdt", "PENDLEUSDT"),
+    "crypto_carry_1000satsusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_1000satsusdt", "1000SATSUSDT"),
+    "crypto_carry_ethwusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_ethwusdt", "ETHWUSDT"),
+    "crypto_carry_ssvusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_ssvusdt", "SSVUSDT"),
+    "crypto_carry_1000ratsusdt": lambda conn: _crypto_carry_intent(conn, "crypto_carry_1000ratsusdt", "1000RATSUSDT"),
 }
 
 

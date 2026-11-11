@@ -712,9 +712,16 @@ class BinanceAdapter(BrokerAdapter):
     de diseño a tomar junto con el usuario antes de operar esto de verdad,
     no algo para inventar acá.
 
-    NUNCA probado contra una cuenta real NI SIQUIERA demo (ver
-    HONESTIDAD DECLARADA) -- no hay credenciales de Binance en
-    broker_accounts hoy, confirmado."""
+    CONFIRMADO REAL 2026-11-11 (ver conversación): test_connection()/
+    get_balance() probados contra una cuenta real de Binance (producción,
+    key de solo-lectura -- la firma HMAC-SHA256, las URLs y el parseo de
+    respuesta andan de punta a punta). Demo Trading (is_testnet=True)
+    sigue sin probarse -- la plataforma demo.binance.com tuvo un bug real
+    del lado de Binance (el secret de la API key nunca terminaba de
+    mostrarse al crearla, confirmado en varios intentos) que bloqueó
+    destrabar ese camino. confirm_order (ejecutar una orden real) TAMPOCO
+    se probó todavía -- esta key sigue en solo-lectura a propósito, nunca
+    se habilitó trading sin que el usuario lo decida explícitamente."""
     broker_name = "Binance"
     SPOT_BASE_URL = "https://api.binance.com"
     FUTURES_BASE_URL = "https://fapi.binance.com"
