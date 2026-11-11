@@ -995,3 +995,21 @@ CREATE TABLE IF NOT EXISTS binance_orders (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS idx_binance_orders_broker_account ON binance_orders(broker_account_id);
+
+-- Cache con TTL del retorno diario agregado de estrategias de acciones
+-- basadas en yfinance (ver portfolio/turn_of_month_equity.py, OBJETIVO_MARCO.md
+-- 2026-11-11) -- mismo espiritu que technical_cache/accuracy_cache arriba.
+-- Descargar el historial completo de ~500 tickers del S&P 500 via yfinance
+-- tarda varios minutos y Yahoo rate-limita pedidos seguidos (ver bug real
+-- encontrado en el screening de swing trading, "possibly delisted" con NaN
+-- en tickers activos) -- nunca se recalcula en cada llamada al simulador,
+-- solo cuando el cache quedo viejo (ver CACHE_TTL_HOURS en el modulo).
+CREATE TABLE IF NOT EXISTS equity_strategy_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    strategy_name TEXT NOT NULL,
+    trade_date TEXT NOT NULL,
+    daily_return_pct REAL NOT NULL,
+    fetched_at TEXT NOT NULL,
+    UNIQUE(strategy_name, trade_date)
+);
+CREATE INDEX IF NOT EXISTS idx_equity_strategy_cache_strategy ON equity_strategy_cache(strategy_name, trade_date);

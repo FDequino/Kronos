@@ -567,6 +567,43 @@ def test_binance_get_order_budget_asset_type_invalido_rechaza_explicito(temp_db,
         adapter.get_order_budget(symbol="BTCUSDT", asset_type="accion", operation="Compra", quantity=1, price=100)
 
 
+def test_binance_get_lot_size_filters_spot_usa_minnotional(temp_db, manager, monkeypatch):
+    # BUG REAL 2026-11-11: el campo de notional minimo tiene nombres
+    # DISTINTOS entre spot ('NOTIONAL' -> 'minNotional') y futuros
+    # ('MIN_NOTIONAL' -> 'notional', confirmado real contra
+    # /fapi/v1/exchangeInfo). Leer siempre 'minNotional' devolvia 0 para
+    # futuros.
+    monkeypatch.setattr(
+        broker_client.requests, "get",
+        lambda url, params=None, timeout=None: _fake_response({"symbols": [{"filters": [
+            {"filterType": "LOT_SIZE", "stepSize": "0.00001"},
+            {"filterType": "NOTIONAL", "minNotional": "5.00000000"},
+        ]}]}),
+    )
+    adapter = _binance_adapter(temp_db, manager)
+
+    step, min_notional = adapter.get_lot_size_filters(symbol="BTCUSDT", asset_type="cripto")
+
+    assert step == pytest.approx(0.00001)
+    assert min_notional == pytest.approx(5.0)
+
+
+def test_binance_get_lot_size_filters_futuros_usa_min_notional_notional(temp_db, manager, monkeypatch):
+    monkeypatch.setattr(
+        broker_client.requests, "get",
+        lambda url, params=None, timeout=None: _fake_response({"symbols": [{"filters": [
+            {"filterType": "LOT_SIZE", "stepSize": "0.0001"},
+            {"filterType": "MIN_NOTIONAL", "notional": "50"},
+        ]}]}),
+    )
+    adapter = _binance_adapter(temp_db, manager)
+
+    step, min_notional = adapter.get_lot_size_filters(symbol="BTCUSDT", asset_type="futuro_perpetuo")
+
+    assert step == pytest.approx(0.0001)
+    assert min_notional == pytest.approx(50.0)
+
+
 def test_binance_confirm_order_spot_arma_payload_limit_correcto(temp_db, manager, monkeypatch):
     captured = {}
 

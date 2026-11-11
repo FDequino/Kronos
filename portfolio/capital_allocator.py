@@ -17,7 +17,10 @@ portfolio/log_strategy_signals.py), nunca sincronico en un request HTTP --
 implica re-simular cada estrategia elegible, puede tardar minutos."""
 import sys
 
-from portfolio import arbitrage, backtest, crypto_carry, crypto_options_vrp, db, factor_investing, risk, strategy_registry
+from portfolio import (
+    arbitrage, backtest, crypto_carry, crypto_options_vrp, db, factor_investing, risk,
+    strategy_registry, turn_of_month_equity,
+)
 
 # Estrategia en el Registro -> como conseguir su serie real de retornos
 # diarios -- MISMOS parametros que portfolio/backtest.py::
@@ -62,6 +65,11 @@ _STRATEGY_SIMULATORS = {
     # riesgo de margen/liquidacion). Paper trading real decide si esto
     # avanza, nunca este numero solo.
     "crypto_options_vrp": lambda conn: crypto_options_vrp.simulate_crypto_options_vrp_engine(conn),
+    # Ver portfolio/turn_of_month_equity.py, OBJETIVO_MARCO.md 2026-11-11 --
+    # primera estrategia de ACCIONES de EEUU que pasa el gate DSR>=0.95 (en
+    # la mitad moderna 1994-2026 del historial, no en el agregado completo).
+    # Sin broker de EEUU conectado todavia -- paper trading puro.
+    "turn_of_month_sp500": lambda conn: turn_of_month_equity.simulate_turn_of_month_engine(conn),
 }
 
 

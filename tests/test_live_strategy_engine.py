@@ -109,6 +109,27 @@ def test_sin_posicion_con_señal_y_capital_abre_2_patas(temp_db, monkeypatch):
     assert spot_leg["quantity"] == futures_leg["quantity"] == 0.1
 
 
+def test_carry_no_abre_si_queda_por_debajo_del_notional_minimo_real(temp_db, monkeypatch):
+    # BUG REAL 2026-11-11: con poco capital, el stepSize puede dar una
+    # cantidad que pasa LOT_SIZE pero el notional (cantidad*precio) queda
+    # por debajo del minimo real de alguna de las 2 patas (confirmado real:
+    # futuros de Binance pide 50 USD, bastante mas que spot) -- antes esto
+    # se descubria recien al intentar ejecutar, con la pata spot YA
+    # confirmada y la de futuro rechazada (posicion sin cobertura). Ahora
+    # _round_carry_quantity lo chequea ANTES y no abre nada.
+    _setup_binance_account(temp_db)
+    monkeypatch.setattr(broker_client.BinanceAdapter, "get_lot_size_filters", lambda self, **kw: (0.00001, 50.0))
+    _make_live(temp_db, "crypto_carry_btcusdt", capital_pct=100.0)
+    db.update_app_settings(temp_db, auto_trading_capital_usd=40)  # capital*price => notional << 50
+    monkeypatch.setattr(
+        live_strategy_engine.crypto_carry, "compute_funding_rate_carry_signal",
+        lambda symbol: {"note": "funding bueno"},
+    )
+    monkeypatch.setattr(live_strategy_engine, "_spot_price_usd", lambda symbol: 60_000.0)
+
+    assert live_strategy_engine.build_real_intent(temp_db, "crypto_carry_btcusdt") is None
+
+
 def test_con_posicion_abierta_y_señal_viva_no_hace_nada(temp_db, monkeypatch):
     _make_live(temp_db, "crypto_carry_btcusdt")
     db.insert_strategy_position(

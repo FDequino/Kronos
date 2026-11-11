@@ -57,7 +57,7 @@ def capital_usd_for_strategy(conn, strategy_name):
     return total * strategy["capital_pct"] / 100.0
 
 
-def _round_carry_quantity(conn, symbol, raw_quantity):
+def _round_carry_quantity(conn, symbol, raw_quantity, price):
     """BUG REAL encontrado y corregido (ver conversación, primera orden de
     prueba real en Demo Trading, 2026-11-11): redondear a 6 decimales FIJOS
     (lo que hacía esta función antes) rechaza la orden en Binance con
@@ -67,8 +67,20 @@ def _round_carry_quantity(conn, symbol, raw_quantity):
     redondea con el MÁS GRANDE de los dos (el más restrictivo), para que la
     MISMA cantidad sea válida en ambas patas -- nunca deja el carry trade
     desbalanceado entre spot y futuro por redondear cada pata por separado.
+
+    SEGUNDO bug real encontrado y corregido (ver conversación, primer intento
+    real de Carry con 2 patas en Demo Trading, 2026-11-11): con poco capital
+    el stepSize puede dar una cantidad que pasa LOT_SIZE pero queda por
+    debajo del notional mínimo REAL de futuros (confirmado real: 50 USD por
+    pata en BTCUSDT, bastante más alto que el mínimo de spot) -- eso dejaba
+    la pata spot YA ejecutada sin su cobertura de futuro (Binance rechazaba
+    recién la 2da pata con -4164 "Order's notional must be no smaller than
+    50"). Ahora se chequean los 2 notional ANTES de intentar cualquier pata
+    -- devuelve None (nunca intenta nada) si cualquiera de las 2 quedaría
+    por debajo de su propio mínimo real.
+
     Devuelve None si no hay cuenta Binance activa (no se puede consultar el
-    filtro real) -- nunca asume/inventa un stepSize."""
+    filtro real) -- nunca asume/inventa un stepSize ni un notional mínimo."""
     from portfolio import binance_execution, broker_client
 
     try:
@@ -77,15 +89,21 @@ def _round_carry_quantity(conn, symbol, raw_quantity):
         return None
     adapter = broker_client._adapter_for(account)
     try:
-        step_spot, _ = adapter.get_lot_size_filters(symbol=symbol, asset_type="cripto")
-        step_fut, _ = adapter.get_lot_size_filters(symbol=symbol, asset_type="futuro_perpetuo")
+        step_spot, min_notional_spot = adapter.get_lot_size_filters(symbol=symbol, asset_type="cripto")
+        step_fut, min_notional_fut = adapter.get_lot_size_filters(symbol=symbol, asset_type="futuro_perpetuo")
     except Exception:
         return None
     step = max(s for s in (step_spot, step_fut) if s) if (step_spot or step_fut) else None
     if not step:
-        return round(raw_quantity, 6)  # ningun filtro confirmado -- conserva el comportamiento anterior como fallback declarado
-    steps = int(raw_quantity / step + 1e-9)
-    return round(steps * step, 10)
+        quantity = round(raw_quantity, 6)  # ningun filtro confirmado -- conserva el comportamiento anterior como fallback declarado
+    else:
+        steps = int(raw_quantity / step + 1e-9)
+        quantity = round(steps * step, 10)
+    notional = quantity * price
+    min_notional = max(m for m in (min_notional_spot, min_notional_fut) if m) if (min_notional_spot or min_notional_fut) else 0
+    if notional < min_notional:
+        return None  # con este capital, alguna de las 2 patas quedaría por debajo del minimo real -- no se intenta nada
+    return quantity
 
 
 def _crypto_carry_intent(conn, strategy_name, symbol):
@@ -103,7 +121,7 @@ def _crypto_carry_intent(conn, strategy_name, symbol):
         price = _spot_price_usd(symbol)
         if not price:
             return None
-        quantity = _round_carry_quantity(conn, symbol, capital_usd / price)
+        quantity = _round_carry_quantity(conn, symbol, capital_usd / price, price)
         if not quantity or quantity <= 0:
             return None
         return {

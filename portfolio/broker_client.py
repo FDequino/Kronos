@@ -884,8 +884,24 @@ class BinanceAdapter(BrokerAdapter):
         for f in info["filters"]:
             if f["filterType"] == "LOT_SIZE":
                 step_size = float(f["stepSize"])
-            elif f["filterType"] in ("NOTIONAL", "MIN_NOTIONAL"):
+            elif f["filterType"] == "NOTIONAL":
+                # BUG REAL encontrado y corregido (ver conversación, primer
+                # intento real de Carry con 2 patas, 2026-11-11): el nombre
+                # del campo de notional mínimo es DISTINTO entre spot y
+                # futuros -- spot usa filterType 'NOTIONAL' con campo
+                # 'minNotional'; futuros usa filterType 'MIN_NOTIONAL' con
+                # campo 'notional' (confirmado real contra
+                # /fapi/v1/exchangeInfo?symbol=BTCUSDT: {'filterType':
+                # 'MIN_NOTIONAL', 'notional': '50'}). Leer 'minNotional' para
+                # los dos devolvía 0 para futuros -- el código nunca se
+                # enteraba del piso real de 50 USD por pata, y una orden de
+                # Carry con poco capital pasaba el LOT_SIZE pero Binance
+                # igual la rechazaba (-4164 "Order's notional must be no
+                # smaller than 50"), dejando el spot YA ejecutado sin su
+                # cobertura de futuro.
                 min_notional = float(f.get("minNotional") or 0)
+            elif f["filterType"] == "MIN_NOTIONAL":
+                min_notional = float(f.get("notional") or 0)
         result = (step_size, min_notional)
         self._lot_size_cache[cache_key] = result
         return result
