@@ -127,7 +127,17 @@ def place_real_binance_order(conn, *, market, symbol, side, cantidad, precio, pa
     adapter = broker_client._adapter_for(account)
     asset_type = "cripto" if market == "spot" else "futuro_perpetuo"
     binance_operation = "Compra" if side == "buy" else "Venta"
-    external_id = f"kronos-binance-{symbol}-{market}-{int(time.time() * 1000)}"
+    # BUG REAL encontrado y corregido (ver conversación, primera orden de
+    # prueba real en Demo Trading tras el fix de LOT_SIZE, 2026-11-11):
+    # Binance rechaza `newClientOrderId` con -1100 "Illegal characters" si
+    # supera 36 caracteres (regex real: ^[a-zA-Z0-9-_]{1,36}$) -- el formato
+    # anterior ("kronos-binance-{symbol}-{market}-{timestamp}") da 41
+    # caracteres para BTCUSDT, ya pasa el límite con el symbol más corto que
+    # existe. Acotado: "kr-" + symbol (máx. 12, confirmado real contra el
+    # symbol más largo de FUNDING_SYMBOLS, "1000satsusdt") + mercado
+    # abreviado + timestamp de 13 dígitos = máx. 34 caracteres.
+    market_abbr = "spot" if market == "spot" else "fut"
+    external_id = f"kr-{symbol}-{market_abbr}-{int(time.time() * 1000)}"
 
     order_kwargs = dict(
         symbol=symbol, asset_type=asset_type, operation=binance_operation,

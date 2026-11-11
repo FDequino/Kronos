@@ -391,3 +391,43 @@ Se filtró el catálogo completo de `yields.llama.fi/pools` (15.620 pools reales
 **Efecto "overnight" (cierre→apertura) — descartado.** Documentado en literatura académica: el retorno de EEUU se concentra históricamente en el tramo nocturno, no durante el pregón. En bruto (sin costos): Sharpe 1.12, retorno anualizado 12.8%, pero **DSR=0.028** (lejos del gate) — y el retorno diario promedio bruto (0.050%) es casi idéntico al costo de transacción realista asumido (0.05%), o sea que ni siquiera hace falta el DSR para descartarlo: es económicamente marginal apenas se le resta fricción real. Coincide con la literatura, que ya declara este efecto como "real pero poco práctico para minoristas por costos".
 
 **Efecto "turn-of-month" (últimos 3 + primeros 3 días hábiles del mes) — la candidata de acciones más prometedora de hoy, pero todavía NO pasa el gate.** Definición estándar (Ariel 1987). Resultado real: Sharpe 1.33, Max DD -10.6% (vs. -30.6% del resto del mes), retorno anualizado 21.7%, **DSR=0.682** — no llega a 0.95, pero es el DSR más alto de cualquier estrategia de acciones probada en este proyecto. Partido en 2 mitades de 5 años cada una para chequear consistencia (mismo criterio que ya detectó que el día de la semana en cripto era ruido): acá el retorno diario promedio es casi idéntico en ambas mitades (0.081% vs 0.087%) y el Sharpe también (1.24 vs 1.46) — **consistente, no se invierte como el día de la semana cripto**. Palancas que quedan sin probar antes de declararlo descartado: (1) más historial (yfinance permite ir más atrás de 10 años), (2) universo más amplio (S&P 500 completo en vez de 36 tickers elegidos a mano) — mismo patrón que ya funcionó para Carry cripto (escanear todo en vez de elegir a mano).
+
+## Investigación 2026-11-11: bot de "swing trading" en ACCIONES EEUU (reglas del Satélite, holding 5d/10d) sobre el S&P 500 completo — ambas variantes descartadas
+
+(Ver conversación: "quiero analizar retorno de acciones solamente, de un bot que haga compra venta de las mismas en plazos de 1 semana, 10 dias, o con un objetivo claro en función de determinadas variables". Mismo motor de señales que ya usa el Satélite (`short_term_engine.evaluate_short_term_signals`), mismo esquema de salida con TP/SL/trailing-stop por ATR que ya usa `backtest.simulate_position_exit`, aplicado sobre el universo COMPLETO del S&P 500 (503 tickers reales, no una selección a mano), 10 años de historial diario real de yfinance, 2% del capital del sleeve por trade, 0.05% de costo de ida y vuelta por trade (declarado).
+
+Bug real encontrado en el camino (no de la estrategia, de la obtención de datos): Yahoo Finance rate-limita pedidos muy seguidos (>1000 pedidos en poco tiempo) y devuelve filas con OHLC en NaN para tickers activos, reportándolos como "possibly delisted" — un solo NaN rompe el Sharpe/Max DD de la serie ENTERA porque `std`/`cumprod` propagan NaN. Corregido con `dropna` post-fetch + `sleep(0.3s)` entre pedidos (antes 0.02s) antes de confiar en el resultado.
+
+| Variante | Trades | Win rate | Sharpe | Max DD | Anualizado | Profit factor | DSR |
+|---|---|---|---|---|---|---|---|
+| Holding 5 días (TP 4%/SL 9%/trailing ATR 1.8x) | 37.668 | 53.1% | 0.14 | -52.7% | 0.7% | 1.02 | 0.0000023 |
+| Holding 10 días (TP 6%/SL 12%/trailing ATR 2.0x) | 35.260 | 49.9% | 0.72 | -59.4% | 15.0% | 1.13 | 0.0000891 |
+
+**Conclusión, sin exagerar**: ninguna pasa el gate, ni cerca. A diferencia de Carry cripto (donde ampliar de 6 a 28 monedas sí destapó el edge real — ahí el problema era muestra chica), acá 503 tickers y 10 años YA es un universo amplio: el problema no es tamaño de muestra, es que las reglas del Satélite (pensadas para cripto, con su volatilidad y su estructura de funding) no tienen un edge real de por sí sobre acciones de EEUU con holding de días. La variante de 10 días mejora bastante el Sharpe/retorno frente a la de 5 días, pero el drawdown (-59%) sigue siendo desproporcionado para ese Sharpe, y el DSR queda en otro orden de magnitud respecto al gate.
+
+Palancas sin probar todavía antes de descartar por completo el "bot de acciones" (consistente con lo que destapó el edge en Carry cripto y en turn-of-month: no abandonar una idea razonable sin probar escala/reglas distintas primero): (1) reglas de entrada distintas a las del Satélite, diseñadas específicamente para acciones (ej. combinar con el efecto turn-of-month ya documentado arriba, que sí tiene DSR=0.682); (2) holding períodos intermedios (ni 5 ni 10, sino algo calibrado por volatilidad del ticker); (3) filtrar el universo por liquidez/sector en vez de tomar los 503 tickers parejo.
+
+## Investigación 2026-11-11 (continuación): turn-of-month con S&P 500 completo y máximo historial — DSR=0.999 en el agregado, pero NO ROBUSTO por sub-período
+
+(Continuación directa del hallazgo de arriba. Se probó ampliar el efecto turn-of-month de 36 tickers/10 años a 498 tickers reales del S&P 500/historial máximo de yfinance, mismo patrón que ya funcionó en Carry cripto.)
+
+Con 498 tickers (de 503, los otros sin suficiente historial) y datos combinados desde 1962-01-02 hasta hoy (16.324 días calendario, 3.708 días de turn-of-month reales): Sharpe 2.07, Max DD -25.5%, anualizado 37.8%, **DSR=0.9989** — pasaría el gate.
+
+**Pero no es robusto.** Partido en 4 cuartos de ~927 días hábiles cada uno (~16 años cada uno):
+
+| Período | Media diaria | Sharpe | Anualizado | DSR |
+|---|---|---|---|---|
+| Q1 (1962-1978) | 0.0895% | 1.65 | 24.1% | 0.023 (falla) |
+| Q2 (1978-1994) | 0.1800% | 3.41 | 56.0% | 0.99998 (pasa) |
+| Q3 (1994-2010) | 0.1715% | 2.12 | 50.9% | 0.626 (falla) |
+| Q4 (2010-2026) | 0.0889% | 1.39 | 23.5% | 0.629 (falla) |
+
+**Conclusión honesta**: el DSR=0.999 del agregado está inflado casi en su totalidad por un solo cuarto (Q2, 1978-1994), que es anómalamente fuerte (Sharpe 3.41, más del doble que los otros 3 cuartos). Los otros 3 cuartos — el 75% restante de 64 años de historia — NO pasan el gate por sí solos (DSR 0.023, 0.626, 0.629). Esto es justo el tipo de discrepancia que este proyecto declaró nunca dejar sin explicar: **no se puede tratar el DSR=0.999 agregado como una validación real del efecto** — es un resultado dominado por un régimen histórico específico (posiblemente post-crisis del 73-74/inflación de los 70s-80s, sin confirmar causa), no un edge persistente y estable en el tiempo. **NO se promueve a validada.** Queda como la candidata de acciones más prometedora, pero con esta caveat explícita: cualquier decisión de capital real sobre este efecto tendría que asumir que 3 de cada 4 períodos de 16 años de la historia no lo habrían validado por separado.
+
+## Investigación 2026-11-11 (continuación): segundo bug real de ejecución Binance encontrado y corregido — primera orden real CONFIRMADA de punta a punta
+
+(Continuación directa del fix de LOT_SIZE de hoy. Tras deployar ese fix al VPS, se reintentó la misma orden de prueba real en Demo Trading que antes fallaba.)
+
+El LOT_SIZE quedó resuelto (cantidad redondeada a 0.00014 BTC, múltiplo válido del stepSize real), pero apareció un **segundo bug real, distinto**: Binance devolvía `400 Bad Request` sin detalle visible (el código solo capturaba `str(e)` de `raise_for_status()`, que no incluye el cuerpo de la respuesta). Se obtuvo el cuerpo real haciendo la llamada a mano: `{"code":-1100,"msg":"Illegal characters found in parameter 'newClientOrderId'; legal range is '^[a-zA-Z0-9-_]{1,36}$'."}`. El `external_id` que arma `binance_execution.py` (`kronos-binance-{symbol}-{market}-{timestamp}`) da **41 caracteres** para BTCUSDT — ya supera el límite de 36 con el symbol más corto que existe en el proyecto. Corregido acortando el formato a `kr-{symbol}-{market_abbr}-{timestamp}` (máx. 34 caracteres confirmado contra el symbol más largo de `FUNDING_SYMBOLS`, `1000satsusdt`).
+
+Con los 2 bugs corregidos (LOT_SIZE + `newClientOrderId`), la orden de prueba (BTCUSDT spot, compra, ~10.35 USD, Demo Trading) quedó **`estado: 'confirmada'`, con `binance_order_id` real** — la primera vez que `place_real_binance_order` (el único punto de entrada real de ejecución del proyecto) se ejecuta de punta a punta sin error. Sigue siendo Demo Trading (fondos ficticios), no valida todavía ejecución con capital real, pero sí valida que TODO el camino de código (gates, firma HMAC, redondeo real, extracción de fill real, persistencia) funciona end-to-end por primera vez.
