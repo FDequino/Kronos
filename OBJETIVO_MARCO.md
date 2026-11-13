@@ -484,3 +484,22 @@ Ejecutar esto en la práctica implica entrar y salir de la ventana turn-of-month
 **Con el costo realista de 0.05%, el DSR cae de 0.9689 a 0.9403 -- por debajo del gate de 0.95.** A diferencia del efecto "overnight" (donde el costo mataba CASI TODO el retorno), acá el costo apenas mueve el Sharpe de 1.79 a 1.64 -- la estrategia en sí sigue siendo razonablemente sólida, pero no alcanza el umbral estricto que exige este proyecto para todo lo demás.
 
 **Corregido**: `turn_of_month_equity.py` ahora resta `ROUND_TRIP_COST_PCT=0.05` una vez por ventana (ver `_apply_round_trip_cost`). Se re-corrió `record_validation_result` con el DSR real (0.9403) -- la estrategia vuelve automáticamente a `research` (no pasa el gate), no queda en `paper_trading`. Sigue siendo la candidata de acciones más prometedora del proyecto (más cerca del gate que cualquier otra), pero no se declara validada mientras no lo cruce con un costo realista.
+
+## Investigación 2026-11-13: bug real en `record_validation_result` — re-validar una estrategia en `paper_trading` la retrocedía a `validated`
+
+(Encontrado al armar un documento de rendimientos esperados para el usuario, verificando bruto vs. neto de comisión de cada estrategia -- auditoría pedida directamente: "¿los rendimientos tienen descontadas las comisiones?")
+
+Al recalcular Canje AL29/GD29 con datos de mercado de HOY (la última validación registrada era del 2026-10-21, 23 días desactualizada) para mostrar el desglose bruto/neto, el resultado real cambió sustancialmente respecto al registrado: **bruto 63.9% / neto 43.0% anualizado** (antes: 24.8%), DSR real actual 0.99999997 (antes: 0.9864) -- diferencia explicada por movimiento real del spread de bonos en esas 3 semanas, no un error de cálculo (mismo tipo de estrategia sensible a la ventana de datos que ya se documentó para turn-of-month).
+
+Al volver a registrar este número real con `strategy_registry.record_validation_result`, apareció un bug real: la función solo distinguía "ya es `live`" de "no es `live`" para decidir el status -- una estrategia que YA estaba en `paper_trading` (con 23 días reales de track record acumulados desde el 2026-10-21) quedó empujada de vuelta a `validated`, afuera del universo que seguía `portfolio/paper_ledger.py::run_all` (que solo procesa `paper_trading`/`live`). Si no se corregía, el próximo ciclo diario real habría dejado de sumar días al track record de Canje en silencio.
+
+**Corregido**: `record_validation_result` ahora preserva `paper_trading` cuando el DSR nuevo sigue pasando el gate (nunca retrocede progreso ya hecho solo por re-validar), y sigue degradando a `research` cuando el DSR nuevo genuinamente no pasa (comportamiento ya usado y correcto para el caso de turn-of-month de arriba). Se corrigió a mano el status de Canje en el registro (sin usar `start_paper_trading` de nuevo, que habría reseteado la fecha de inicio real y perdido los 23 días ya acumulados) y se agregaron 2 tests de regresión. Carry BTC y Opciones VRP se re-verificaron también -- esos sí coincidían con lo ya registrado (más estables día a día que el arbitraje de bonos), no necesitaron corrección.
+
+Con los números reales corregidos: **bruto vs. neto de comisión de cada estrategia, confirmado contra el código real** (no estimado):
+
+| Estrategia | Bruto anualizado | Comisión real aplicada | Neto anualizado | DSR neto |
+|---|---|---|---|---|
+| Carry BTC (representativo de las 28) | 8.2% | 0.10% spot + 0.05% futuro, 1 vez por rebalanceo (~mensual) | 6.9% | 1.0 |
+| Canje AL29/GD29 | 63.9% | 1.21% por operación completa | 43.0% | 0.99999998 |
+| Opciones VRP (BTC/ETH) | 30.9% | 0.03% entrada + 0.015% vencimiento (Deribit) + 0.05% cobertura futuro (Binance) | 22.7% | 0.99993 |
+| Turn-of-month S&P 500 | 36.5% | 0.05% por ventana (~12/año) | 32.9% | 0.9403 (no pasa el gate) |

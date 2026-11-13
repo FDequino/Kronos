@@ -30,15 +30,36 @@ def record_validation_result(conn, name, dsr, annualized_return_pct=None, sharpe
     el rendimiento RECIENTE real una vez 'live' -- NUNCA se pisan en corridas
     posteriores una vez que la estrategia ya es 'live' (si se recalculara la
     base con cada corrida, un desvio real quedaria invisible: la linea de
-    base se iria corriendo junto con el deterioro)."""
+    base se iria corriendo junto con el deterioro).
+
+    BUG REAL encontrado y corregido (ver conversacion, "los rendimientos
+    tienen descontadas las comisiones" 2026-11-13): re-validar una estrategia
+    que YA estaba en 'paper_trading' la empujaba de vuelta a 'validated' si el
+    DSR nuevo seguia pasando el gate -- el status derivado solo distinguia
+    "ya es live" de "no es live", sin un caso para "ya esta en paper_trading,
+    sigue pasando el gate, no la toques". Eso saca a la estrategia del universo
+    de portfolio/paper_ledger.py::run_all (que solo sigue 'paper_trading'/'live')
+    y corta en seco su track record real diario -- confirmado real reconstruyendo
+    canje_al29_gd29 con datos de hoy (DSR seguia en 0.9999, pero el status paso
+    de 'paper_trading' a 'validated' en la misma llamada)."""
     existing = get_strategy(conn, name)
     # Una estrategia ya 'live' no se degrada sola a 'research' si una corrida
     # puntual da un DSR mas bajo (podria ser ruido de una ventana distinta) --
     # eso es trabajo del Monitor de Salud de Estrategia (Fase 4), no de este
     # registro de validacion inicial. Si todavia no es 'live', sigue el
-    # estado derivado directo del DSR de esta corrida.
+    # estado derivado directo del DSR de esta corrida -- SALVO que ya este en
+    # 'paper_trading' y el DSR nuevo siga pasando el gate, en cuyo caso se
+    # queda en 'paper_trading' (nunca retrocede el progreso ya hecho solo
+    # porque se la volvio a validar).
     already_live = existing and existing["status"] == "live"
-    status = "live" if already_live else ("validated" if dsr is not None and dsr >= DSR_GATE_THRESHOLD else "research")
+    already_paper_trading = existing and existing["status"] == "paper_trading"
+    passes_gate = dsr is not None and dsr >= DSR_GATE_THRESHOLD
+    if already_live:
+        status = "live"
+    elif already_paper_trading and passes_gate:
+        status = "paper_trading"
+    else:
+        status = "validated" if passes_gate else "research"
     baseline_sharpe = existing["baseline_sharpe"] if already_live else sharpe_ratio
     baseline_return = existing["baseline_annualized_return_pct"] if already_live else annualized_return_pct
 

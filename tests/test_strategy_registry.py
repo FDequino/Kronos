@@ -54,6 +54,35 @@ def test_estrategia_live_no_se_degrada_por_una_corrida_puntual(temp_db):
     assert s["last_dsr"] == 0.40  # el dato se actualiza, el status no
 
 
+def test_re_validar_una_estrategia_en_paper_trading_no_la_retrocede_a_validated(temp_db):
+    # BUG REAL 2026-11-13: record_validation_result solo distinguia "ya es
+    # live" de "no es live" -- una estrategia ya en 'paper_trading' que
+    # volvia a pasar el gate quedaba empujada a 'validated', sacandola del
+    # universo de paper_ledger.run_all (solo sigue 'paper_trading'/'live') y
+    # cortando en seco su track record real diario. Confirmado real
+    # re-validando canje_al29_gd29 con datos nuevos del mercado de bonos.
+    strategy_registry.record_validation_result(temp_db, "canje_al29_gd29", dsr=0.9864)
+    strategy_registry.start_paper_trading(temp_db, "canje_al29_gd29")
+
+    s = strategy_registry.record_validation_result(temp_db, "canje_al29_gd29", dsr=0.9999, annualized_return_pct=43.0, sharpe_ratio=2.47)
+
+    assert s["status"] == "paper_trading"
+    assert s["last_dsr"] == 0.9999  # el dato se actualiza, el status no retrocede
+    assert s["baseline_annualized_return_pct"] == 43.0  # el baseline SI se actualiza (todavia no es 'live')
+
+
+def test_re_validar_una_estrategia_en_paper_trading_si_la_degrada_si_deja_de_pasar_el_gate(temp_db):
+    # El caso contrario tiene que seguir funcionando: si de verdad deja de
+    # pasar el gate, se degrada a 'research' (esto SI paso real con
+    # turn_of_month_sp500 al corregirle el costo de transaccion).
+    strategy_registry.record_validation_result(temp_db, "canje_al29_gd29", dsr=0.9864)
+    strategy_registry.start_paper_trading(temp_db, "canje_al29_gd29")
+
+    s = strategy_registry.record_validation_result(temp_db, "canje_al29_gd29", dsr=0.40)
+
+    assert s["status"] == "research"
+
+
 def test_no_se_puede_automatizar_una_estrategia_en_research(temp_db):
     strategy_registry.record_validation_result(temp_db, "core", dsr=0.0073)
 
